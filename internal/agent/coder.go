@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"google.golang.org/adk/model"
 )
 
@@ -47,6 +49,42 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	return fmt.Sprintf("Modified %s", filePath), nil
 }
 
+func (a *CoderAgent) GenerateTestFile(ctx context.Context, sourcePath string) (string, error) {
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return "", err
+	}
+
+	ext := filepath.Ext(sourcePath)
+	testPath := strings.TrimSuffix(sourcePath, ext)
+	switch ext {
+	case ".go": testPath += "_test.go"
+	case ".ts", ".tsx": testPath += ".spec" + ext
+	case ".dart": testPath += "_test.dart"
+	default: return "", fmt.Errorf("unsupported extension for test generation: %s", ext)
+	}
+
+	prompt := fmt.Sprintf("You are the Swarm Test Engineer.\n"+
+		"Create a comprehensive unit test for the following source code.\n\n"+
+		"MANDATORY RULES:\n"+
+		"1. Provide the FULL test file content.\n"+
+		"2. Do not include any conversational text, ONLY the code.\n"+
+		"3. Ensure high coverage and test edge cases.\n\n"+
+		"[Source Code: %s]\n%s", sourcePath, string(content))
+
+	testCode, err := CallLLM(ctx, a.llm, "Tester", prompt)
+	if err != nil {
+		return "", err
+	}
+
+	err = os.WriteFile(testPath, []byte(testCode), 0644)
+	if err != nil {
+		return "", err
+	}
+
+	return testPath, nil
+}
+
 func (a *CoderAgent) Process(ctx context.Context, input string) (string, error) {
-	return "Use ModifyFile", nil
+	return "Use ModifyFile or GenerateTestFile", nil
 }

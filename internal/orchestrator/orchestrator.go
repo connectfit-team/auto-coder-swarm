@@ -139,7 +139,18 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 		for _, change := range plan.Changes {
-			o.coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
+			o.reportStatus(taskID, "CODER", fmt.Sprintf("Modifying %s", change.FilePath))
+			fullPath := filepath.Join(repoPath, change.FilePath)
+			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
+			if err != nil {
+				return RunResult{RepoName: targetRepo}, fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
+			}
+
+			ext := filepath.Ext(change.FilePath)
+			if ext == ".go" || ext == ".dart" || ext == ".ts" {
+				o.reportStatus(taskID, "TESTER", fmt.Sprintf("Generating unit test for %s", change.FilePath))
+				_, _ = o.coder.GenerateTestFile(ctx, fullPath)
+			}
 		}
 
 		isDocOnly := true
@@ -173,7 +184,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification with auto-tests")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
