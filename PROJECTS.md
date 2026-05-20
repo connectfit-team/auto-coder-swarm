@@ -40,3 +40,8 @@
 - /internal/orchestrator: 에이전트 간 워크플로우 제어 및 상태 보고.
 - /internal/gitmgr: Git 및 PR 작업 담당.
 - /internal/insightclient: 분석 엔진 통신용 클라이언트.
+
+### Phase 5: 성능 및 확장성 고도화 (Planned)
+- Instant Sandboxing: 하드링크(`cp -al`) 또는 Git Worktree를 이용한 초고속 격리 환경 생성.
+- Parallel Multi-Agent Audit: Reviewer와 RiskAssessor의 병렬 실행을 통한 검증 시간 단축.
+- Context Optimization: 에이전트 간 토큰 소모 최소화를 위한 지능형 컨텍스트 압축.
