@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
@@ -21,12 +22,11 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
 
-const webhookURL = "https://hooks.slack.com/services/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"
-
-func sendToSlack(message string) {
-	payload := map[string]string{"text": message}
-	b, _ := json.Marshal(payload)
-	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }
 
 // StreamAdapter connects the stream manager to the agent layer
@@ -42,7 +42,16 @@ func (a *StreamAdapter) Broadcast(taskID uint, agentName, message string) {
 	})
 }
 
-func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage, wm *worker.Manager) {
+func sendToSlack(webhookURL, message string) {
+	if webhookURL == "" {
+		return
+	}
+	payload := map[string]string{"text": message}
+	b, _ := json.Marshal(payload)
+	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
+}
+
+func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage, wm *worker.Manager, slackWebhook string) {
 	for {
 		task, err := store.ClaimNextTask()
 		if err != nil {
@@ -52,7 +61,6 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		log.Printf("[Worker %d] Task #%d (Status: %s)", id, task.ID, task.Status)
 
-		// Inject task_id into context for streaming
 		ctx := context.WithValue(context.Background(), "task_id", task.ID)
 		ctx, cancel := context.WithCancel(ctx)
 		wm.Register(task.ID, cancel)
@@ -84,29 +92,38 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			if ctx.Err() == context.Canceled {
 				log.Printf("🚫 Task #%d was stopped by user.", task.ID)
 			} else {
-				sendToSlack(fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
+				sendToSlack(slackWebhook, fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
 				store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 			}
 		} else if res.WaitingApproval {
 			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
-			sendToSlack(fmt.Sprintf("⏳ *Task #%d 검증 완료*: 승인이 필요합니다.\n🔗 `POST http://192.168.120.54:8006/api/v1/approve?id=%d`", task.ID, task.ID))
+			sendToSlack(slackWebhook, fmt.Sprintf("⏳ *Task #%d 검증 완료*: 승인이 필요합니다.", task.ID))
 		} else {
-			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
+			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task #%d 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
 
 			for _, chainReq := range res.ChainTasks {
 				b, _ := json.Marshal(chainReq)
 				newToken, _ := store.CreateTask(string(b))
-				sendToSlack(fmt.Sprintf("🔗 *연쇄 작업 발견!* (#%d): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
+				sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (#%d): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
 			}
 		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 9: Enterprise Readiness)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Portable Mode)")
 
-	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
+	// 1. Environmental Configuration
+	dbPath := getEnv("SWARM_DB_PATH", "./swarm.db")
+	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
+	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
+	workspaceBase := getEnv("WORKSPACE_BASE_PATH", "/tmp")
+	templatesPath := getEnv("TEMPLATES_PATH", "./web/templates")
+	slackWebhook := getEnv("SLACK_WEBHOOK_URL", "")
+	listenAddr := getEnv("LISTEN_ADDR", ":8006")
+
+	// 2. Storage & Stream Initialization
 	store, err := storage.NewStorage(dbPath)
 	if err != nil {
 		log.Fatalf("❌ DB init failed: %v", err)
@@ -115,30 +132,28 @@ func main() {
 
 	wm := worker.NewManager()
 	sm := stream.NewManager(store)
-	
-	// Plug the stream manager and storage into the global agent layer
 	agent.GlobalStream = &StreamAdapter{manager: sm}
 	agent.GlobalStorage = store
-	
-	ic := insightclient.NewClient("http://localhost:8005")
-	wsMgr := workspace.NewLocalManager("/tmp", "/home/cnf/projects/code-insight-engine/repos")
+
+	// 3. Orchestration Layer
+	ic := insightclient.NewClient(oracleURL)
+	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
-	
-	// Orchestrator now loads models dynamically
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store)
 
+	// 4. Worker Management
 	workerCount := 3
-	log.Printf("⚙️ Starting %d concurrent swarm workers...", workerCount)
 	for w := 1; w <= workerCount; w++ {
-		go taskWorker(w, orc, store, wm)
+		go taskWorker(w, orc, store, wm, slackWebhook)
 	}
 
+	// 5. Web Interface & API
 	mux := http.NewServeMux()
 	handler := api.NewSwarmHandler(store)
 	handler.RegisterRoutes(mux)
-	dashHandler := web.NewDashboardHandler(store, wm, sm, "/home/cnf/projects/auto-coder-swarm/web/templates")
+	dashHandler := web.NewDashboardHandler(store, wm, sm, templatesPath)
 	dashHandler.RegisterRoutes(mux)
 
-	log.Println("📡 Swarm API & Dashboard & CoT Stream listening on :8006")
-	log.Fatal(http.ListenAndServe(":8006", mux))
+	log.Printf("📡 Swarm API & Dashboard listening on %s", listenAddr)
+	log.Fatal(http.ListenAndServe(listenAddr, mux))
 }
