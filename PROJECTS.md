@@ -50,3 +50,8 @@
 - Stateless Request API: 요청 간 의존성을 배제하고 컨텍스트를 데이터베이스화하여 확장성 확보.
 - External Agent Bridge: 다른 에이전트 그룹(Multi-Agent Swarms)과 통신하기 위한 표준 인터페이스(gRPC/REST) 구축.
 - Multi-Oracle Router: 여러 분석 엔진으로부터 교차 검증된 정보를 수집하는 라우팅 로직.
+
+### Phase 7: 자가 치유 및 고급 자율성 (Planned)
+- Self-Healing Build: 빌드 에러 로그를 분석하여 종속성 설치(`go mod tidy` 등)를 스스로 수행.
+- Human-in-the-Loop Approval: 위험도가 높은 수정에 대해 슬랙 인터랙티브 버튼으로 사람의 최종 승인 획득.
+- Multi-Model Swarm Voting: 여러 LLM 모델(Gemma, Claude 등)의 교차 검증을 통한 리뷰 정확도 향상.
