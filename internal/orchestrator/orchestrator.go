@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,7 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 	if err != nil {
 		return "", fmt.Errorf("oracle query failed: %w", err)
 	}
+	o.reportStatus(taskID, "ORACLE", fmt.Sprintf("Context received (%d bytes)", len(analysis)))
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
 	if err != nil {
