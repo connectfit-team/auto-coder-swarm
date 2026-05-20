@@ -16,7 +16,7 @@
 
 ## 🎯 Next Tasks (Phase 4)
 - [ ] **Step 10: Real Git API**: Replace simulation with actual GitHub/GitLab API calls.
-- [ ] **Step 11: Risk Assessor**: Specialized agent for impact analysis.
+- [x] **Step 11: Risk Assessor**: Specialized agent for impact analysis.
 - [ ] **Step 12: Observability**: Structured logging and real-time status relay.
 
 ---
