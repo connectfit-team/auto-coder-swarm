@@ -37,12 +37,18 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 	log.Println("[Orchestrator] Oracle analysis received.")
 
 	log.Println("[Orchestrator] Step 2: Planning modifications...")
-	plan, err := o.planner.Process(ctx, analysis)
+	planRaw, err := o.planner.Process(ctx, analysis)
 	if err != nil {
 		return fmt.Errorf("planning failed: %w", err)
 	}
-	log.Printf("[Orchestrator] Plan generated: %s", plan)
 
-	// Coder and Reviewer logic will be implemented next
+	plan, err := o.planner.ParsePlan(planRaw)
+	if err != nil {
+		log.Printf("[Orchestrator] Warning: Initial JSON parse failed, attempting one recovery: %v", err)
+		// Potential recovery logic can be added here
+		return fmt.Errorf("failed to parse a valid plan: %w", err)
+	}
+	log.Printf("[Orchestrator] Plan validated! Target Repo: %s, Files: %d", plan.RepoName, len(plan.Changes))
+
 	return nil
 }

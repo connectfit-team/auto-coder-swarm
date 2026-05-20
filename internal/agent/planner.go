@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"google.golang.org/adk/model"
+	"strings"
 )
 
 type PlannerAgent struct {
@@ -19,17 +22,21 @@ func (a *PlannerAgent) Name() string {
 
 func (a *PlannerAgent) Process(ctx context.Context, oracleAnalysis string) (string, error) {
 	prompt := `You are the Swarm Planner. 
-Analyze the following technical analysis from the Oracle and create a structured JSON plan for code modification.
-Ensure the plan is realistic and targets specific files.
+Your goal is to extract a structured code modification plan from the Oracle's analysis.
 
-[Target Format]
+MANDATORY RULES:
+1. Identify the EXACT repository name from the analysis.
+2. Identify the specific file paths and what needs to be changed.
+3. Output ONLY a valid JSON object. Do not include any conversational text.
+
+[Target JSON Format]
 {
-  "repo_name": "...",
+  "repo_name": "repository-name",
   "changes": [
     {
-      "file_path": "...",
-      "description": "What to change",
-      "instructions": "Specific technical instructions for the Coder agent"
+      "file_path": "path/to/file.ext",
+      "description": "Brief summary of change",
+      "instructions": "Technical details for the Coder agent"
     }
   ]
 }
@@ -37,5 +44,29 @@ Ensure the plan is realistic and targets specific files.
 [Oracle Analysis]
 ` + oracleAnalysis
 
-	return CallLLM(ctx, a.llm, prompt)
+	resp, err := CallLLM(ctx, a.llm, prompt)
+	if err != nil {
+		return "", err
+	}
+	return resp, nil
+}
+
+func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {
+	jsonStr := raw
+	if start := strings.Index(raw, "{"); start != -1 {
+		if end := strings.LastIndex(raw, "}"); end != -1 {
+			jsonStr = raw[start : end+1]
+		}
+	}
+
+	var plan Plan
+	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+		return Plan{}, fmt.Errorf("failed to parse plan JSON: %w", err)
+	}
+
+	if plan.RepoName == "" || plan.RepoName == "not_specified" {
+		return plan, fmt.Errorf("planner failed to identify target repository")
+	}
+
+	return plan, nil
 }
