@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"google.golang.org/adk/model"
 )
 
@@ -17,13 +19,40 @@ func (a *CoderAgent) Name() string {
 	return "Coder"
 }
 
-func (a *CoderAgent) Process(ctx context.Context, instructions string) (string, error) {
-	prompt := `You are the Swarm Coder. 
-Modify the following code based on the technical instructions. 
-Provide the FULL file content after modification.
+func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
 
-[Instructions]
-` + instructions
+	prompt := fmt.Sprintf("You are the Swarm Coder.\n"+
+		"Modify the following code based on the technical instructions.\n\n"+
+		"MANDATORY RULES:\n"+
+		"1. Provide the FULL file content after modification.\n"+
+		"2. Do not include any conversational text, ONLY the code.\n"+
+		"3. Maintain existing coding style.\n\n"+
+		"[Technical Instructions]\n%%s\n\n"+
+		"[Original Code: %%s]\n%%s", instructions, filePath, string(content))
 
-	return CallLLM(ctx, a.llm, prompt)
+	newContent, err := CallLLM(ctx, a.llm, prompt)
+	if err != nil {
+		return "", err
+	}
+
+	// Basic markdown cleanup
+	cleanContent := newContent
+	if start := fmt.Sprint(newContent); len(start) > 0 {
+		// Logic to remove ```language ... ``` could be added here
+	}
+
+	err = os.WriteFile(filePath, []byte(cleanContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return fmt.Sprintf("Modified %%s", filePath), nil
+}
+
+func (a *CoderAgent) Process(ctx context.Context, input string) (string, error) {
+	return "Use ModifyFile", nil
 }
