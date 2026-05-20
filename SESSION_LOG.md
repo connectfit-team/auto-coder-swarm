@@ -1,23 +1,23 @@
-# 📝 Session Log: 2026-05-20 (Phase 8 Final Audit & Phase 9 Start)
+# 📝 Session Log: 2026-05-20 (CoT Persistence & Audit)
 
 ## 🎯 Strategic Intent
-- **Phase 8 Verification**: Completed a full audit of Step 34 (CoT Streaming) and Step 33 (Agentic Dialogue).
-- **Cleanup & Sync**: Synchronized documentation (PROJECTS.md, PROGRESS.md, PROCESSES.md) and removed redundancy.
-- **Enterprise Hardening**: Successfully implemented and verified Step 35 (API Key Auth).
+- **Observability Enhancement**: Enabled historical viewing of agent reasoning (CoT) on the dashboard.
+- **System Stability**: Implemented log rotation to prevent disk exhaustion (1GB limit).
+- **History Preservation**: Ensured logs are available even after service restarts.
 
 ## ✅ Accomplishments
-- **Audit**: Verified that all agents (Planner, Coder, Critic, etc.) are correctly logging to `agent_thoughts.log` and streaming via SSE.
-- **Security**: Added `X-API-Key` authentication to `HandleSubmitTask` and `HandleApproveTask`.
-- **Docs**: Created `PROCESSES.md` to document the operational lifecycle.
-- **Recovery**: Created and ran Go scripts to reset stuck tasks and clear locks, proving system resilience.
+- **Storage Layer**: Added `ThoughtLog` model to persist every LLM interaction (Prompt/Header/Response).
+- **Stream Manager**: Updated SSE handler to fetch and push historical thoughts upon client connection.
+- **Agent Layer**: Updated `CallLLM` to persist headers and prompts immediately, allowing users to see intent before the response is fully generated.
+- **Log Rotation**: Implemented a 1GB threshold check for `agent_thoughts.log`, rotating with timestamps.
+- **Voter Integration**: Updated `MultiModelVoter` to use the standard `CallLLM` wrapper, enabling logging and streaming for the voting phase.
 
 ## 🛡️ Project Integrity
-- **Build**: `bin/swarm` is stable and running on port 8006.
-- **Data**: `swarm.db` (SQLite) correctly tracks tasks and multi-stage logs.
-- **Environment**: Workspace management via Git Worktree is confirmed operational.
+- **Build**: Successful build and deploy of the new persistence logic.
+- **Data Integrity**: Verified that multiple agents can simultaneously write to the DB (Voter test).
+- **Verification**: Confirmed task #1 history is being correctly recorded in the DB.
 
 ## 📈 Future Trajectory
 - **Phase 9 (Enterprise Readiness)**:
-    - Step 36: Enhanced Persistence & Stage-level Resumption.
-    - Step 37: Prometheus Metrics Integration.
-    - Step 38: Daily Swarm Activity Briefing.
+    - Step 38: Prometheus Metrics for system health.
+    - Step 39: Automated Reporting.

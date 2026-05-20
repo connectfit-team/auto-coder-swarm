@@ -1,9 +1,12 @@
 package stream
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 )
 
 // Thought represents a single step in the agent's reasoning process.
@@ -16,12 +19,14 @@ type Thought struct {
 // Manager handles real-time broadcasting of agent thoughts to web clients.
 type Manager struct {
 	subscribers map[uint][]chan Thought
+	store       *storage.Storage
 	mu          sync.RWMutex
 }
 
-func NewManager() *Manager {
+func NewManager(s *storage.Storage) *Manager {
 	return &Manager{
 		subscribers: make(map[uint][]chan Thought),
+		store:       s,
 	}
 }
 
@@ -32,7 +37,6 @@ func (m *Manager) Broadcast(t Thought) {
 
 	if subs, ok := m.subscribers[t.TaskID]; ok {
 		for _, ch := range subs {
-			// Non-blocking send to prevent a slow client from hanging the orchestrator
 			select {
 			case ch <- t:
 			default:
@@ -52,7 +56,6 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -64,13 +67,25 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a new subscriber channel
-	ch := make(chan Thought, 100)
+	// Fetch historical thoughts from storage
+	if m.store != nil {
+		history, _ := m.store.GetThoughts(taskID)
+		for _, h := range history {
+			data := map[string]string{
+				"agent":   h.AgentName,
+				"message": h.Message,
+			}
+			b, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", string(b))
+		}
+		flusher.Flush()
+	}
+
+	ch := make(chan Thought, 500)
 	m.mu.Lock()
 	m.subscribers[taskID] = append(m.subscribers[taskID], ch)
 	m.mu.Unlock()
 
-	// Ensure cleanup when the client disconnects
 	defer func() {
 		m.mu.Lock()
 		subs := m.subscribers[taskID]
@@ -87,15 +102,18 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		close(ch)
 	}()
 
-	// Signal the browser that the connection is established
-	fmt.Fprintf(w, "data: {\"message\": \"Connected to Task #%d stream\"}\n\n", taskID)
+	fmt.Fprintf(w, "data: {\"message\": \"Connected to Task #%d stream (History Loaded)\"}\n\n", taskID)
 	flusher.Flush()
 
 	for {
 		select {
 		case t := <-ch:
-			// Use simple JSON-like format for SSE data
-			fmt.Fprintf(w, "data: {\"agent\": \"%s\", \"message\": \"%s\"}\n\n", t.AgentName, t.Message)
+			data := map[string]string{
+				"agent":   t.AgentName,
+				"message": t.Message,
+			}
+			b, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", string(b))
 			flusher.Flush()
 		case <-r.Context().Done():
 			return

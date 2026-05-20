@@ -47,26 +47,41 @@ type TaskLog struct {
 	CreatedAt time.Time
 }
 
+// ThoughtLog stores the detailed Chain-of-Thought (CoT) chunks from agents.
+type ThoughtLog struct {
+	ID        uint      `gorm:"primaryKey"`
+	TaskID    uint      `gorm:"index"`
+	AgentName string
+	Message   string    `gorm:"type:text"`
+	CreatedAt time.Time
+}
+
 type Storage struct {
 	db *gorm.DB
 }
 
 func NewStorage(dbPath string) (*Storage, error) {
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil { return nil, err }
-	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{})
+	if err != nil {
+		return nil, err
+	}
+	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{})
 	return &Storage{db: db}, nil
 }
 
 func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
 	task := &SwarmTask{UserRequest: request, Status: StatusPending}
-	if err := s.db.Create(task).Error; err != nil { return nil, err }
+	if err := s.db.Create(task).Error; err != nil {
+		return nil, err
+	}
 	return task, nil
 }
 
 func (s *Storage) GetTaskByID(id uint) (*SwarmTask, error) {
 	var task SwarmTask
-	if err := s.db.First(&task, id).Error; err != nil { return nil, err }
+	if err := s.db.First(&task, id).Error; err != nil {
+		return nil, err
+	}
 	return &task, nil
 }
 
@@ -82,8 +97,12 @@ func (s *Storage) UpdateTaskRepo(id uint, repoName string) error {
 
 func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog string) error {
 	updates := map[string]interface{}{"status": status, "updated_at": time.Now()}
-	if result != "" { updates["result"] = result }
-	if errLog != "" { updates["error_log"] = errLog }
+	if result != "" {
+		updates["result"] = result
+	}
+	if errLog != "" {
+		updates["error_log"] = errLog
+	}
 	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
@@ -128,11 +147,15 @@ func (s *Storage) GetNextPendingTask() (*SwarmTask, error) {
 }
 
 func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
-	if repoName == "" { return true, nil }
+	if repoName == "" {
+		return true, nil
+	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var lock RepoLock
 		if err := tx.Where("repo_name = ?", repoName).First(&lock).Error; err == nil {
-			if lock.TaskID == taskID { return nil }
+			if lock.TaskID == taskID {
+				return nil
+			}
 			return fmt.Errorf("locked")
 		}
 		return tx.Create(&RepoLock{RepoName: repoName, LockedAt: time.Now(), TaskID: taskID}).Error
@@ -141,7 +164,9 @@ func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
 }
 
 func (s *Storage) UnlockRepo(repoName string) error {
-	if repoName == "" { return nil }
+	if repoName == "" {
+		return nil
+	}
 	return s.db.Where("repo_name = ?", repoName).Delete(&RepoLock{}).Error
 }
 
@@ -166,6 +191,22 @@ func (s *Storage) GetLogs(taskID uint) ([]TaskLog, error) {
 	return logs, err
 }
 
+func (s *Storage) AddThought(taskID uint, agentName, message string) error {
+	thought := &ThoughtLog{
+		TaskID:    taskID,
+		AgentName: agentName,
+		Message:   message,
+		CreatedAt: time.Now(),
+	}
+	return s.db.Create(thought).Error
+}
+
+func (s *Storage) GetThoughts(taskID uint) ([]ThoughtLog, error) {
+	var thoughts []ThoughtLog
+	err := s.db.Where("task_id = ?", taskID).Order("created_at asc").Find(&thoughts).Error
+	return thoughts, err
+}
+
 func (s *Storage) MigrateLogs() {
-	s.db.AutoMigrate(&TaskLog{})
+	s.db.AutoMigrate(&TaskLog{}, &ThoughtLog{})
 }

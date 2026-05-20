@@ -14,7 +14,12 @@ type Broadcaster interface {
 	Broadcast(taskID uint, agentName, message string)
 }
 
+type Persister interface {
+	AddThought(taskID uint, agentName, message string) error
+}
+
 var GlobalStream Broadcaster
+var GlobalStorage Persister
 
 type Agent interface {
 	Name() string
@@ -22,7 +27,7 @@ type Agent interface {
 }
 
 type Plan struct {
-	RepoName string `json:"repo_name"`
+	RepoName string       `json:"repo_name"`
 	Changes  []FileChange `json:"changes"`
 }
 
@@ -36,12 +41,27 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 	taskID, _ := ctx.Value("task_id").(uint)
 
 	logPath := "/home/cnf/projects/auto-coder-swarm/agent_thoughts.log"
+	
+	// Check and rotate if > 1GB
+	if info, err := os.Stat(logPath); err == nil && info.Size() > 1024*1024*1024 {
+		os.Rename(logPath, logPath+"."+time.Now().Format("20060102150405"))
+	}
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	header := fmt.Sprintf("\n==================== [%s] AGENT: %s ====================\n", timestamp, agentName)
+	promptLog := fmt.Sprintf("[PROMPT]\n%s\n", prompt)
+
 	f, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if f != nil {
 		defer f.Close()
-		timestamp := time.Now().Format("2006-01-02 15:04:05")
-		fmt.Fprintf(f, "\n==================== [%s] AGENT: %s ====================\n", timestamp, agentName)
-		fmt.Fprintf(f, "[PROMPT]\n%s\n", prompt)
+		fmt.Fprint(f, header)
+		fmt.Fprint(f, promptLog)
+	}
+
+	// Persist header and prompt to DB so history shows it immediately
+	if taskID > 0 && GlobalStorage != nil {
+		GlobalStorage.AddThought(taskID, "SYSTEM", header)
+		GlobalStorage.AddThought(taskID, agentName, promptLog)
 	}
 
 	req := &model.LLMRequest{
@@ -57,6 +77,12 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 
 	it := m.GenerateContent(ctx, req, false)
 	var respText string
+	
+	// Write [RESPONSE] tag to file first
+	if f != nil {
+		fmt.Fprint(f, "[RESPONSE]\n")
+	}
+
 	for resp, err := range it {
 		if err != nil {
 			return "", err
@@ -64,16 +90,25 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 		for _, p := range resp.Content.Parts {
 			chunk := p.Text
 			respText += chunk
-			if GlobalStream != nil && taskID > 0 {
-				GlobalStream.Broadcast(taskID, agentName, chunk)
+			
+			if taskID > 0 {
+				if GlobalStream != nil {
+					GlobalStream.Broadcast(taskID, agentName, chunk)
+				}
+				if GlobalStorage != nil {
+					GlobalStorage.AddThought(taskID, agentName, chunk)
+				}
+			}
+			
+			if f != nil {
+				fmt.Fprint(f, chunk)
 			}
 		}
 	}
 
 	if f != nil {
-		fmt.Fprintf(f, "[RESPONSE]\n%s\n", respText)
-		fmt.Fprintf(f, "==============================================================\n")
+		fmt.Fprintf(f, "\n==============================================================\n")
 	}
-	
+
 	return respText, nil
 }

@@ -116,10 +116,11 @@ func main() {
 	store.ResetRunningToPending()
 
 	wm := worker.NewManager()
-	sm := stream.NewManager()
+	sm := stream.NewManager(store)
 	
-	// Plug the stream manager into the global agent layer
+	// Plug the stream manager and storage into the global agent layer
 	agent.GlobalStream = &StreamAdapter{manager: sm}
+	agent.GlobalStorage = store
 	
 	baseURL := "http://localhost:11434"
 	gemma4 := llm.NewOllamaModel("gemma4:31b", baseURL)

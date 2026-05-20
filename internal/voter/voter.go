@@ -2,12 +2,13 @@ package voter
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"google.golang.org/adk/model"
-	"google.golang.org/genai"
 )
 
 type MultiModelVoter struct {
@@ -19,9 +20,13 @@ func NewMultiModelVoter(models ...model.LLM) *MultiModelVoter {
 }
 
 type VoteResult struct {
-	Winner     string
+	Winner      string
 	Conflicting bool
-	Details    []string
+	Details     []string
+}
+
+type NamedLLM interface {
+	Name() string
 }
 
 func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (VoteResult, error) {
@@ -33,27 +38,24 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 		wg.Add(1)
 		go func(idx int, llm model.LLM) {
 			defer wg.Done()
-			req := &model.LLMRequest{
-				Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: prompt}}}},
+			
+			modelName := "Unknown"
+			if n, ok := llm.(NamedLLM); ok {
+				modelName = n.Name()
 			}
-			it := llm.GenerateContent(ctx, req, false)
-			var text string
-			for resp, err := range it {
-				if err != nil {
-					errors[idx] = err
-					return
-				}
-				for _, p := range resp.Content.Parts {
-					text += p.Text
-				}
+			
+			// Use agent.CallLLM for logging and streaming
+			specificAgentName := fmt.Sprintf("%s (%s)", agentName, modelName)
+			text, err := agent.CallLLM(ctx, llm, specificAgentName, prompt)
+			if err != nil {
+				errors[idx] = err
+				return
 			}
 			results[idx] = strings.TrimSpace(text)
 		}(i, m)
 	}
 	wg.Wait()
 
-	// Simple consensus: Check if all results are similar or identify the majority
-	// For code planning, we look for structural similarity or pick the most detailed one if they agree on target
 	counts := make(map[string]int)
 	for _, res := range results {
 		if res != "" {
@@ -70,12 +72,17 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 		}
 	}
 
+	// Fallback if no consensus
+	if winner == "" && len(results) > 0 {
+		winner = results[0]
+	}
+
 	res := VoteResult{
 		Winner:      winner,
 		Conflicting: maxCount < len(v.models),
 		Details:     results,
 	}
 
-	log.Printf("[Voter] [%s] Voting complete. Agreement: %d/%d", agentName, maxCount, len(v.models))
+	log.Printf("[Voter] [%s] Voting complete. Winner agreement: %d/%d", agentName, maxCount, len(v.models))
 	return res, nil
 }
