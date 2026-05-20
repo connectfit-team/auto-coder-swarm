@@ -38,21 +38,19 @@ func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gi
 func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) error {
 	log.Printf("[Orchestrator] Starting task: %s", userRequest)
 
-	// 1. Initial Analysis
 	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
 	if err != nil {
 		return fmt.Errorf("oracle query failed: %w", err)
 	}
 
-	// 2. Setup Workspace
 	wsPath, err := o.wsMgr.CreateWorkspace()
 	if err != nil {
 		return fmt.Errorf("workspace setup failed: %w", err)
 	}
 	defer o.wsMgr.Cleanup(wsPath)
 
-	// 3. Planning & Loop
 	var lastFeedback string
+	var currentBranch string
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -73,20 +71,17 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 		}
 
 		repoPath := filepath.Join(wsPath, "repo")
-		
-		// Clone only on first attempt
 		if attempt == 1 {
 			repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", plan.RepoName)
 			if err := o.gitMgr.Clone(repoURL, repoPath); err != nil {
 				return fmt.Errorf("git clone failed: %w", err)
 			}
-			branchName := fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
-			if err := o.gitMgr.CreateBranch(repoPath, branchName); err != nil {
+			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
+			if err := o.gitMgr.CreateBranch(repoPath, currentBranch); err != nil {
 				return fmt.Errorf("branch creation failed: %w", err)
 			}
 		}
 
-		// Apply Changes
 		for _, change := range plan.Changes {
 			fullPath := filepath.Join(repoPath, change.FilePath)
 			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
@@ -95,7 +90,6 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 			}
 		}
 
-		// Review
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 
@@ -106,20 +100,22 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 
 		if o.reviewer.IsApproved(reviewResp) {
 			log.Println("[Orchestrator] Review APPROVED!")
-			break
+			
+			prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification by swarm agent")
+			if err != nil {
+				return fmt.Errorf("failed to generate PR: %w", err)
+			}
+			log.Printf("[Orchestrator] PR Generated successfully: %s", prURL)
+			return nil
 		}
 
 		log.Printf("[Orchestrator] Review REJECTED on attempt %d. Feedback: %s", attempt, reviewResp)
 		lastFeedback = reviewResp
 		
-		if attempt == maxRetries {
-			return fmt.Errorf("failed to pass review after %d attempts: %s", maxRetries, lastFeedback)
+		if attempt < maxRetries {
+			exec.Command("git", "-C", repoPath, "checkout", ".").Run()
 		}
-		
-		// Reset changes for next attempt (simplified: git checkout .)
-		exec.Command("git", "-C", repoPath, "checkout", ".").Run()
 	}
 
-	log.Println("[Orchestrator] Swarm process completed successfully.")
-	return nil
+	return fmt.Errorf("failed to pass review after %d attempts", maxRetries)
 }
