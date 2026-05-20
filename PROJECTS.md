@@ -56,3 +56,8 @@
 - Self-Healing Build: 빌드 에러 로그를 분석하여 종속성 설치(`go mod tidy` 등)를 스스로 수행.
 - Human-in-the-Loop Approval: 위험도가 높은 수정에 대해 슬랙 인터랙티브 버튼으로 사람의 최종 승인 획득.
 - Multi-Model Swarm Voting: 여러 LLM 모델(Gemma, Claude 등)의 교차 검증을 통한 리뷰 정확도 향상.
+
+### Phase 8: 전략적 지능 및 품질 고도화 (Planned)
+- Performance Regression Test: 격리 환경 내 벤치마크 수행을 통한 성능 저하 자동 감지.
+- Multi-Model Swarm Voting: 다수 LLM 모델의 교차 검증을 통한 리뷰 신뢰도 극대화.
+- Knowledge Feedback Loop: 수정 완료된 내역을 오라클(Engine)에 다시 학습시켜 지능 선순환 구조 구축.
