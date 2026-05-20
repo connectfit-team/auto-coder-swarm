@@ -16,7 +16,7 @@
 ---
 
 ## 🎯 Next Tasks (Phase 4)
-- [ ] **Step 13: Dynamic Verification**: Execute `go build/test` inside sandbox.
+- [x] **Step 13: Dynamic Verification**: Execute `go build/test` inside sandbox.
 - [x] **Step 14: SQLite Persistence**: Ensure tasks survive server crashes.
 - [x] **Step 15: Conflict Locking**: Prevent multiple agents from modifying the same repo.
 - [ ] **Step 10: Real Git API**: Actual GitHub/GitLab integration.
