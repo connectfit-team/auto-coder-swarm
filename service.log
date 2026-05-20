@@ -1,8 +1,3 @@
-2026/05/20 14:42:25 🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)
-2026/05/20 14:42:25 📡 Swarm listening for requests on :8006
-2026/05/20 14:42:25 [Worker 1] Processing Task #1: gig_mobile_proto README fix
-2026/05/20 14:42:25 [T-703864] [14:42:25] [INIT] Starting task: gig_mobile_proto README fix
-2026/05/20 14:42:25 [T-703864] [14:42:25] [ORACLE] Requesting analysis from Code-Insight Engine...
-2026/05/20 14:42:25 [T-703864] [14:42:25] [ORACLE] Context received (3102 bytes)
-2026/05/20 14:42:25 [T-703864] [14:42:25] [SANDBOX] Creating isolated workspace...
-2026/05/20 14:42:25 [T-703864] [14:42:25] [PLANNING] Attempt 1: Thinking...
+2026/05/20 14:50:09 🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)
+2026/05/20 14:50:09 📡 Swarm listening for requests on :8006
+2026/05/20 14:50:09 listen tcp :8006: bind: address already in use

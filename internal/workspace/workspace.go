@@ -3,29 +3,33 @@ package workspace
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/google/uuid"
 )
 
-// Manager handles ephemeral workspaces for code modification.
 type Manager interface {
 	CreateWorkspace() (string, error)
 	Cleanup(path string) error
+	CloneFast(repoName, targetPath string) error
 }
 
 type LocalManager struct {
-	baseDir string
+	baseDir    string
+	masterRepos string
 }
 
-func NewLocalManager(baseDir string) *LocalManager {
+func NewLocalManager(baseDir, masterRepos string) *LocalManager {
 	if baseDir == "" {
 		baseDir = os.TempDir()
 	}
-	return &LocalManager{baseDir: baseDir}
+	return &LocalManager{
+		baseDir:     baseDir,
+		masterRepos: masterRepos,
+	}
 }
 
-// CreateWorkspace creates a new isolated directory with a unique UUID.
 func (m *LocalManager) CreateWorkspace() (string, error) {
 	id := uuid.New().String()
 	wsPath := filepath.Join(m.baseDir, fmt.Sprintf("swarm_ws_%s", id))
@@ -37,9 +41,21 @@ func (m *LocalManager) CreateWorkspace() (string, error) {
 	return wsPath, nil
 }
 
-// Cleanup removes the specified workspace directory and all its contents.
+func (m *LocalManager) CloneFast(repoName, targetPath string) error {
+	sourcePath := filepath.Join(m.masterRepos, repoName)
+	if _, err := os.Stat(sourcePath); err != nil {
+		return fmt.Errorf("master repository not found for %s: %w", repoName, err)
+	}
+
+	cmd := exec.Command("cp", "-al", sourcePath, targetPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("hardlink copy failed: %v, output: %s", err, string(out))
+	}
+
+	return nil
+}
+
 func (m *LocalManager) Cleanup(wsPath string) error {
-	// Safety check: only delete directories that look like our workspaces
 	if filepath.Base(wsPath)[:9] != "swarm_ws_" {
 		return fmt.Errorf("refusing to delete non-swarm directory: %s", wsPath)
 	}

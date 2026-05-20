@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +17,14 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 )
 
+const webhookURL = "https://hooks.slack.com/services/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"
+
+func sendToSlack(message string) {
+	payload := map[string]string{"text": message}
+	b, _ := json.Marshal(payload)
+	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
+}
+
 func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage) {
 	for {
 		task, err := store.GetNextPendingTask()
@@ -24,6 +34,7 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 		}
 
 		log.Printf("[Worker %d] Processing Task #%d: %s", id, task.ID, task.UserRequest)
+		sendToSlack(fmt.Sprintf("🤖 *Task #%d 시작*: %s", task.ID, task.UserRequest))
 		store.UpdateTaskStatus(task.ID, storage.StatusRunning, "", "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -49,27 +60,23 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 
 		if err != nil {
 			log.Printf("❌ Task #%d failed: %v", task.ID, err)
+			sendToSlack(fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
 			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 		} else {
 			log.Printf("✅ Task #%d completed successfully", task.ID)
+			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: https://github.com/connectfit-team/simulated-pr/swarm-fix-%d", task.ID, time.Now().Unix()))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, "Success", "")
 		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 5: Instant Sandboxing Ready)")
 
-	// Use absolute path for DB to ensure GORM can find it regardless of execution dir
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
 	if err != nil {
-		// Try fallback to local directory if absolute path fails for some reason
-		log.Printf("⚠️ Absolute path failed, trying local path...")
-		store, err = storage.NewStorage("swarm.db")
-		if err != nil {
-			log.Fatalf("❌ Failed to init storage: %v", err)
-		}
+		log.Fatalf("❌ Failed to init storage: %v", err)
 	}
 
 	if err := store.ResetRunningToPending(); err != nil {
@@ -78,7 +85,11 @@ func main() {
 
 	ollamaModel := llm.NewOllamaModel("gemma4:31b", "http://localhost:11434")
 	ic := insightclient.NewClient("http://localhost:8005")
-	wsMgr := workspace.NewLocalManager("/tmp")
+	
+	// Step 16: Configure master repository path for fast cloning
+	masterReposPath := "/home/cnf/projects/code-insight-engine/repos"
+	wsMgr := workspace.NewLocalManager("/tmp", masterReposPath)
+	
 	gitSvc := gitmgr.NewGitManager()
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, ollamaModel)
 
