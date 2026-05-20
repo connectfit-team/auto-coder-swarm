@@ -1,6 +1,6 @@
 # 🚀 Project Progress: Auto-Coder Swarm (Multi-Agent)
 
-## 📊 Current Status: Phase 4 (Production Hardening) - In Preparation
+## 📊 Current Status: Phase 4 (Production Hardening) - In Progress
 - Remote Host: 192.168.120.54
 - Primary Language: Go
 - Dependencies: code-insight-engine (Oracle)
@@ -10,15 +10,17 @@
 ## 🛠️ Recent Achievements
 - [x] Phase 1~3: Full Autonomous Cycle (Insight -> Plan -> Code -> Review -> PR Sim -> Queue)
 - [x] Concurrent Request Handling (Worker Pool)
-- [x] Real-world Live Test & Slack Reporting Successful
+- [x] Step 11: Risk Assessor Agent (Completed)
+- [x] Step 12: Structured Observability (Completed)
 
 ---
 
 ## 🎯 Next Tasks (Phase 4)
-- [ ] **Step 10: Real Git API**: Replace simulation with actual GitHub/GitLab API calls.
-- [x] **Step 11: Risk Assessor**: Specialized agent for impact analysis.
-- [x] **Step 12: Observability**: Structured logging and real-time status relay.
+- [ ] **Step 13: Dynamic Verification**: Execute `go build/test` inside sandbox.
+- [ ] **Step 14: SQLite Persistence**: Ensure tasks survive server crashes.
+- [ ] **Step 15: Conflict Locking**: Prevent multiple agents from modifying the same repo.
+- [ ] **Step 10: Real Git API**: Actual GitHub/GitLab integration.
 
 ---
-*Status: Architecture Stabilized. Moving to Production Hardening.*
+*Status: Reliability Focused. Adding dynamic testing and persistence.*
 *Last Updated: 2026-05-20*
