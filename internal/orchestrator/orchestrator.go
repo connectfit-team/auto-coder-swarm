@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"sync"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
@@ -124,17 +125,49 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
-		reviewResp, _ := o.reviewer.Process(ctx, string(diffOut))
+		diffStr := string(diffOut)
+
+		// Step 17: Parallel Multi-Agent Audit
+		o.reportStatus(taskID, "AUDIT", "Initiating Parallel Review & Risk Assessment...")
+		
+		var (
+			reviewResp string
+			riskResp   string
+			reviewErr  error
+			riskErr    error
+			wg         sync.WaitGroup
+		)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			reviewResp, reviewErr = o.reviewer.Process(ctx, diffStr)
+		}()
+		go func() {
+			defer wg.Done()
+			riskResp, riskErr = o.riskAssessor.Process(ctx, diffStr)
+		}()
+		wg.Wait()
+
+		if reviewErr != nil { return RunResult{RepoName: targetRepo}, reviewErr }
+		if riskErr != nil { return RunResult{RepoName: targetRepo}, riskErr }
+
+		// Logic check for approval
 		if !o.reviewer.IsApproved(reviewResp) {
-			lastFeedback = reviewResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+			o.reportStatus(taskID, "REVIEW", "REJECTED")
+			lastFeedback = reviewResp
+			exec.Command("git", "-C", repoPath, "checkout", ".").Run()
+			continue
 		}
 
-		riskResp, _ := o.riskAssessor.Process(ctx, string(diffOut))
 		if !o.riskAssessor.IsSafe(riskResp) {
-			lastFeedback = riskResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+			o.reportStatus(taskID, "RISK", "DANGER DETECTED")
+			lastFeedback = fmt.Sprintf("REVIEW PASSED BUT RISK DETECTED:\n%s", riskResp)
+			exec.Command("git", "-C", repoPath, "checkout", ".").Run()
+			continue
 		}
 
-		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
+		o.reportStatus(taskID, "SUCCESS", "Parallel Audits Passed. Creating PR...")
 		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
