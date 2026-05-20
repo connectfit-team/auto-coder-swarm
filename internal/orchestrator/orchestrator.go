@@ -33,6 +33,15 @@ type RunResult struct {
 	PRURL    string
 }
 
+// StatelessRequest defines a structured request from external agent groups.
+type StatelessRequest struct {
+	UserRequest     string   `json:"user_request"`
+	AnalysisContext string   `json:"analysis_context,omitempty"` // If provided, skip Oracle
+	TargetRepo      string   `json:"target_repo,omitempty"`     // If provided, use this repo
+	TargetFiles     []string `json:"target_files,omitempty"`
+	Constraints     []string `json:"constraints,omitempty"`
+}
+
 func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gitmgr.GitManager, llm model.LLM) *SwarmOrchestrator {
 	return &SwarmOrchestrator{
 		insightClient: ic,
@@ -63,12 +72,21 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	return nil
 }
 
-func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (RunResult, error) {
+// RunStatelessTask processes a structured StatelessRequest.
+func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
-	o.reportStatus(taskID, "INIT", fmt.Sprintf("Starting task: %s", userRequest))
+	o.reportStatus(taskID, "INIT", fmt.Sprintf("Stateless task start: %s", req.UserRequest))
 
-	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
-	if err != nil { return RunResult{}, err }
+	// 1. Context Acquisition
+	analysis := req.AnalysisContext
+	if analysis == "" {
+		o.reportStatus(taskID, "ORACLE", "No pre-analysis found. Consulting Oracle...")
+		var err error
+		analysis, err = o.insightClient.QueryOracle(ctx, req.UserRequest)
+		if err != nil { return RunResult{}, err }
+	} else {
+		o.reportStatus(taskID, "ORACLE", "Using provided analysis context (Stateless).")
+	}
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
 	if err != nil { return RunResult{}, err }
@@ -81,10 +99,15 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Attempt %d...", attempt))
+		
 		input := analysis
 		if lastFeedback != "" {
 			input = fmt.Sprintf("ANALYSIS:\n%s\n\nPREVIOUS REVIEW FEEDBACK:\n%s", analysis, lastFeedback)
 		}
+		if len(req.Constraints) > 0 {
+			input += "\n\nCONSTRAINTS:\n- " + strings.Join(req.Constraints, "\n- ")
+		}
+
 		planRaw, err := o.planner.Process(ctx, input)
 		if err != nil { return RunResult{}, err }
 		plan, err := o.planner.ParsePlan(planRaw)
@@ -92,6 +115,8 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 		
 		if attempt == 1 {
 			targetRepo = plan.RepoName
+			if req.TargetRepo != "" { targetRepo = req.TargetRepo } // Override if requested
+			
 			if repoLockFunc != nil {
 				locked, err := repoLockFunc(targetRepo)
 				if err != nil { return RunResult{RepoName: targetRepo}, err }
@@ -101,8 +126,8 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 
 		repoPath := filepath.Join(wsPath, "repo")
 		if attempt == 1 {
-			if err := o.wsMgr.CloneFast(plan.RepoName, repoPath); err != nil {
-				repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", plan.RepoName)
+			if err := o.wsMgr.CloneFast(targetRepo, repoPath); err != nil {
+				repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", targetRepo)
 				o.gitMgr.Clone(repoURL, repoPath)
 			}
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
@@ -127,47 +152,26 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 		diffOut, _ := diffCmd.CombinedOutput()
 		diffStr := string(diffOut)
 
-		// Step 17: Parallel Multi-Agent Audit
-		o.reportStatus(taskID, "AUDIT", "Initiating Parallel Review & Risk Assessment...")
-		
+		o.reportStatus(taskID, "AUDIT", "Parallel Review & Risk Assessment...")
 		var (
-			reviewResp string
-			riskResp   string
-			reviewErr  error
-			riskErr    error
-			wg         sync.WaitGroup
+			reviewResp string; riskResp string
+			reviewErr, riskErr error; wg sync.WaitGroup
 		)
-
 		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			reviewResp, reviewErr = o.reviewer.Process(ctx, diffStr)
-		}()
-		go func() {
-			defer wg.Done()
-			riskResp, riskErr = o.riskAssessor.Process(ctx, diffStr)
-		}()
+		go func() { defer wg.Done(); reviewResp, reviewErr = o.reviewer.Process(ctx, diffStr) }()
+		go func() { defer wg.Done(); riskResp, riskErr = o.riskAssessor.Process(ctx, diffStr) }()
 		wg.Wait()
 
-		if reviewErr != nil { return RunResult{RepoName: targetRepo}, reviewErr }
-		if riskErr != nil { return RunResult{RepoName: targetRepo}, riskErr }
+		if reviewErr != nil || riskErr != nil { return RunResult{RepoName: targetRepo}, fmt.Errorf("audit failed") }
 
-		// Logic check for approval
 		if !o.reviewer.IsApproved(reviewResp) {
-			o.reportStatus(taskID, "REVIEW", "REJECTED")
-			lastFeedback = reviewResp
-			exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-			continue
+			lastFeedback = reviewResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
-
 		if !o.riskAssessor.IsSafe(riskResp) {
-			o.reportStatus(taskID, "RISK", "DANGER DETECTED")
-			lastFeedback = fmt.Sprintf("REVIEW PASSED BUT RISK DETECTED:\n%s", riskResp)
-			exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-			continue
+			lastFeedback = riskResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
-		o.reportStatus(taskID, "SUCCESS", "Parallel Audits Passed. Creating PR...")
+		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
 		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil

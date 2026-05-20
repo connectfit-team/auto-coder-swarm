@@ -39,27 +39,32 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		
-		var lockedRepo string
 		lockFunc := func(repoName string) (bool, error) {
 			ok, err := store.TryLockRepo(repoName, task.ID)
-			if ok { 
-				lockedRepo = repoName 
-				store.UpdateTaskRepo(task.ID, repoName)
-			}
+			if ok { store.UpdateTaskRepo(task.ID, repoName) }
 			return ok, err
 		}
 
-		res, err := orc.RunTask(ctx, task.UserRequest, lockFunc)
+		// Stateless Bridge: Try to parse UserRequest as StatelessRequest JSON
+		var statelessReq orchestrator.StatelessRequest
+		err = json.Unmarshal([]byte(task.UserRequest), &statelessReq)
+		
+		var res orchestrator.RunResult
+		if err == nil && statelessReq.UserRequest != "" {
+			log.Printf("[Worker %d] Detected structured stateless request", id)
+			res, err = orc.RunStatelessTask(ctx, statelessReq, lockFunc)
+		} else {
+			// Legacy fallback for plain string queries
+			res, err = orc.RunStatelessTask(ctx, orchestrator.StatelessRequest{UserRequest: task.UserRequest}, lockFunc)
+		}
 		cancel()
 
-		if lockedRepo != "" { store.UnlockRepo(lockedRepo) }
+		if res.RepoName != "" { store.UnlockRepo(res.RepoName) }
 
 		if err != nil {
-			log.Printf("❌ Task #%d failed: %v", task.ID, err)
 			sendToSlack(fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
 			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 		} else {
-			log.Printf("✅ Task #%d completed: %s", task.ID, res.PRURL)
 			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: %s", task.ID, res.PRURL))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
 		}
@@ -67,12 +72,11 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 6: Real PR Reporting Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 6: Stateless Context Ready)")
 
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
 	if err != nil { log.Fatalf("❌ DB init failed: %v", err) }
-
 	store.ResetRunningToPending()
 
 	ollamaModel := llm.NewOllamaModel("gemma4:31b", "http://localhost:11434")

@@ -1,4 +1,4 @@
-2026/05/20 15:09:11 🚀 Auto-Coder Swarm Starting (Phase 6: Real PR Reporting Ready)
+2026/05/20 15:10:18 🚀 Auto-Coder Swarm Starting (Phase 6: Stateless Context Ready)
 
-2026/05/20 15:09:11 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:86 [35;1mrecord not found
-[0m[33m[0.116ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status = "PENDING" AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
+2026/05/20 15:10:18 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:86 [35;1mrecord not found
+[0m[33m[0.151ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status = "PENDING" AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
