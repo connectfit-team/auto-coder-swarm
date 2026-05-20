@@ -31,6 +31,12 @@ type AnalysisResponse struct {
 	Response string `json:"response"`
 }
 
+type KnowledgeUpdateRequest struct {
+	RepoName string `json:"repo_name"`
+	Summary  string `json:"summary"`
+	Keywords string `json:"keywords"`
+}
+
 func (c *Client) QueryOracle(ctx context.Context, query string) (string, error) {
 	reqBody := AnalysisRequest{Query: query}
 	b, _ := json.Marshal(reqBody)
@@ -57,4 +63,31 @@ func (c *Client) QueryOracle(ctx context.Context, query string) (string, error) 
 	}
 
 	return res.Response, nil
+}
+
+func (c *Client) UpdateKnowledge(ctx context.Context, repoName, summary, keywords string) error {
+	reqBody := KnowledgeUpdateRequest{
+		RepoName: repoName,
+		Summary:  summary,
+		Keywords: keywords,
+	}
+	b, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/update_knowledge", bytes.NewBuffer(b))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("oracle request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("oracle returned error status: %d", resp.StatusCode)
+	}
+
+	return nil
 }

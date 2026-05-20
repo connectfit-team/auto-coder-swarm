@@ -123,14 +123,9 @@ func (o *SwarmOrchestrator) detectChainTasks(ctx context.Context, taskID, repoNa
 	return tasks
 }
 
-func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (RunResult, error) {
-	// Fallback to legacy RunStatelessTask wrapper
-	return o.RunStatelessTask(ctx, StatelessRequest{UserRequest: userRequest}, false, repoLockFunc)
-}
-
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
-	o.reportStatus(taskID, "INIT", fmt.Sprintf("Task start (Depth: %d): %s", req.Depth, req.UserRequest))
+	o.reportStatus(taskID, "INIT", fmt.Sprintf("Task start: %s", req.UserRequest))
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
@@ -179,10 +174,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 				repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", targetRepo)
 				o.gitMgr.Clone(repoURL, repoPath)
 			}
-			
-			o.reportStatus(taskID, "BENCH", "Measuring baseline performance...")
 			preBench, _ = o.runBenchmark(repoPath)
-
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.gitMgr.CreateBranch(repoPath, currentBranch)
 		}
@@ -207,16 +199,13 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 	build_passed:
-		if !isDocOnly && preBench != "" {
-			o.reportStatus(taskID, "BENCH", "Measuring post-modification performance...")
-			postBench, _ = o.runBenchmark(repoPath)
-		}
+		if !isDocOnly && preBench != "" { postBench, _ = o.runBenchmark(repoPath) }
 
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
 
-		o.reportStatus(taskID, "AUDIT", "Parallel Audits (Review, Risk, Bench)...")
+		o.reportStatus(taskID, "AUDIT", "Parallel Audits...")
 		var reviewResp, riskResp string; var reviewErr, riskErr error; var wg sync.WaitGroup
 		wg.Add(2)
 		go func() { 
@@ -237,14 +226,20 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 		if !isApproved {
-			o.reportStatus(taskID, "WAIT", "Manual approval required.")
+			o.reportStatus(taskID, "WAIT", "Approval required.")
 			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
 		}
 
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification with performance check")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		
+		// Step 27: Self-Knowledge Feedback Loop
+		o.reportStatus(taskID, "KNOWLEDGE", "Syncing modification summary to Oracle...")
+		syncPrompt := fmt.Sprintf("You are the Knowledge Architect. Summarize the changes made in [%s] in 2-3 sentences and list core keywords for indexing.\n\n[Changes]\n%s", targetRepo, finalDiff)
+		summary, _ := agent.CallLLM(ctx, o.llm, "Architect", syncPrompt)
+		o.insightClient.UpdateKnowledge(ctx, targetRepo, summary, "automated-fix, swarm-agent")
+
 		chainTasks := o.detectChainTasks(ctx, taskID, targetRepo, finalDiff, req.Depth)
 		return RunResult{RepoName: targetRepo, PRURL: prURL, ChainTasks: chainTasks}, nil
 	}
