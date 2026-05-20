@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"google.golang.org/adk/model"
@@ -37,15 +39,35 @@ type FileChange struct {
 	Instructions string `json:"instructions"`
 }
 
+func rotateLogs(logPath string) {
+	maxSize := int64(100 * 1024 * 1024) // 100MB
+	maxFiles := 10
+
+	info, err := os.Stat(logPath)
+	if err != nil || info.Size() < maxSize {
+		return
+	}
+
+	// 1. Rotate current file
+	newName := logPath + "." + time.Now().Format("20060102150405")
+	os.Rename(logPath, newName)
+
+	// 2. Cleanup old backups (keep only maxFiles)
+	pattern := logPath + ".*"
+	matches, _ := filepath.Glob(pattern)
+	if len(matches) > maxFiles {
+		sort.Strings(matches) // Oldest first (timestamp based naming)
+		for i := 0; i < len(matches)-maxFiles; i++ {
+			os.Remove(matches[i])
+		}
+	}
+}
+
 func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string, error) {
 	taskID, _ := ctx.Value("task_id").(uint)
 
 	logPath := "/home/cnf/projects/auto-coder-swarm/agent_thoughts.log"
-	
-	// Check and rotate if > 1GB
-	if info, err := os.Stat(logPath); err == nil && info.Size() > 1024*1024*1024 {
-		os.Rename(logPath, logPath+"."+time.Now().Format("20060102150405"))
-	}
+	rotateLogs(logPath)
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	header := fmt.Sprintf("\n==================== [%s] AGENT: %s ====================\n", timestamp, agentName)
@@ -78,7 +100,6 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 	it := m.GenerateContent(ctx, req, false)
 	var respText string
 	
-	// Write [RESPONSE] tag to file first
 	if f != nil {
 		fmt.Fprint(f, "[RESPONSE]\n")
 	}

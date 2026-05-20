@@ -30284,3 +30284,156 @@ MANDATORY RULES:
 [RESPONSE]
 [RESPONSE]
 [RESPONSE]
+
+==================== [2026-05-20 19:54:00] AGENT: Planner (qwen2.5vl:32b) ====================
+[PROMPT]
+You are the Swarm Planner. 
+Your goal is to extract a structured code modification plan from the Oracle's analysis.
+
+MANDATORY RULES:
+1. Identify the EXACT repository name from the analysis.
+2. Identify the specific file paths and what needs to be changed.
+3. Output ONLY a valid JSON object. Do not include any conversational text.
+
+[Target JSON Format]
+{
+  "repo_name": "repository-name",
+  "changes": [
+    {
+      "file_path": "path/to/file.ext",
+      "description": "Brief summary of change",
+      "instructions": "Technical details for the Coder agent"
+    }
+  ]
+}
+
+[Oracle Analysis]
+[Cached Result] (WorkID: W-288663)
+`gig_mobile` 레포지토리의 핵심 비즈니스 로직 파일들을 분석하여, 유지보수성과 코드 가독성 향상을 위한 상세 주석(DartDoc) 추가 가이드를 작성하였습니다.
+
+분석 결과, 핵심 로직은 잘 구현되어 있으나 메서드 수준의 기술 문서가 부족하여 신규 개발자나 유지보수자가 비즈니스 흐름을 파악하는 데 어려움이 있을 수 있음을 확인했습니다. 이에 따라 다음 5가지 핵심 파일에 대해 상세한 주석 추가 사양을 `export_handoff`를 통해 기록했습니다.
+
+### 📝 주석 추가 대상 및 주요 내용
+
+1.  **`lib/api/user.api.dart` (사용자 API)**
+    *   **내용:** 인증 flow(`isAuthenticated`), 전화번호 인증(`sendVerifyCode`, `checkVerifyCode`), 프로필 업데이트 시 토큰 갱신 로직, 그리고 사용자 권한(`IS_WORKER`)에 따른 약관 조회 로직에 대한 설명 추가.
+
+2.  **`lib/admob/google_admob/admob.manager.dart` (애드몹 매니저)**
+    *   **내용:** 싱글톤 구조 설명, `UserProperty`를 이용한 Ad ID 캐싱 전략, 서버 동기화 flow, 그리고 이벤트 중복 전송 방지 로직(`_sentEventsByTransaction`)에 대한 상세 설명 추가.
+
+3.  **`lib/api/work_stamp_api.dart` (근무 기록 API)**
+    *   **내용:** 근무 기록 생성/삭제의 벌크 처리 방식, '정산(Settle)'의 비즈니스 의미, 특히 gRPC 스트림을 이용한 **1,000개 단위의 청크 업로드 동기화 메커니즘**에 대한 상세 설명 추가.
+
+4.  **`lib/api/salary.api.dart` (급여 계산 API)**
+    *   **내용:** 급여 계산 시 적용되는 복잡한 필터(`withTax`, `withHoliday`, 태그/타입/요일 필터)의 목적과 사용법을 명시하여 UI 레이어에서의 오용 방지.
+
+5.  **`lib/admob/advertisement.controller.dart` (광고 컨트롤러 추상화)**
+    *   **내용:** 광고 대상 판별 인터페이스(`ADTargetChecker`) 및 보상형 광고의 생명주기(`request` → `show` → `useRewarded`)에 대한 계약 정의 주석 추가.
+
+모든 분석 결과와 수정 제안은 WorkID `W-891159`에 기록되었으며, 해당 가이드에 따라 주석을 추가함으로써 코드의 비즈니스 의도를 명확히 할 수 있을 것입니다.
+
+### 📦 Multi-Agent Handoff Ready
+- 5개의 작업 패킷이 생성되었습니다. Auto-Coder Swarm이 이 데이터를 기반으로 수정을 시작할 수 있습니다.
+
+==================== [2026-05-20 19:54:00] AGENT: Planner (llama3:70b-instruct-q8_0) ====================
+
+==================== [2026-05-20 19:54:00] AGENT: Planner (gemma4:31b) ====================
+[PROMPT]
+You are the Swarm Planner. 
+Your goal is to extract a structured code modification plan from the Oracle's analysis.
+
+MANDATORY RULES:
+1. Identify the EXACT repository name from the analysis.
+2. Identify the specific file paths and what needs to be changed.
+3. Output ONLY a valid JSON object. Do not include any conversational text.
+
+[Target JSON Format]
+{
+  "repo_name": "repository-name",
+  "changes": [
+    {
+      "file_path": "path/to/file.ext",
+      "description": "Brief summary of change",
+      "instructions": "Technical details for the Coder agent"
+    }
+  ]
+}
+
+[Oracle Analysis]
+[Cached Result] (WorkID: W-288663)
+`gig_mobile` 레포지토리의 핵심 비즈니스 로직 파일들을 분석하여, 유지보수성과 코드 가독성 향상을 위한 상세 주석(DartDoc) 추가 가이드를 작성하였습니다.
+
+분석 결과, 핵심 로직은 잘 구현되어 있으나 메서드 수준의 기술 문서가 부족하여 신규 개발자나 유지보수자가 비즈니스 흐름을 파악하는 데 어려움이 있을 수 있음을 확인했습니다. 이에 따라 다음 5가지 핵심 파일에 대해 상세한 주석 추가 사양을 `export_handoff`를 통해 기록했습니다.
+
+### 📝 주석 추가 대상 및 주요 내용
+
+1.  **`lib/api/user.api.dart` (사용자 API)**
+    *   **내용:** 인증 flow(`isAuthenticated`), 전화번호 인증(`sendVerifyCode`, `checkVerifyCode`), 프로필 업데이트 시 토큰 갱신 로직, 그리고 사용자 권한(`IS_WORKER`)에 따른 약관 조회 로직에 대한 설명 추가.
+
+2.  **`lib/admob/google_admob/admob.manager.dart` (애드몹 매니저)**
+    *   **내용:** 싱글톤 구조 설명, `UserProperty`를 이용한 Ad ID 캐싱 전략, 서버 동기화 flow, 그리고 이벤트 중복 전송 방지 로직(`_sentEventsByTransaction`)에 대한 상세 설명 추가.
+
+3.  **`lib/api/work_stamp_api.dart` (근무 기록 API)**
+    *   **내용:** 근무 기록 생성/삭제의 벌크 처리 방식, '정산(Settle)'의 비즈니스 의미, 특히 gRPC 스트림을 이용한 **1,000개 단위의 청크 업로드 동기화 메커니즘**에 대한 상세 설명 추가.
+
+4.  **`lib/api/salary.api.dart` (급여 계산 API)**
+    *   **내용:** 급여 계산 시 적용되는 복잡한 필터(`withTax`, `withHoliday`, 태그/타입/요일 필터)의 목적과 사용법을 명시하여 UI 레이어에서의 오용 방지.
+
+5.  **`lib/admob/advertisement.controller.dart` (광고 컨트롤러 추상화)**
+    *   **내용:** 광고 대상 판별 인터페이스(`ADTargetChecker`) 및 보상형 광고의 생명주기(`request` → `show` → `useRewarded`)에 대한 계약 정의 주석 추가.
+
+모든 분석 결과와 수정 제안은 WorkID `W-891159`에 기록되었으며, 해당 가이드에 따라 주석을 추가함으로써 코드의 비즈니스 의도를 명확히 할 수 있을 것입니다.
+
+### 📦 Multi-Agent Handoff Ready
+- 5개의 작업 패킷이 생성되었습니다. Auto-Coder Swarm이 이 데이터를 기반으로 수정을 시작할 수 있습니다.
+[PROMPT]
+You are the Swarm Planner. 
+Your goal is to extract a structured code modification plan from the Oracle's analysis.
+
+MANDATORY RULES:
+1. Identify the EXACT repository name from the analysis.
+2. Identify the specific file paths and what needs to be changed.
+3. Output ONLY a valid JSON object. Do not include any conversational text.
+
+[Target JSON Format]
+{
+  "repo_name": "repository-name",
+  "changes": [
+    {
+      "file_path": "path/to/file.ext",
+      "description": "Brief summary of change",
+      "instructions": "Technical details for the Coder agent"
+    }
+  ]
+}
+
+[Oracle Analysis]
+[Cached Result] (WorkID: W-288663)
+`gig_mobile` 레포지토리의 핵심 비즈니스 로직 파일들을 분석하여, 유지보수성과 코드 가독성 향상을 위한 상세 주석(DartDoc) 추가 가이드를 작성하였습니다.
+
+분석 결과, 핵심 로직은 잘 구현되어 있으나 메서드 수준의 기술 문서가 부족하여 신규 개발자나 유지보수자가 비즈니스 흐름을 파악하는 데 어려움이 있을 수 있음을 확인했습니다. 이에 따라 다음 5가지 핵심 파일에 대해 상세한 주석 추가 사양을 `export_handoff`를 통해 기록했습니다.
+
+### 📝 주석 추가 대상 및 주요 내용
+
+1.  **`lib/api/user.api.dart` (사용자 API)**
+    *   **내용:** 인증 flow(`isAuthenticated`), 전화번호 인증(`sendVerifyCode`, `checkVerifyCode`), 프로필 업데이트 시 토큰 갱신 로직, 그리고 사용자 권한(`IS_WORKER`)에 따른 약관 조회 로직에 대한 설명 추가.
+
+2.  **`lib/admob/google_admob/admob.manager.dart` (애드몹 매니저)**
+    *   **내용:** 싱글톤 구조 설명, `UserProperty`를 이용한 Ad ID 캐싱 전략, 서버 동기화 flow, 그리고 이벤트 중복 전송 방지 로직(`_sentEventsByTransaction`)에 대한 상세 설명 추가.
+
+3.  **`lib/api/work_stamp_api.dart` (근무 기록 API)**
+    *   **내용:** 근무 기록 생성/삭제의 벌크 처리 방식, '정산(Settle)'의 비즈니스 의미, 특히 gRPC 스트림을 이용한 **1,000개 단위의 청크 업로드 동기화 메커니즘**에 대한 상세 설명 추가.
+
+4.  **`lib/api/salary.api.dart` (급여 계산 API)**
+    *   **내용:** 급여 계산 시 적용되는 복잡한 필터(`withTax`, `withHoliday`, 태그/타입/요일 필터)의 목적과 사용법을 명시하여 UI 레이어에서의 오용 방지.
+
+5.  **`lib/admob/advertisement.controller.dart` (광고 컨트롤러 추상화)**
+    *   **내용:** 광고 대상 판별 인터페이스(`ADTargetChecker`) 및 보상형 광고의 생명주기(`request` → `show` → `useRewarded`)에 대한 계약 정의 주석 추가.
+
+모든 분석 결과와 수정 제안은 WorkID `W-891159`에 기록되었으며, 해당 가이드에 따라 주석을 추가함으로써 코드의 비즈니스 의도를 명확히 할 수 있을 것입니다.
+
+### 📦 Multi-Agent Handoff Ready
+- 5개의 작업 패킷이 생성되었습니다. Auto-Coder Swarm이 이 데이터를 기반으로 수정을 시작할 수 있습니다.
+[RESPONSE]
+[RESPONSE]
+[RESPONSE]

@@ -1,21 +1,21 @@
-2026/05/20 19:52:09 🚀 Auto-Coder Swarm Starting (Phase 9: Enterprise Readiness)
-2026/05/20 19:52:09 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
-2026/05/20 19:52:09 ⚙️ Starting 3 concurrent swarm workers...
-2026/05/20 19:52:09 📡 Swarm API & Dashboard & CoT Stream listening on :8006
+2026/05/20 19:54:00 🚀 Auto-Coder Swarm Starting (Phase 9: Enterprise Readiness)
+2026/05/20 19:54:00 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
+2026/05/20 19:54:00 ⚙️ Starting 3 concurrent swarm workers...
+2026/05/20 19:54:00 📡 Swarm API & Dashboard & CoT Stream listening on :8006
 
-2026/05/20 19:52:09 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
-[0m[33m[0.576ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:52:09.678" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 1
+2026/05/20 19:54:00 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
+[0m[33m[0.273ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:54:00.127" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 1
 
-2026/05/20 19:52:09 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
-[0m[33m[0.514ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:52:09.678" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 1
-2026/05/20 19:52:09 [Worker 2] Task #1 (Status: RUNNING)
-2026/05/20 19:52:09 [T-1] [19:52:09] [INIT] Task start (Depth: 0): gig_mobile 레포지토리의 핵심 비즈니스 로직 파일들에 주석을 추가해줘.
-2026/05/20 19:52:09 [Workspace] Creating new isolated directory: /tmp/swarm_ws_2d2b6854-38c3-4506-9d08-0bbb639e43ab
-2026/05/20 19:52:09 [T-1] [19:52:09] [PLANNING] Attempt 1...
+2026/05/20 19:54:00 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
+[0m[33m[0.119ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:54:00.127" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 1
+2026/05/20 19:54:00 [Worker 1] Task #1 (Status: RUNNING)
+2026/05/20 19:54:00 [T-1] [19:54:00] [INIT] Task start (Depth: 0): gig_mobile 레포지토리의 핵심 비즈니스 로직 파일들에 주석을 추가해줘.
+2026/05/20 19:54:00 [Workspace] Creating new isolated directory: /tmp/swarm_ws_98c7934d-7d17-48a6-bc15-d38b32a02350
+2026/05/20 19:54:00 [T-1] [19:54:00] [PLANNING] Attempt 1...
 
-2026/05/20 19:52:11 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
-[0m[33m[0.051ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:52:11.68" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 2
-2026/05/20 19:52:11 [Worker 1] Task #2 (Status: RUNNING)
-2026/05/20 19:52:11 [T-2] [19:52:11] [INIT] Task start (Depth: 0): README.md 파일의 끝에 Auto-Coder Swarm verified this repo on 2026-05-20 라는 문구를 추가해줘.
-2026/05/20 19:52:13 [Worker 3] Task #3 (Status: RUNNING)
-2026/05/20 19:52:13 [T-3] [19:52:13] [INIT] Task start (Depth: 0): test auth
+2026/05/20 19:54:02 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:132 [35;1mdatabase is locked (5) (SQLITE_BUSY)
+[0m[33m[0.122ms] [34;1m[rows:0][0m UPDATE `swarm_tasks` SET `status`="RUNNING",`updated_at`="2026-05-20 19:54:02.128" WHERE `swarm_tasks`.`deleted_at` IS NULL AND `id` = 2
+2026/05/20 19:54:02 [Worker 3] Task #2 (Status: RUNNING)
+2026/05/20 19:54:02 [T-2] [19:54:02] [INIT] Task start (Depth: 0): README.md 파일의 끝에 Auto-Coder Swarm verified this repo on 2026-05-20 라는 문구를 추가해줘.
+2026/05/20 19:54:04 [Worker 2] Task #3 (Status: RUNNING)
+2026/05/20 19:54:04 [T-3] [19:54:04] [INIT] Task start (Depth: 0): test auth
