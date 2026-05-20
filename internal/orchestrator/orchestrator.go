@@ -35,7 +35,7 @@ type RunResult struct {
 	RepoName        string
 	PRURL           string
 	WaitingApproval bool
-	ChainTasks      []StatelessRequest // New tasks identified for MSA consistency
+	ChainTasks      []StatelessRequest
 }
 
 type StatelessRequest struct {
@@ -44,7 +44,7 @@ type StatelessRequest struct {
 	TargetRepo      string   `json:"target_repo,omitempty"`
 	TargetFiles     []string `json:"target_files,omitempty"`
 	Constraints     []string `json:"constraints,omitempty"`
-	Depth           int      `json:"depth"` // Current recursion depth
+	Depth           int      `json:"depth"`
 }
 
 func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gitmgr.GitManager, llm model.LLM) *SwarmOrchestrator {
@@ -81,8 +81,18 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	return nil
 }
 
+func (o *SwarmOrchestrator) runBenchmark(path string) (string, error) {
+	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+		cmd := exec.Command("/usr/local/go/bin/go", "test", "-bench=.", "-benchmem", "./...")
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil { return "", err }
+		return string(out), nil
+	}
+	return "", nil
+}
+
 func (o *SwarmOrchestrator) trySelfHealing(taskID, path, errMsg string) bool {
-	o.reportStatus(taskID, "HEAL", "Analyzing build error...")
 	if strings.Contains(errMsg, "module") || strings.Contains(errMsg, "go.sum") {
 		cmd := exec.Command("/usr/local/go/bin/go", "mod", "tidy")
 		cmd.Dir = path
@@ -91,38 +101,31 @@ func (o *SwarmOrchestrator) trySelfHealing(taskID, path, errMsg string) bool {
 	return false
 }
 
-// detectChainTasks asks the Oracle to find dependent repos after a successful PR.
 func (o *SwarmOrchestrator) detectChainTasks(ctx context.Context, taskID, repoName string, diff string, currentDepth int) []StatelessRequest {
-	if currentDepth >= 2 { return nil } // Hard limit for safety
-
+	if currentDepth >= 2 { return nil }
 	prompt := fmt.Sprintf("You are the MSA Dependency Architect.\n"+
-		"Based on the following changes in [%s], identify other repositories that need to be updated to maintain consistency (e.g., gRPC consumers, API users).\n"+
-		"Return a JSON array of requests: [{\"repo_name\": \"...\", \"user_request\": \"reason and instruction\"}]\n\n"+
+		"Based on the following changes in [%s], identify other repositories that need to be updated.\n"+
+		"Return JSON array: [{\"repo_name\": \"...\", \"user_request\": \"...\"}]\n\n"+
 		"[Changes]\n%s", repoName, diff)
-
 	resp, err := agent.CallLLM(ctx, o.llm, "Architect", prompt)
 	if err != nil { return nil }
-
-	// Extract JSON
 	var findings []struct {
 		RepoName    string `json:"repo_name"`
 		UserRequest string `json:"user_request"`
 	}
-	start := strings.Index(resp, "[")
-	end := strings.LastIndex(resp, "]")
+	start := strings.Index(resp, "["); end := strings.LastIndex(resp, "]")
 	if start == -1 || end == -1 { return nil }
-	
 	if err := json.Unmarshal([]byte(resp[start:end+1]), &findings); err != nil { return nil }
-
 	var tasks []StatelessRequest
 	for _, f := range findings {
-		tasks = append(tasks, StatelessRequest{
-			UserRequest: f.UserRequest,
-			TargetRepo:  f.RepoName,
-			Depth:       currentDepth + 1,
-		})
+		tasks = append(tasks, StatelessRequest{UserRequest: f.UserRequest, TargetRepo: f.RepoName, Depth: currentDepth + 1})
 	}
 	return tasks
+}
+
+func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (RunResult, error) {
+	// Fallback to legacy RunStatelessTask wrapper
+	return o.RunStatelessTask(ctx, StatelessRequest{UserRequest: userRequest}, false, repoLockFunc)
 }
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
@@ -146,6 +149,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 	defer o.wsMgr.Cleanup(wsPath)
 
 	var lastFeedback, currentBranch, targetRepo, finalDiff string
+	var preBench, postBench string
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -175,6 +179,10 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 				repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", targetRepo)
 				o.gitMgr.Clone(repoURL, repoPath)
 			}
+			
+			o.reportStatus(taskID, "BENCH", "Measuring baseline performance...")
+			preBench, _ = o.runBenchmark(repoPath)
+
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.gitMgr.CreateBranch(repoPath, currentBranch)
 		}
@@ -199,14 +207,23 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 	build_passed:
+		if !isDocOnly && preBench != "" {
+			o.reportStatus(taskID, "BENCH", "Measuring post-modification performance...")
+			postBench, _ = o.runBenchmark(repoPath)
+		}
+
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
 
-		o.reportStatus(taskID, "AUDIT", "Parallel Audits...")
+		o.reportStatus(taskID, "AUDIT", "Parallel Audits (Review, Risk, Bench)...")
 		var reviewResp, riskResp string; var reviewErr, riskErr error; var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); reviewResp, reviewErr = o.reviewer.Process(ctx, finalDiff) }()
+		go func() { 
+			defer wg.Done()
+			reviewInput := fmt.Sprintf("DIFF:\n%s\n\nPRE-BENCHMARK:\n%s\n\nPOST-BENCHMARK:\n%s", finalDiff, preBench, postBench)
+			reviewResp, reviewErr = o.reviewer.Process(ctx, reviewInput) 
+		}()
 		go func() { defer wg.Done(); riskResp, riskErr = o.riskAssessor.Process(ctx, finalDiff) }()
 		wg.Wait()
 
@@ -220,21 +237,15 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 		if !isApproved {
-			o.reportStatus(taskID, "WAIT", "Approval required.")
+			o.reportStatus(taskID, "WAIT", "Manual approval required.")
 			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
 		}
 
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification with performance check")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		
-		// Step 22: Dependency Detection
-		o.reportStatus(taskID, "CHAIN", "Detecting cross-repo dependencies...")
 		chainTasks := o.detectChainTasks(ctx, taskID, targetRepo, finalDiff, req.Depth)
-		if len(chainTasks) > 0 {
-			o.reportStatus(taskID, "CHAIN", fmt.Sprintf("Found %d dependent repositories.", len(chainTasks)))
-		}
-
 		return RunResult{RepoName: targetRepo, PRURL: prURL, ChainTasks: chainTasks}, nil
 	}
 	return RunResult{RepoName: targetRepo}, fmt.Errorf("max retries")

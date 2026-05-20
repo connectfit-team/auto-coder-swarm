@@ -1,7 +1,7 @@
-2026/05/20 15:29:36 🚀 Auto-Coder Swarm Starting (Phase 7: MSA Chain Enabled)
-2026/05/20 15:29:36 [Storage] Initializing database at: /home/cnf/projects/auto-coder-swarm/swarm.db
-2026/05/20 15:29:36 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
-2026/05/20 15:29:36 📡 API Gateway listening on :8006
+2026/05/20 15:33:29 🚀 Auto-Coder Swarm Starting (Phase 7: MSA Chain Enabled)
+2026/05/20 15:33:29 [Storage] Initializing database at: /home/cnf/projects/auto-coder-swarm/swarm.db
+2026/05/20 15:33:29 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
+2026/05/20 15:33:29 📡 API Gateway listening on :8006
 
-2026/05/20 15:29:36 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:95 [35;1mrecord not found
-[0m[33m[0.184ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status IN ("APPROVED","PENDING") AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
+2026/05/20 15:33:29 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:95 [35;1mrecord not found
+[0m[33m[0.174ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status IN ("APPROVED","PENDING") AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
