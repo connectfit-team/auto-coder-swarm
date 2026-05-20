@@ -15,7 +15,7 @@
 ---
 
 ## 🎯 Next Tasks (Phase 7)
-- [ ] **Step 22: MSA Chain Modification**: Implement logic to detect and spawn dependent tasks across repos.
+- [x] **Step 22: MSA Chain Modification**: Implement logic to detect and spawn dependent tasks across repos.
 - [ ] **Step 25: Performance Regression Test**: Compare benchmark results in sandbox.
 - [ ] **Step 26: Multi-Model Voting**: Cross-validate results with multiple LLMs.
 
