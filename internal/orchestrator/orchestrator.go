@@ -26,6 +26,7 @@ type SwarmOrchestrator struct {
 	coder         *agent.CoderAgent
 	reviewer      *agent.ReviewerAgent
 	riskAssessor  *agent.RiskAssessorAgent
+	summarizer    *agent.SummarizerAgent
 }
 
 type RunResult struct {
@@ -33,11 +34,10 @@ type RunResult struct {
 	PRURL    string
 }
 
-// StatelessRequest defines a structured request from external agent groups.
 type StatelessRequest struct {
 	UserRequest     string   `json:"user_request"`
-	AnalysisContext string   `json:"analysis_context,omitempty"` // If provided, skip Oracle
-	TargetRepo      string   `json:"target_repo,omitempty"`     // If provided, use this repo
+	AnalysisContext string   `json:"analysis_context,omitempty"`
+	TargetRepo      string   `json:"target_repo,omitempty"`
 	TargetFiles     []string `json:"target_files,omitempty"`
 	Constraints     []string `json:"constraints,omitempty"`
 }
@@ -51,6 +51,7 @@ func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gi
 		coder:         agent.NewCoderAgent(llm),
 		reviewer:      agent.NewReviewerAgent(llm),
 		riskAssessor:  agent.NewRiskAssessorAgent(llm),
+		summarizer:    agent.NewSummarizerAgent(llm),
 	}
 }
 
@@ -72,20 +73,25 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	return nil
 }
 
-// RunStatelessTask processes a structured StatelessRequest.
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
 	o.reportStatus(taskID, "INIT", fmt.Sprintf("Stateless task start: %s", req.UserRequest))
 
-	// 1. Context Acquisition
 	analysis := req.AnalysisContext
 	if analysis == "" {
-		o.reportStatus(taskID, "ORACLE", "No pre-analysis found. Consulting Oracle...")
+		o.reportStatus(taskID, "ORACLE", "Requesting analysis...")
 		var err error
 		analysis, err = o.insightClient.QueryOracle(ctx, req.UserRequest)
 		if err != nil { return RunResult{}, err }
-	} else {
-		o.reportStatus(taskID, "ORACLE", "Using provided analysis context (Stateless).")
+	}
+
+	if len(analysis) > 3000 {
+		o.reportStatus(taskID, "OPTIMIZE", "Analysis context too large. Compressing...")
+		compressed, err := o.summarizer.Process(ctx, analysis)
+		if err == nil {
+			analysis = compressed
+			o.reportStatus(taskID, "OPTIMIZE", fmt.Sprintf("Context compressed (%d bytes)", len(analysis)))
+		}
 	}
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
@@ -99,7 +105,6 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Attempt %d...", attempt))
-		
 		input := analysis
 		if lastFeedback != "" {
 			input = fmt.Sprintf("ANALYSIS:\n%s\n\nPREVIOUS REVIEW FEEDBACK:\n%s", analysis, lastFeedback)
@@ -115,8 +120,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		
 		if attempt == 1 {
 			targetRepo = plan.RepoName
-			if req.TargetRepo != "" { targetRepo = req.TargetRepo } // Override if requested
-			
+			if req.TargetRepo != "" { targetRepo = req.TargetRepo }
 			if repoLockFunc != nil {
 				locked, err := repoLockFunc(targetRepo)
 				if err != nil { return RunResult{RepoName: targetRepo}, err }
@@ -152,11 +156,8 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		diffOut, _ := diffCmd.CombinedOutput()
 		diffStr := string(diffOut)
 
-		o.reportStatus(taskID, "AUDIT", "Parallel Review & Risk Assessment...")
-		var (
-			reviewResp string; riskResp string
-			reviewErr, riskErr error; wg sync.WaitGroup
-		)
+		o.reportStatus(taskID, "AUDIT", "Parallel Audits...")
+		var reviewResp, riskResp string; var reviewErr, riskErr error; var wg sync.WaitGroup
 		wg.Add(2)
 		go func() { defer wg.Done(); reviewResp, reviewErr = o.reviewer.Process(ctx, diffStr) }()
 		go func() { defer wg.Done(); riskResp, riskErr = o.riskAssessor.Process(ctx, diffStr) }()

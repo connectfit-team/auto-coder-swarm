@@ -1,7 +1,7 @@
-2026/05/20 15:16:21 🚀 Auto-Coder Swarm Starting (Phase 6: Formal API Gateway Ready)
-2026/05/20 15:16:21 [Storage] Initializing database at: /home/cnf/projects/auto-coder-swarm/swarm.db
-2026/05/20 15:16:21 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
-2026/05/20 15:16:21 📡 API Gateway listening on :8006
+2026/05/20 15:18:06 🚀 Auto-Coder Swarm Starting (Phase 6: Formal API Gateway Ready)
+2026/05/20 15:18:06 [Storage] Initializing database at: /home/cnf/projects/auto-coder-swarm/swarm.db
+2026/05/20 15:18:06 [Workspace] Initialized LocalManager with baseDir: /tmp, masterRepos: /home/cnf/projects/code-insight-engine/repos
+2026/05/20 15:18:06 📡 API Gateway listening on :8006
 
-2026/05/20 15:16:21 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:96 [35;1mrecord not found
-[0m[33m[0.124ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status = "PENDING" AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
+2026/05/20 15:18:06 [31;1m/home/cnf/projects/auto-coder-swarm/internal/storage/storage.go:96 [35;1mrecord not found
+[0m[33m[0.165ms] [34;1m[rows:0][0m SELECT * FROM `swarm_tasks` WHERE status = "PENDING" AND `swarm_tasks`.`deleted_at` IS NULL ORDER BY created_at asc,`swarm_tasks`.`id` LIMIT 1
