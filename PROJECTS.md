@@ -45,3 +45,8 @@
 - Instant Sandboxing: 하드링크(`cp -al`) 또는 Git Worktree를 이용한 초고속 격리 환경 생성.
 - Parallel Multi-Agent Audit: Reviewer와 RiskAssessor의 병렬 실행을 통한 검증 시간 단축.
 - Context Optimization: 에이전트 간 토큰 소모 최소화를 위한 지능형 컨텍스트 압축.
+
+### Phase 6: 무상태성 및 에이전트 그룹 확장 (Stateless & Inter-Group)
+- Stateless Request API: 요청 간 의존성을 배제하고 컨텍스트를 데이터베이스화하여 확장성 확보.
+- External Agent Bridge: 다른 에이전트 그룹(Multi-Agent Swarms)과 통신하기 위한 표준 인터페이스(gRPC/REST) 구축.
+- Multi-Oracle Router: 여러 분석 엔진으로부터 교차 검증된 정보를 수집하는 라우팅 로직.
