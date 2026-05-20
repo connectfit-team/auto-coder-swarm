@@ -30,8 +30,9 @@ type SwarmOrchestrator struct {
 }
 
 type RunResult struct {
-	RepoName string
-	PRURL    string
+	RepoName        string
+	PRURL           string
+	WaitingApproval bool
 }
 
 type StatelessRequest struct {
@@ -64,10 +65,7 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	var cmd *exec.Cmd
 	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
-	} else if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
-		cmd = exec.Command("flutter", "analyze")
 	}
-
 	if cmd == nil { return nil }
 	cmd.Dir = path
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -76,55 +74,21 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	return nil
 }
 
-// trySelfHealing analyzes build error and tries to fix environment.
-func (o *SwarmOrchestrator) trySelfHealing(taskID, path, errMsg string) bool {
-	o.reportStatus(taskID, "HEAL", "Analyzing build error for self-healing...")
-	
-	// Case 1: Missing Go modules
-	if strings.Contains(errMsg, "no required module provides package") || strings.Contains(errMsg, "missing go.sum entry") {
-		o.reportStatus(taskID, "HEAL", "Detected missing Go dependencies. Running go mod tidy...")
-		cmd := exec.Command("/usr/local/go/bin/go", "mod", "tidy")
-		cmd.Dir = path
-		if err := cmd.Run(); err == nil {
-			o.reportStatus(taskID, "HEAL", "go mod tidy successful.")
-			return true
-		}
-	}
-
-	// Case 2: Flutter/Dart dependency issues
-	if strings.Contains(errMsg, "pub get") || strings.Contains(errMsg, "Target of URI doesn't exist") {
-		o.reportStatus(taskID, "HEAL", "Detected missing Flutter dependencies. Running flutter pub get...")
-		cmd := exec.Command("flutter", "pub", "get")
-		cmd.Dir = path
-		if err := cmd.Run(); err == nil {
-			o.reportStatus(taskID, "HEAL", "flutter pub get successful.")
-			return true
-		}
-	}
-
-	o.reportStatus(taskID, "HEAL", "No automated fix available for this error.")
-	return false
-}
-
-func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, repoLockFunc func(string) (bool, error)) (RunResult, error) {
+// RunStatelessTask processes a task. If isApproved is false, it stops after verify and asks for approval.
+func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
-	o.reportStatus(taskID, "INIT", fmt.Sprintf("Stateless task start: %s", req.UserRequest))
+	o.reportStatus(taskID, "INIT", fmt.Sprintf("Task start (Approved: %v): %s", isApproved, req.UserRequest))
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
-		o.reportStatus(taskID, "ORACLE", "Requesting analysis...")
 		var err error
 		analysis, err = o.insightClient.QueryOracle(ctx, req.UserRequest)
 		if err != nil { return RunResult{}, err }
 	}
 
 	if len(analysis) > 3000 {
-		o.reportStatus(taskID, "OPTIMIZE", "Analysis context too large. Compressing...")
 		compressed, err := o.summarizer.Process(ctx, analysis)
-		if err == nil {
-			analysis = compressed
-			o.reportStatus(taskID, "OPTIMIZE", fmt.Sprintf("Context compressed (%d bytes)", len(analysis)))
-		}
+		if err == nil { analysis = compressed }
 	}
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
@@ -142,10 +106,6 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		if lastFeedback != "" {
 			input = fmt.Sprintf("ANALYSIS:\n%s\n\nPREVIOUS REVIEW FEEDBACK:\n%s", analysis, lastFeedback)
 		}
-		if len(req.Constraints) > 0 {
-			input += "\n\nCONSTRAINTS:\n- " + strings.Join(req.Constraints, "\n- ")
-		}
-
 		planRaw, err := o.planner.Process(ctx, input)
 		if err != nil { return RunResult{}, err }
 		plan, err := o.planner.ParsePlan(planRaw)
@@ -172,18 +132,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 		}
 
 		for _, change := range plan.Changes {
-			o.reportStatus(taskID, "CODER", fmt.Sprintf("Modifying %s", change.FilePath))
-			fullPath := filepath.Join(repoPath, change.FilePath)
-			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
-			if err != nil {
-				return RunResult{RepoName: targetRepo}, fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
-			}
-
-			ext := filepath.Ext(change.FilePath)
-			if ext == ".go" || ext == ".dart" || ext == ".ts" {
-				o.reportStatus(taskID, "TESTER", fmt.Sprintf("Generating unit test for %s", change.FilePath))
-				_, _ = o.coder.GenerateTestFile(ctx, fullPath)
-			}
+			o.coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
 		}
 
 		isDocOnly := true
@@ -191,27 +140,11 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 			if !strings.HasSuffix(c.FilePath, ".md") { isDocOnly = false; break }
 		}
 		if !isDocOnly {
-			o.reportStatus(taskID, "VERIFY", "Running build verification...")
 			if err := o.runBuildVerification(repoPath); err != nil {
-				// Step 24: Self-Healing Attempt
-				if o.trySelfHealing(taskID, repoPath, err.Error()) {
-					o.reportStatus(taskID, "VERIFY", "Retrying build after self-healing...")
-					if err = o.runBuildVerification(repoPath); err == nil {
-						o.reportStatus(taskID, "VERIFY", "Build FIXED by self-healing.")
-						goto build_passed
-					}
-				}
-
-				o.reportStatus(taskID, "VERIFY", "BUILD FAILED")
-				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err)
-				if attempt < maxRetries {
-					exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-				}
-				continue
+				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err); exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 			}
 		}
 
-	build_passed:
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		diffStr := string(diffOut)
@@ -232,8 +165,14 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 			lastFeedback = riskResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
+		// Step 23: Approval Check
+		if !isApproved {
+			o.reportStatus(taskID, "WAIT", "Task verified but requires manual approval.")
+			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
+		}
+
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification with auto-tests")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
 		if err != nil { return RunResult{RepoName: targetRepo}, err }
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}

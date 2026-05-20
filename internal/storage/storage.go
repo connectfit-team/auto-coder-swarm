@@ -12,10 +12,12 @@ import (
 type TaskStatus string
 
 const (
-	StatusPending   TaskStatus = "PENDING"
-	StatusRunning   TaskStatus = "RUNNING"
-	StatusCompleted TaskStatus = "COMPLETED"
-	StatusFailed    TaskStatus = "FAILED"
+	StatusPending          TaskStatus = "PENDING"
+	StatusRunning          TaskStatus = "RUNNING"
+	StatusWaitingApproval TaskStatus = "WAITING_APPROVAL"
+	StatusApproved         TaskStatus = "APPROVED"
+	StatusCompleted        TaskStatus = "COMPLETED"
+	StatusFailed           TaskStatus = "FAILED"
 )
 
 type SwarmTask struct {
@@ -82,18 +84,15 @@ func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog st
 		"status":     status,
 		"updated_at": time.Now(),
 	}
-	if result != "" {
-		updates["result"] = result
-	}
-	if errLog != "" {
-		updates["error_log"] = errLog
-	}
+	if result != "" { updates["result"] = result }
+	if errLog != "" { updates["error_log"] = errLog }
 	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (s *Storage) GetNextPendingTask() (*SwarmTask, error) {
 	var task SwarmTask
-	err := s.db.Where("status = ?", StatusPending).Order("created_at asc").First(&task).Error
+	// Priority: APPROVED tasks should be resumed first, then PENDING
+	err := s.db.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending}).Order("created_at asc").First(&task).Error
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +104,7 @@ func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var lock RepoLock
 		if err := tx.Where("repo_name = ?", repoName).First(&lock).Error; err == nil {
+			if lock.TaskID == taskID { return nil } // Already locked by us
 			return fmt.Errorf("repo already locked")
 		}
 		return tx.Create(&RepoLock{RepoName: repoName, LockedAt: time.Now(), TaskID: taskID}).Error

@@ -14,7 +14,17 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 	"encoding/json"
+	"bytes"
+	"fmt"
 )
+
+const webhookURL = "https://hooks.slack.com/services/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"
+
+func sendToSlack(message string) {
+	payload := map[string]string{"text": message}
+	b, _ := json.Marshal(payload)
+	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
+}
 
 func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage) {
 	for {
@@ -24,7 +34,7 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 			continue
 		}
 
-		log.Printf("[Worker %d] Processing Task #%d", id, task.ID)
+		log.Printf("[Worker %d] Processing Task #%d (Status: %s)", id, task.ID, task.Status)
 		store.UpdateTaskStatus(task.ID, storage.StatusRunning, "", "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -36,27 +46,31 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 		}
 
 		var statelessReq orchestrator.StatelessRequest
-		if err := json.Unmarshal([]byte(task.UserRequest), &statelessReq); err != nil {
-			statelessReq = orchestrator.StatelessRequest{UserRequest: task.UserRequest}
-		}
+		json.Unmarshal([]byte(task.UserRequest), &statelessReq)
 		
-		res, err := orc.RunStatelessTask(ctx, statelessReq, lockFunc)
+		// If status is APPROVED, it means it's a resume from human check
+		isApproved := task.Status == storage.StatusApproved
+
+		res, err := orc.RunStatelessTask(ctx, statelessReq, isApproved, lockFunc)
 		cancel()
 
 		if res.RepoName != "" { store.UnlockRepo(res.RepoName) }
 
 		if err != nil {
-			log.Printf("❌ Task #%d failed: %v", task.ID, err)
+			sendToSlack(fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
 			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
+		} else if res.WaitingApproval {
+			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
+			sendToSlack(fmt.Sprintf("⏳ *Task #%d 검증 완료*: 수정을 확인하고 승인해주세요.\n🔗 *승인 API*: `POST http://192.168.120.54:8006/api/v1/approve?id=%d`", task.ID, task.ID))
 		} else {
-			log.Printf("✅ Task #%d completed: %s", task.ID, res.PRURL)
+			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: %s", task.ID, res.PRURL))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
 		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 6: Formal API Gateway Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 7: Human-in-the-Loop Ready)")
 
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)

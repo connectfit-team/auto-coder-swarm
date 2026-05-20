@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -35,20 +36,17 @@ func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
 	var req orchestrator.StatelessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
-
 	b, _ := json.Marshal(req)
 	task, err := h.store.CreateTask(string(b))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(TaskResponse{TaskID: task.ID, Status: string(storage.StatusPending)})
 }
@@ -60,13 +58,11 @@ func (h *SwarmHandler) HandleGetStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-
 	task, err := h.store.GetTaskByID(uint(id))
 	if err != nil {
 		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(StatusResponse{
 		TaskID:    task.ID,
@@ -77,7 +73,25 @@ func (h *SwarmHandler) HandleGetStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *SwarmHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	idStr := r.URL.Query().Get("id")
+	id, _ := strconv.ParseUint(idStr, 10, 32)
+	
+	err := h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Task %d approved and queued for PR generation", id)
+}
+
 func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/tasks", h.HandleSubmitTask)
 	mux.HandleFunc("GET /api/v1/status", h.HandleGetStatus)
+	mux.HandleFunc("POST /api/v1/approve", h.HandleApproveTask)
 }
