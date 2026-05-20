@@ -33,3 +33,8 @@
 - /internal/orchestrator: 에이전트 간 워크플로우 제어.
 - /internal/gitmgr: Git 및 PR 작업 담당.
 - /internal/insightclient: 분석 엔진 통신용 클라이언트.
+
+### Phase 4: 운영 최적화 및 실전 통합 (Planned)
+- Real-World API Integration: GitHub/GitLab API 연동을 통한 실제 PR 자동화.
+- Advanced Risk Assessment: 변경 사항의 파급 효과를 분석하는 위험 평가 에이전트 도입.
+- Live Observability: 멀티 에이전트의 사고 과정을 실시간 모니터링 및 로깅.
