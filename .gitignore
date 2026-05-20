@@ -1,0 +1,52 @@
+# Binaries
+bin/
+swarm
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Logs and databases
+*.log
+*.log.*
+swarm.db
+swarm.db-journal
+*.sqlite
+*.sqlite-journal
+data/*.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+vendor/
+go.sum
+
+# Secrets
+.env
+
+# Temporary files
+*.new
+*.new2
+*.new3
+*.refined
+*.b64
+*.remote
+*.final
+*.bak
+*.tmp
+/tmp/swarm_ws_*
+last_prompt.log
