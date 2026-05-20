@@ -5,59 +5,39 @@
 
 ## 2. 프로젝트 로드맵 (Roadmap)
 
-### Phase 1: 기반 아키텍처 및 격리 환경 (Completed)
-- Workspace Isolation: UUID 기반 임시 작업 디렉토리 생성 및 관리.
-- Git Integration: 원격 레포지토리 Clone, Branch 생성, Push 자동화.
-- Engine Oracle Client: `code-insight-engine` API 연동 모듈.
+### Phase 1~3: 기반 아키텍처 및 자율 스웜 (Completed)
+- UUID 기반 격리 환경, Git 연동, 멀티 에이전트(Planner, Coder, Reviewer) 루프 구축.
 
-### Phase 2: 멀티 에이전트 스웜 (Swarm) 구현 (Completed)
-- Planner Agent: 요청 분석 및 수정 계획 수립.
-- Coder Agent: 실제 코드 파일 수정 로직.
-- Reviewer Agent: 컨벤션 및 로직 오류 검증.
+### Phase 4~6: 운영 신뢰성 및 확장성 (Completed)
+- SQLite 작업 큐, 레포지토리 락(Lock), 사고 과정 중계, 무상태(Stateless) API 구축.
 
-### Phase 3: 자율 사이클 및 동시성 관리 (Completed)
-- Feedback Loop: 리뷰어 거절 시 재수정 루프 구현 (최대 3회).
-- Concurrency Management: Worker Pool을 통한 병렬 요청 처리.
-- Simulation: PR 생성 시뮬레이션 및 슬랙 보고.
+### Phase 7: 자가 치유 및 협업 (Completed)
+- 빌드 에러 자가 치유, 대시보드 기반 Human-in-the-loop 승인 체계 구축.
 
-### Phase 4: 운영 최적화 및 신뢰성 강화 (In Progress)
-- Advanced Verification: 격리 환경 내 실제 빌드/테스트 수행 (Step 13).
-- System Reliability: SQLite 기반 작업 큐 영속성 도입 (Step 14).
-- Conflict Prevention: 레포지토리 단위 작업 잠금(Lock) 시스템 (Step 15).
-- Real-World API: GitHub/GitLab API 연동 (Step 10).
-- Live Observability: 멀티 에이전트 사고 과정 실시간 중계 (Completed).
+### Phase 8: 전략적 지능 및 성능 최적화 (Completed)
+- [x] **Step 25: Performance Regression Test**: 벤치마크 기반 성능 저하 감지.
+- [x] **Step 26: Multi-Model Swarm Voting**: Gemma/Llama/Qwen 다수결 투표 시스템.
+- [x] **Step 28~29: Advanced Monitoring & Diff**: 실시간 로그 및 시각적 코드 검토 기능.
+- [x] **Step 30: Multi-Worker Parallelism**: 3x 동시 워커 및 원자적 작업 수주.
+- [x] **Step 31: Agentic Self-Healing Pro**: 에러 로그 분석 기반 지능형 수리.
+- [x] **Step 32: Instant Sandboxing**: Git Worktree를 이용한 밀리초 단위 작업 공간 생성.
+
+### Phase 9: 엔터프라이즈 보안 및 고도화 (Next)
+- Dashboard Auth: OAuth2/Basic Auth 보안 강화.
+- Resource Scheduler: 작업 난이도별 가변 모델 배정 로직.
+- Chain-of-Thought Streaming: 에이전트 상세 추론 과정의 실시간 웹 시각화.
 
 ## 3. 설계 철학 (Design Philosophy)
-- Isolation-First: 메인 소스 코드 보호를 위해 항상 격리된 임시 폴더에서 작업.
-- No-Direct-Commit: 어떤 상황에서도 `main` 또는 `master` 브랜치에 직접 커밋하지 않으며, 오직 피처 브랜치와 PR을 통해서만 수정 사항을 제출함.
-- Multi-Step Verification: 작성-리뷰-위험평가-빌드테스트의 다단계 검증 필수.
-- Oracle-Dependent: 분석은 스스로 하지 않고 오직 `code-insight-engine`의 결과를 신뢰.
-- Chain-Safety: MSA 연쇄 수정(Step 22) 시 무한 루프 및 리소스 폭주 방지를 위해 Depth 제한과 인간 승인 단계를 필수적으로 결합함.
+- Isolation-First:UUID 격리 폴더 및 Git Worktree를 통한 깨끗한 환경 유지.
+- High-Precision: 다중 모델 합의와 자가 치유를 통한 무결점 코드 지향.
+- Speed-Oriented: 병렬 워커와 초고속 샌드박싱을 통한 처리량 극대화.
 
 ## 4. 시스템 구조 (Architecture)
-- /cmd/swarm: 메인 진입점 및 워커 풀 관리.
-- /internal/workspace: 격리 환경 관리.
-- /internal/agent: 특화 에이전트 로직 (Planner, Coder, Reviewer, RiskAssessor).
-- /internal/orchestrator: 에이전트 간 워크플로우 제어 및 상태 보고.
-- /internal/gitmgr: Git 및 PR 작업 담당.
-- /internal/insightclient: 분석 엔진 통신용 클라이언트.
+- /cmd/swarm: 진입점 및 워커 제어.
+- /internal/worker: 취소 가능 워커 수명 주기 관리.
+- /internal/voter: 집단 지성 투표 엔진.
+- /internal/storage: SQLite 기반 데이터 영속성.
+- /internal/web: 한글 관리 대시보드 (Port 8006).
 
-### Phase 5: 성능 및 확장성 고도화 (Planned)
-- Instant Sandboxing: 하드링크(`cp -al`) 또는 Git Worktree를 이용한 초고속 격리 환경 생성.
-- Parallel Multi-Agent Audit: Reviewer와 RiskAssessor의 병렬 실행을 통한 검증 시간 단축.
-- Context Optimization: 에이전트 간 토큰 소모 최소화를 위한 지능형 컨텍스트 압축.
-
-### Phase 6: 무상태성 및 에이전트 그룹 확장 (Stateless & Inter-Group)
-- Stateless Request API: 요청 간 의존성을 배제하고 컨텍스트를 데이터베이스화하여 확장성 확보.
-- External Agent Bridge: 다른 에이전트 그룹(Multi-Agent Swarms)과 통신하기 위한 표준 인터페이스(gRPC/REST) 구축.
-- Multi-Oracle Router: 여러 분석 엔진으로부터 교차 검증된 정보를 수집하는 라우팅 로직.
-
-### Phase 7: 자가 치유 및 고급 자율성 (Planned)
-- Self-Healing Build: 빌드 에러 로그를 분석하여 종속성 설치(`go mod tidy` 등)를 스스로 수행.
-- Human-in-the-Loop Approval: 위험도가 높은 수정에 대해 슬랙 인터랙티브 버튼으로 사람의 최종 승인 획득.
-- Multi-Model Swarm Voting: 여러 LLM 모델(Gemma, Claude 등)의 교차 검증을 통한 리뷰 정확도 향상.
-
-### Phase 8: 전략적 지능 및 품질 고도화 (Planned)
-- Performance Regression Test: 격리 환경 내 벤치마크 수행을 통한 성능 저하 자동 감지.
-- Multi-Model Swarm Voting: 다수 LLM 모델의 교차 검증을 통한 리뷰 신뢰도 극대화.
-- Knowledge Feedback Loop: 수정 완료된 내역을 오라클(Engine)에 다시 학습시켜 지능 선순환 구조 구축.
+---
+*본 문서는 시스템의 최종 명세서이며, 모든 개발 단계의 이력을 포함합니다.*

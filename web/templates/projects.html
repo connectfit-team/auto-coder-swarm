@@ -1,0 +1,9 @@
+{{define "content"}}
+<div class="card">
+    <h3>📘 Auto-Coder Swarm 명세 (PROJECTS.md)</h3>
+    <form action="/projects/update" method="POST">
+        <textarea name="content">{{.Specs}}</textarea>
+        <button type="submit" class="btn btn-save">저장하기</button>
+    </form>
+</div>
+{{end}}

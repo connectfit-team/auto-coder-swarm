@@ -20,8 +20,8 @@ func (a *PlannerAgent) Name() string {
 	return "Planner"
 }
 
-func (a *PlannerAgent) Process(ctx context.Context, oracleAnalysis string) (string, error) {
-	prompt := `You are the Swarm Planner. 
+func (a *PlannerAgent) BuildPrompt(oracleAnalysis string) string {
+	return `You are the Swarm Planner. 
 Your goal is to extract a structured code modification plan from the Oracle's analysis.
 
 MANDATORY RULES:
@@ -43,8 +43,10 @@ MANDATORY RULES:
 
 [Oracle Analysis]
 ` + oracleAnalysis
+}
 
-	return CallLLM(ctx, a.llm, a.Name(), prompt)
+func (a *PlannerAgent) Process(ctx context.Context, oracleAnalysis string) (string, error) {
+	return CallLLM(ctx, a.llm, a.Name(), a.BuildPrompt(oracleAnalysis))
 }
 
 func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {

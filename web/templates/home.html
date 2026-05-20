@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="card">
+    <h3>🚀 Swarm 상태 요약</h3>
+    <div style="display: flex; gap: 20px;">
+        <div style="flex: 1; background: #ebf5fb; padding: 20px; border-radius: 8px;">
+            <h4 style="margin:0; color:#3498db;">현재 활성 Phase</h4>
+            <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">Phase 8: 전략적 지능</p>
+        </div>
+        <div style="flex: 1; background: #e9f7ef; padding: 20px; border-radius: 8px;">
+            <h4 style="margin:0; color:#2ecc71;">최근 완료</h4>
+            <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">Step 29: Human-in-the-loop</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>🤖 최신 자동 수정 작업</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>대상 저장소</th>
+                <th>요청 내용</th>
+                <th>상태</th>
+                <th>생성 시간</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Tasks}}
+            <tr>
+                <td><a href="/task?id={{.ID}}"><code>#{{.ID}}</code></a></td>
+                <td>{{.RepoName}}</td>
+                <td>{{.UserRequest}}</td>
+                <td><span class="status-{{.Status}}">{{.Status}}</span></td>
+                <td>{{.CreatedAt.Format "15:04:05"}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}

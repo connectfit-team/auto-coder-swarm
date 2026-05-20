@@ -1,0 +1,9 @@
+{{define "content"}}
+<div class="card">
+    <h3>📈 Swarm 진행 상황 (PROGRESS.md)</h3>
+    <form action="/progress/update" method="POST">
+        <textarea name="content">{{.Progress}}</textarea>
+        <button type="submit" class="btn btn-save">업데이트</button>
+    </form>
+</div>
+{{end}}

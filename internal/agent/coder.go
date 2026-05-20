@@ -21,6 +21,35 @@ func (a *CoderAgent) Name() string {
 	return "Coder"
 }
 
+func (a *CoderAgent) BuildRepairPrompt(filePath, content, instructions, buildError string) string {
+	return fmt.Sprintf("You are the Swarm Debugging Expert.\n"+
+		"The previous attempt to modify the code caused a BUILD ERROR.\n"+
+		"Your goal is to fix the code to resolve the error while still fulfilling the original instructions.\n\n"+
+		"MANDATORY RULES:\n"+
+		"1. Provide the FULL file content after repair.\n"+
+		"2. Do not include any conversational text, ONLY the code.\n"+
+		"3. Focus specifically on fixing the mentioned build error.\n\n"+
+		"[Original Instructions]\n%s\n\n"+
+		"[Build Error Output]\n%s\n\n"+
+		"[Current Code State: %s]\n%s", instructions, buildError, filePath, content)
+}
+
+func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, buildError string) (string, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := a.BuildRepairPrompt(filePath, string(content), instructions, buildError)
+	newContent, err := CallLLM(ctx, a.llm, "Debugger", prompt)
+	if err != nil {
+		return "", err
+	}
+
+	err = os.WriteFile(filePath, []byte(newContent), 0644)
+	return fmt.Sprintf("Repaired %s", filePath), err
+}
+
 func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
