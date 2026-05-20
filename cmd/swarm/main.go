@@ -5,32 +5,58 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/llm"
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
+	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 )
 
-type Task struct {
-	UserRequest string
-	ResponseCh  chan error
-}
+func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage) {
+	for {
+		task, err := store.GetNextPendingTask()
+		if err != nil {
+			// No pending tasks, sleep and try again
+			time.Sleep(2 * time.Second)
+			continue
+		}
 
-func worker(id int, orc *orchestrator.SwarmOrchestrator, tasks <-chan Task) {
-	for t := range tasks {
-		log.Printf("[Worker %d] Processing task: %s", id, t.UserRequest)
+		log.Printf("[Worker %d] Processing Persistent Task #%d: %s", id, task.ID, task.UserRequest)
+		
+		// Mark as running
+		store.UpdateTaskStatus(task.ID, storage.StatusRunning, "", "")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-		err := orc.RunTask(ctx, t.UserRequest)
+		err = orc.RunTask(ctx, task.UserRequest)
 		cancel()
-		t.ResponseCh <- err
+
+		if err != nil {
+			log.Printf("❌ Task #%d failed: %v", task.ID, err)
+			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
+		} else {
+			log.Printf("✅ Task #%d completed successfully", task.ID)
+			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, "Success", "")
+		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 3: Step 9 Concurrency Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)")
+
+	dbPath := os.ExpandEnv("/Users/bae/projects/auto-coder-swarm/swarm.db")
+	store, err := storage.NewStorage(dbPath)
+	if err != nil {
+		log.Fatalf("❌ Failed to init storage: %v", err)
+	}
+
+	// Recovery: Reset tasks that were stuck in 'RUNNING' status during crash
+	if err := store.ResetRunningToPending(); err != nil {
+		log.Printf("⚠️ Recovery warning: %v", err)
+	}
 
 	ollamaModel := llm.NewOllamaModel("gemma4:31b", "http://localhost:11434")
 	ic := insightclient.NewClient("http://localhost:8005")
@@ -38,10 +64,9 @@ func main() {
 	gitSvc := gitmgr.NewGitManager()
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, ollamaModel)
 
-	taskQueue := make(chan Task, 100)
 	numWorkers := 2 
 	for w := 1; w <= numWorkers; w++ {
-		go worker(w, orc, taskQueue)
+		go worker(w, orc, store)
 	}
 
 	http.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
@@ -51,18 +76,13 @@ func main() {
 			return
 		}
 
-		respCh := make(chan error)
-		taskQueue <- Task{UserRequest: query, ResponseCh: respCh}
+		task, err := store.CreateTask(query)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to create task: %v", err), http.StatusInternalServerError)
+			return
+		}
 		
-		fmt.Fprintf(w, "Task queued: %s\nWaiting for results...", query)
-		go func() {
-			err := <-respCh
-			if err != nil {
-				log.Printf("❌ Task failed: %v", err)
-			} else {
-				log.Printf("✅ Task completed: %s", query)
-			}
-		}()
+		fmt.Fprintf(w, "Task #%d queued: %s\nCheck logs for progress.", task.ID, query)
 	})
 
 	log.Println("📡 Swarm listening for requests on :8006")
