@@ -17,7 +17,7 @@
 ---
 
 ## 🎯 Next Tasks (Phase 5)
-- [ ] **Step 16: Instant Sandboxing**: Speed up clone process using hardlinks.
+- [x] **Step 16: Instant Sandboxing**: Speed up clone process using hardlinks.
 - [ ] **Step 17: Parallel Audit**: Run Reviewer and RiskAssessor concurrently.
 - [ ] **Step 18: Context Compression**: Optimize LLM prompt token usage.
 
