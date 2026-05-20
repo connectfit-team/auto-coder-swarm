@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -57,7 +58,6 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 		return fmt.Errorf("workspace setup failed: %w", err)
 	}
 	defer o.wsMgr.Cleanup(wsPath)
-	log.Printf("[Orchestrator] Isolated workspace ready: %s", wsPath)
 
 	repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", plan.RepoName)
 	repoPath := filepath.Join(wsPath, "repo")
@@ -70,15 +70,36 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) err
 		return fmt.Errorf("branch creation failed: %w", err)
 	}
 
+	// Modification & Review Loop (Simple 1-pass for now)
+	log.Println("[Orchestrator] Applying changes...")
 	for _, change := range plan.Changes {
 		fullPath := filepath.Join(repoPath, change.FilePath)
-		log.Printf("[Orchestrator] Coder modifying file: %s", change.FilePath)
 		_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
 		if err != nil {
-			return fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
+			return fmt.Errorf("coder failed: %w", err)
 		}
 	}
 
-	log.Println("[Orchestrator] All changes applied in sandbox. Ready for Review.")
+	// Step 6: Review
+	log.Println("[Orchestrator] Step 6: Reviewing changes...")
+	diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
+	diffOut, _ := diffCmd.CombinedOutput()
+
+	reviewResp, err := o.reviewer.Process(ctx, string(diffOut))
+	if err != nil {
+		return fmt.Errorf("review failed: %w", err)
+	}
+
+	if !o.reviewer.IsApproved(reviewResp) {
+		log.Printf("[Orchestrator] Review REJECTED: %s", reviewResp)
+		return fmt.Errorf("changes rejected by reviewer: %s", reviewResp)
+	}
+
+	log.Println("[Orchestrator] Review APPROVED. Generating PR...")
+
+	// Step 7: Push & PR Simulation (Final phase)
+	// For local test, we just log the commit. In production, we'd call CommitAndPush.
+	log.Printf("[Orchestrator] Successfully modified %d files and passed review.", len(plan.Changes))
+
 	return nil
 }
