@@ -19,7 +19,7 @@
 
 ## 🎯 Next Tasks (Phase 2)
 - [x] **Step 4: Planner Refinement**: Parse JSON plan from LLM and select repo.
-- [ ] **Step 5: Coder Implementation**: Perform file modifications in sandbox.
+- [x] **Step 5: Coder Implementation**: Perform file modifications in sandbox.
 - [ ] **Step 6: Review Loop**: Implement Reviewer agent and approval logic.
 
 ---
