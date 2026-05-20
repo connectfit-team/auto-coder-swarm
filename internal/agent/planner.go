@@ -44,11 +44,7 @@ MANDATORY RULES:
 [Oracle Analysis]
 ` + oracleAnalysis
 
-	resp, err := CallLLM(ctx, a.llm, prompt)
-	if err != nil {
-		return "", err
-	}
-	return resp, nil
+	return CallLLM(ctx, a.llm, a.Name(), prompt)
 }
 
 func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {

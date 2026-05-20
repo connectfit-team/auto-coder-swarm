@@ -2,6 +2,10 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
+
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -22,7 +26,16 @@ type FileChange struct {
 	Instructions string `json:"instructions"`
 }
 
-func CallLLM(ctx context.Context, m model.LLM, prompt string) (string, error) {
+func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string, error) {
+	logPath := "/home/cnf/projects/auto-coder-swarm/agent_thoughts.log"
+	f, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if f != nil {
+		defer f.Close()
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		fmt.Fprintf(f, "\n==================== [%s] AGENT: %s ====================\n", timestamp, agentName)
+		fmt.Fprintf(f, "[PROMPT]\n%s\n", prompt)
+	}
+
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{
 			{
@@ -44,5 +57,11 @@ func CallLLM(ctx context.Context, m model.LLM, prompt string) (string, error) {
 			respText += p.Text
 		}
 	}
+
+	if f != nil {
+		fmt.Fprintf(f, "[RESPONSE]\n%s\n", respText)
+		fmt.Fprintf(f, "==============================================================\n")
+	}
+	
 	return respText, nil
 }

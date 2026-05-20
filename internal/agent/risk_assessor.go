@@ -25,9 +25,9 @@ func (a *RiskAssessorAgent) Process(ctx context.Context, diff string) (string, e
 		"MANDATORY RULES:\n"+
 		"1. Output 'SAFE' if the changes have minimal impact and no hidden risks.\n"+
 		"2. If there are potential risks (e.g., breaking API, performance regression), list them starting with 'RISK:'.\n\n"+
-		"[Code Changes]\n%%s", diff)
+		"[Code Changes]\n%s", diff)
 
-	return CallLLM(ctx, a.llm, prompt)
+	return CallLLM(ctx, a.llm, a.Name(), prompt)
 }
 
 func (a *RiskAssessorAgent) IsSafe(resp string) bool {

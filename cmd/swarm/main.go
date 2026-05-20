@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
@@ -29,7 +28,6 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		
-		// Custom Lock Injector: Locks the repo as soon as the Planner identifies it.
 		var lockedRepo string
 		lockFunc := func(repoName string) (bool, error) {
 			ok, err := store.TryLockRepo(repoName, task.ID)
@@ -43,7 +41,6 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 		repoName, err := orc.RunTask(ctx, task.UserRequest, lockFunc)
 		cancel()
 
-		// Final cleanup: Unlock
 		if lockedRepo != "" {
 			store.UnlockRepo(lockedRepo)
 		} else if repoName != "" {
@@ -61,12 +58,18 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: Conflict Locking Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)")
 
-	dbPath := os.ExpandEnv("/Users/bae/projects/auto-coder-swarm/swarm.db")
+	// Use absolute path for DB to ensure GORM can find it regardless of execution dir
+	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
 	if err != nil {
-		log.Fatalf("❌ Failed to init storage: %v", err)
+		// Try fallback to local directory if absolute path fails for some reason
+		log.Printf("⚠️ Absolute path failed, trying local path...")
+		store, err = storage.NewStorage("swarm.db")
+		if err != nil {
+			log.Fatalf("❌ Failed to init storage: %v", err)
+		}
 	}
 
 	if err := store.ResetRunningToPending(); err != nil {
@@ -79,7 +82,7 @@ func main() {
 	gitSvc := gitmgr.NewGitManager()
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, ollamaModel)
 
-	numWorkers := 2 
+	numWorkers := 1 
 	for w := 1; w <= numWorkers; w++ {
 		go worker(w, orc, store)
 	}

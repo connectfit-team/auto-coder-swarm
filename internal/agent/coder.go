@@ -31,26 +31,20 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 		"1. Provide the FULL file content after modification.\n"+
 		"2. Do not include any conversational text, ONLY the code.\n"+
 		"3. Maintain existing coding style.\n\n"+
-		"[Technical Instructions]\n%%s\n\n"+
-		"[Original Code: %%s]\n%%s", instructions, filePath, string(content))
+		"[Technical Instructions]\n%s\n\n"+
+		"[Original Code: %s]\n%s", instructions, filePath, string(content))
 
-	newContent, err := CallLLM(ctx, a.llm, prompt)
+	newContent, err := CallLLM(ctx, a.llm, a.Name(), prompt)
 	if err != nil {
 		return "", err
 	}
 
-	// Basic markdown cleanup
-	cleanContent := newContent
-	if start := fmt.Sprint(newContent); len(start) > 0 {
-		// Logic to remove ```language ... ``` could be added here
-	}
-
-	err = os.WriteFile(filePath, []byte(cleanContent), 0644)
+	err = os.WriteFile(filePath, []byte(newContent), 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return fmt.Sprintf("Modified %%s", filePath), nil
+	return fmt.Sprintf("Modified %s", filePath), nil
 }
 
 func (a *CoderAgent) Process(ctx context.Context, input string) (string, error) {

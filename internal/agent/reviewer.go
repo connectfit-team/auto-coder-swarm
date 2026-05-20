@@ -25,9 +25,9 @@ func (a *ReviewerAgent) Process(ctx context.Context, diff string) (string, error
 		"MANDATORY RULES:\n"+
 		"1. Output 'APPROVED' if the changes are correct and follow conventions.\n"+
 		"2. If there are issues, provide feedback starting with 'FEEDBACK:'.\n\n"+
-		"[Code Changes]\n%%s", diff)
+		"[Code Changes]\n%s", diff)
 
-	return CallLLM(ctx, a.llm, prompt)
+	return CallLLM(ctx, a.llm, a.Name(), prompt)
 }
 
 func (a *ReviewerAgent) IsApproved(resp string) bool {

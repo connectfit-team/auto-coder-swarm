@@ -44,7 +44,6 @@ func (o *SwarmOrchestrator) reportStatus(taskID, stage, message string) {
 }
 
 func (o *SwarmOrchestrator) runBuildVerification(path string) error {
-	// Detect language and run basic check
 	var cmd *exec.Cmd
 	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
@@ -52,10 +51,7 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 		cmd = exec.Command("flutter", "analyze")
 	}
 
-	if cmd == nil {
-		return nil // No known build system found
-	}
-
+	if cmd == nil { return nil }
 	cmd.Dir = path
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build/analyze failed: %v, output: %s", err, string(out))
@@ -67,11 +63,14 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
 	o.reportStatus(taskID, "INIT", fmt.Sprintf("Starting task: %s", userRequest))
 
+	o.reportStatus(taskID, "ORACLE", "Requesting analysis from Code-Insight Engine...")
 	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
 	if err != nil {
 		return "", fmt.Errorf("oracle query failed: %w", err)
 	}
+	o.reportStatus(taskID, "ORACLE", fmt.Sprintf("Context received (%d bytes)", len(analysis)))
 
+	o.reportStatus(taskID, "SANDBOX", "Creating isolated workspace...")
 	wsPath, err := o.wsMgr.CreateWorkspace()
 	if err != nil {
 		return "", fmt.Errorf("workspace setup failed: %w", err)
@@ -84,7 +83,7 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Attempt %d: Drafting modification plan...", attempt))
+		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Attempt %d: Thinking...", attempt))
 		
 		input := analysis
 		if lastFeedback != "" {
@@ -106,16 +105,16 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 				locked, err := repoLockFunc(targetRepo)
 				if err != nil { return "", err }
 				if !locked {
-					return "", fmt.Errorf("repository %s is currently locked by another task", targetRepo)
+					return "", fmt.Errorf("repository %s is currently locked", targetRepo)
 				}
 			}
 		}
 
-		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Plan validated for repo: %s", plan.RepoName))
+		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Target Repo: %s", plan.RepoName))
 
 		repoPath := filepath.Join(wsPath, "repo")
 		if attempt == 1 {
-			o.reportStatus(taskID, "GIT", fmt.Sprintf("Cloning %s into sandbox...", plan.RepoName))
+			o.reportStatus(taskID, "GIT", "Cloning repository...")
 			repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", plan.RepoName)
 			if err := o.gitMgr.Clone(repoURL, repoPath); err != nil {
 				return "", fmt.Errorf("git clone failed: %w", err)
@@ -125,37 +124,34 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 		}
 
 		for _, change := range plan.Changes {
-			o.reportStatus(taskID, "CODER", fmt.Sprintf("Modifying file: %s", change.FilePath))
+			o.reportStatus(taskID, "CODER", fmt.Sprintf("Modifying %s", change.FilePath))
 			fullPath := filepath.Join(repoPath, change.FilePath)
 			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
 			if err != nil {
-				return "", fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
+				return "", fmt.Errorf("coder failed: %w", err)
 			}
 		}
 
-		// Step 13: Dynamic Build Verification
-		o.reportStatus(taskID, "VERIFY", "Running dynamic build verification inside sandbox...")
+		o.reportStatus(taskID, "VERIFY", "Running build verification...")
 		if err := o.runBuildVerification(repoPath); err != nil {
-			o.reportStatus(taskID, "VERIFY", fmt.Sprintf("BUILD FAILED: %v", err))
-			lastFeedback = fmt.Sprintf("THE MODIFIED CODE FAILED TO BUILD/ANALYZE:\n%v", err)
+			o.reportStatus(taskID, "VERIFY", "BUILD FAILED")
+			lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err)
 			if attempt < maxRetries {
 				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
 			}
 			continue
 		}
 
+		o.reportStatus(taskID, "REVIEW", "Agent reviewing changes...")
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
-		diffStr := string(diffOut)
-
-		o.reportStatus(taskID, "REVIEW", "Performing Quality & Convention Review...")
-		reviewResp, err := o.reviewer.Process(ctx, diffStr)
+		reviewResp, err := o.reviewer.Process(ctx, string(diffOut))
 		if err != nil {
 			return "", fmt.Errorf("review failed: %w", err)
 		}
 
 		if !o.reviewer.IsApproved(reviewResp) {
-			o.reportStatus(taskID, "REVIEW", fmt.Sprintf("REJECTED: %s", reviewResp))
+			o.reportStatus(taskID, "REVIEW", "REJECTED")
 			lastFeedback = reviewResp
 			if attempt < maxRetries {
 				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
@@ -163,29 +159,29 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 			continue
 		}
 
-		o.reportStatus(taskID, "RISK", "Performing System Impact Assessment...")
-		riskResp, err := o.riskAssessor.Process(ctx, diffStr)
+		o.reportStatus(taskID, "RISK", "Assessing risks...")
+		riskResp, err := o.riskAssessor.Process(ctx, string(diffOut))
 		if err != nil {
 			return "", fmt.Errorf("risk assessment failed: %w", err)
 		}
 
 		if !o.riskAssessor.IsSafe(riskResp) {
-			o.reportStatus(taskID, "RISK", fmt.Sprintf("DANGER: %s", riskResp))
-			lastFeedback = fmt.Sprintf("RISKS DETECTED:\n%s", riskResp)
+			o.reportStatus(taskID, "RISK", "DANGER DETECTED")
+			lastFeedback = riskResp
 			if attempt < maxRetries {
 				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
 			}
 			continue
 		}
 
-		o.reportStatus(taskID, "SUCCESS", "All checks passed (Build OK, Review OK, Risk SAFE).")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification with build verification")
+		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification")
 		if err != nil {
 			return "", fmt.Errorf("failed to generate PR: %w", err)
 		}
-		o.reportStatus(taskID, "FINISH", fmt.Sprintf("PR Link: %s", prURL))
+		o.reportStatus(taskID, "FINISH", fmt.Sprintf("PR: %s", prURL))
 		return targetRepo, nil
 	}
 
-	return targetRepo, fmt.Errorf("failed to pass all audits after %d attempts", maxRetries)
+	return targetRepo, fmt.Errorf("failed after max retries")
 }
