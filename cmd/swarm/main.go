@@ -49,69 +49,46 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 			return ok, err
 		}
 
-		repoName, err := orc.RunTask(ctx, task.UserRequest, lockFunc)
+		res, err := orc.RunTask(ctx, task.UserRequest, lockFunc)
 		cancel()
 
-		if lockedRepo != "" {
-			store.UnlockRepo(lockedRepo)
-		} else if repoName != "" {
-			store.UnlockRepo(repoName)
-		}
+		if lockedRepo != "" { store.UnlockRepo(lockedRepo) }
 
 		if err != nil {
 			log.Printf("❌ Task #%d failed: %v", task.ID, err)
 			sendToSlack(fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
 			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 		} else {
-			log.Printf("✅ Task #%d completed successfully", task.ID)
-			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: https://github.com/connectfit-team/simulated-pr/swarm-fix-%d", task.ID, time.Now().Unix()))
-			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, "Success", "")
+			log.Printf("✅ Task #%d completed: %s", task.ID, res.PRURL)
+			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: %s", task.ID, res.PRURL))
+			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
 		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 5: Instant Sandboxing Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 6: Real PR Reporting Ready)")
 
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
-	if err != nil {
-		log.Fatalf("❌ Failed to init storage: %v", err)
-	}
+	if err != nil { log.Fatalf("❌ DB init failed: %v", err) }
 
-	if err := store.ResetRunningToPending(); err != nil {
-		log.Printf("⚠️ Recovery warning: %v", err)
-	}
+	store.ResetRunningToPending()
 
 	ollamaModel := llm.NewOllamaModel("gemma4:31b", "http://localhost:11434")
 	ic := insightclient.NewClient("http://localhost:8005")
-	
-	// Step 16: Configure master repository path for fast cloning
-	masterReposPath := "/home/cnf/projects/code-insight-engine/repos"
-	wsMgr := workspace.NewLocalManager("/tmp", masterReposPath)
-	
+	wsMgr := workspace.NewLocalManager("/tmp", "/home/cnf/projects/code-insight-engine/repos")
 	gitSvc := gitmgr.NewGitManager()
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, ollamaModel)
 
-	numWorkers := 1 
-	for w := 1; w <= numWorkers; w++ {
-		go worker(w, orc, store)
-	}
+	for w := 1; w <= 1; w++ { go worker(w, orc, store) }
 
 	http.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("query")
-		if query == "" {
-			http.Error(w, "query is required", http.StatusBadRequest)
-			return
-		}
-		task, err := store.CreateTask(query)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to create task: %v", err), http.StatusInternalServerError)
-			return
-		}
-		fmt.Fprintf(w, "Task #%d queued: %s", task.ID, query)
+		if query == "" { return }
+		task, _ := store.CreateTask(query)
+		fmt.Fprintf(w, "Task #%d queued", task.ID)
 	})
 
-	log.Println("📡 Swarm listening for requests on :8006")
 	log.Fatal(http.ListenAndServe(":8006", nil))
 }

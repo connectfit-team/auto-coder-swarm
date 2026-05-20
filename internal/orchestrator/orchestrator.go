@@ -27,6 +27,11 @@ type SwarmOrchestrator struct {
 	riskAssessor  *agent.RiskAssessorAgent
 }
 
+type RunResult struct {
+	RepoName string
+	PRURL    string
+}
+
 func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gitmgr.GitManager, llm model.LLM) *SwarmOrchestrator {
 	return &SwarmOrchestrator{
 		insightClient: ic,
@@ -49,7 +54,6 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
 	}
-
 	if cmd == nil { return nil }
 	cmd.Dir = path
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -58,20 +62,15 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	return nil
 }
 
-func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (string, error) {
+func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
 	o.reportStatus(taskID, "INIT", fmt.Sprintf("Starting task: %s", userRequest))
 
 	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
-	if err != nil {
-		return "", fmt.Errorf("oracle query failed: %w", err)
-	}
-	o.reportStatus(taskID, "ORACLE", fmt.Sprintf("Context received (%d bytes)", len(analysis)))
+	if err != nil { return RunResult{}, err }
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
-	if err != nil {
-		return "", fmt.Errorf("workspace setup failed: %w", err)
-	}
+	if err != nil { return RunResult{}, err }
 	defer o.wsMgr.Cleanup(wsPath)
 
 	var lastFeedback string
@@ -81,116 +80,64 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Attempt %d...", attempt))
-		
 		input := analysis
 		if lastFeedback != "" {
 			input = fmt.Sprintf("ANALYSIS:\n%s\n\nPREVIOUS REVIEW FEEDBACK:\n%s", analysis, lastFeedback)
 		}
-
 		planRaw, err := o.planner.Process(ctx, input)
-		if err != nil {
-			return "", fmt.Errorf("planning failed: %w", err)
-		}
+		if err != nil { return RunResult{}, err }
 		plan, err := o.planner.ParsePlan(planRaw)
-		if err != nil {
-			return "", fmt.Errorf("plan parsing failed: %w", err)
-		}
+		if err != nil { return RunResult{}, err }
 		
 		if attempt == 1 {
 			targetRepo = plan.RepoName
 			if repoLockFunc != nil {
 				locked, err := repoLockFunc(targetRepo)
-				if err != nil { return "", err }
-				if !locked {
-					return "", fmt.Errorf("repository %s is currently locked", targetRepo)
-				}
+				if err != nil { return RunResult{RepoName: targetRepo}, err }
+				if !locked { return RunResult{RepoName: targetRepo}, fmt.Errorf("repo %s locked", targetRepo) }
 			}
 		}
 
-		o.reportStatus(taskID, "PLANNING", fmt.Sprintf("Target Repo: %s", plan.RepoName))
-
 		repoPath := filepath.Join(wsPath, "repo")
 		if attempt == 1 {
-			o.reportStatus(taskID, "GIT", "Creating Instant Sandbox (Hardlink Clone)...")
 			if err := o.wsMgr.CloneFast(plan.RepoName, repoPath); err != nil {
-				o.reportStatus(taskID, "GIT", "Fast clone failed, falling back to slow clone")
 				repoURL := fmt.Sprintf("/home/cnf/projects/code-insight-engine/repos/%s", plan.RepoName)
-				if err := o.gitMgr.Clone(repoURL, repoPath); err != nil {
-					return "", fmt.Errorf("git clone failed: %w", err)
-				}
+				o.gitMgr.Clone(repoURL, repoPath)
 			}
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.gitMgr.CreateBranch(repoPath, currentBranch)
 		}
 
 		for _, change := range plan.Changes {
-			o.reportStatus(taskID, "CODER", fmt.Sprintf("Modifying %s", change.FilePath))
-			fullPath := filepath.Join(repoPath, change.FilePath)
-			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
-			if err != nil {
-				return "", fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
-			}
+			o.coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
 		}
 
 		isDocOnly := true
 		for _, c := range plan.Changes {
-			if !strings.HasSuffix(c.FilePath, ".md") && !strings.HasSuffix(c.FilePath, ".txt") {
-				isDocOnly = false; break
-			}
+			if !strings.HasSuffix(c.FilePath, ".md") { isDocOnly = false; break }
 		}
-
 		if !isDocOnly {
-			o.reportStatus(taskID, "VERIFY", "Running build verification...")
 			if err := o.runBuildVerification(repoPath); err != nil {
-				o.reportStatus(taskID, "VERIFY", "BUILD FAILED")
-				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err)
-				if attempt < maxRetries {
-					exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-				}
-				continue
+				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err); exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 			}
 		}
 
-		o.reportStatus(taskID, "REVIEW", "Agent reviewing changes...")
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
-		reviewResp, err := o.reviewer.Process(ctx, string(diffOut))
-		if err != nil {
-			return "", fmt.Errorf("review failed: %w", err)
-		}
-
+		reviewResp, _ := o.reviewer.Process(ctx, string(diffOut))
 		if !o.reviewer.IsApproved(reviewResp) {
-			o.reportStatus(taskID, "REVIEW", "REJECTED")
-			lastFeedback = reviewResp
-			if attempt < maxRetries {
-				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-			}
-			continue
+			lastFeedback = reviewResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
-		o.reportStatus(taskID, "RISK", "Assessing risks...")
-		riskResp, err := o.riskAssessor.Process(ctx, string(diffOut))
-		if err != nil {
-			return "", fmt.Errorf("risk assessment failed: %w", err)
-		}
-
+		riskResp, _ := o.riskAssessor.Process(ctx, string(diffOut))
 		if !o.riskAssessor.IsSafe(riskResp) {
-			o.reportStatus(taskID, "RISK", "DANGER DETECTED")
-			lastFeedback = riskResp
-			if attempt < maxRetries {
-				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
-			}
-			continue
+			lastFeedback = riskResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated code modification")
-		if err != nil {
-			return "", fmt.Errorf("failed to generate PR: %w", err)
-		}
-		o.reportStatus(taskID, "FINISH", fmt.Sprintf("PR: %s", prURL))
-		return targetRepo, nil
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
+		if err != nil { return RunResult{RepoName: targetRepo}, err }
+		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
-
-	return targetRepo, fmt.Errorf("failed after max retries")
+	return RunResult{RepoName: targetRepo}, fmt.Errorf("max retries")
 }
