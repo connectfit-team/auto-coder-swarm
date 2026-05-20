@@ -47,13 +47,17 @@ type TaskLog struct {
 	CreatedAt time.Time
 }
 
-// ThoughtLog stores the detailed Chain-of-Thought (CoT) chunks from agents.
 type ThoughtLog struct {
 	ID        uint      `gorm:"primaryKey"`
 	TaskID    uint      `gorm:"index"`
 	AgentName string
 	Message   string    `gorm:"type:text"`
 	CreatedAt time.Time
+}
+
+type Setting struct {
+	Key   string `gorm:"primaryKey"`
+	Value string `gorm:"type:text"`
 }
 
 type Storage struct {
@@ -65,7 +69,7 @@ func NewStorage(dbPath string) (*Storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{})
+	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{}, &Setting{})
 	return &Storage{db: db}, nil
 }
 
@@ -207,6 +211,18 @@ func (s *Storage) GetThoughts(taskID uint) ([]ThoughtLog, error) {
 	return thoughts, err
 }
 
+func (s *Storage) GetSetting(key string) string {
+	var setting Setting
+	if err := s.db.Where("key = ?", key).First(&setting).Error; err != nil {
+		return ""
+	}
+	return setting.Value
+}
+
+func (s *Storage) SaveSetting(key, value string) error {
+	return s.db.Save(&Setting{Key: key, Value: value}).Error
+}
+
 func (s *Storage) MigrateLogs() {
-	s.db.AutoMigrate(&TaskLog{}, &ThoughtLog{})
+	s.db.AutoMigrate(&TaskLog{}, &ThoughtLog{}, &Setting{})
 }

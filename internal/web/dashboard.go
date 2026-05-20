@@ -1,16 +1,20 @@
 package web
 
 import (
+	"encoding/json"
+	"fmt"
 	"html/template"
-	"net/http"
-	"path/filepath"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
+
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
-	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
+	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 )
 
 type DashboardHandler struct {
@@ -135,6 +139,67 @@ func (h *DashboardHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "logs.html", map[string]interface{}{"Logs": string(out)})
 }
 
+func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request) {
+	// 1. Fetch available models from Ollama
+	resp, err := http.Get("http://localhost:11434/api/tags")
+	var models struct {
+		Models []struct {
+			Name    string `json:"name"`
+			Details struct {
+				ParameterSize string `json:"parameter_size"`
+			} `json:"details"`
+		} `json:"models"`
+	}
+	if err == nil {
+		json.NewDecoder(resp.Body).Decode(&models)
+		resp.Body.Close()
+	}
+
+	// 2. Fetch current settings from DB
+	primary := h.store.GetSetting("primary_model")
+	if primary == "" {
+		primary = "gemma4:31b"
+	}
+	voterStr := h.store.GetSetting("voter_models")
+	voterMap := make(map[string]bool)
+	for _, m := range strings.Split(voterStr, ",") {
+		if m != "" {
+			voterMap[m] = true
+		}
+	}
+	apiKey := h.store.GetSetting("swarm_api_key")
+
+	data := map[string]interface{}{
+		"Models":       models.Models,
+		"PrimaryModel": primary,
+		"VoterMap":     voterMap,
+		"ApiKey":       apiKey,
+	}
+	h.render(w, "settings.html", data)
+}
+
+func (h *DashboardHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.ParseForm()
+	primary := r.FormValue("primary_model")
+	voters := r.Form["voter_models"]
+	apiKey := r.FormValue("swarm_api_key")
+
+	h.store.SaveSetting("primary_model", primary)
+	h.store.SaveSetting("voter_models", strings.Join(voters, ","))
+	h.store.SaveSetting("swarm_api_key", apiKey)
+
+	// Update environment variable for immediate effect in api.handler (if possible)
+	// Note: os.Setenv only affects the current process, which is fine since api.handler reads it.
+	os.Setenv("SWARM_API_KEY", apiKey)
+
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
 func (h *DashboardHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", h.HandleHome)
 	mux.HandleFunc("GET /projects", h.HandleProjects)
@@ -147,4 +212,6 @@ func (h *DashboardHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /task/reject", h.HandleRejectTask)
 	mux.HandleFunc("GET /task/stream", h.stream.ServeHTTP)
 	mux.HandleFunc("GET /logs", h.HandleLogs)
+	mux.HandleFunc("GET /settings", h.HandleSettings)
+	mux.HandleFunc("POST /settings/update", h.HandleUpdateSettings)
 }

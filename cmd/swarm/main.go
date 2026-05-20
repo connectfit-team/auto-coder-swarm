@@ -12,10 +12,8 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
-	"github.com/connectfit-team/auto-coder-swarm/internal/llm"
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
-	"github.com/connectfit-team/auto-coder-swarm/internal/voter"
 	"github.com/connectfit-team/auto-coder-swarm/internal/web"
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
@@ -122,17 +120,12 @@ func main() {
 	agent.GlobalStream = &StreamAdapter{manager: sm}
 	agent.GlobalStorage = store
 	
-	baseURL := "http://localhost:11434"
-	gemma4 := llm.NewOllamaModel("gemma4:31b", baseURL)
-	llama3 := llm.NewOllamaModel("llama3:70b-instruct-q8_0", baseURL)
-	qwen := llm.NewOllamaModel("qwen2.5vl:32b", baseURL)
-	
-	v := voter.NewMultiModelVoter(gemma4, llama3, qwen)
-
 	ic := insightclient.NewClient("http://localhost:8005")
 	wsMgr := workspace.NewLocalManager("/tmp", "/home/cnf/projects/code-insight-engine/repos")
 	gitSvc := gitmgr.NewGitManager()
-	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, gemma4, store, v)
+	
+	// Orchestrator now loads models dynamically
+	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store)
 
 	workerCount := 3
 	log.Printf("⚙️ Starting %d concurrent swarm workers...", workerCount)

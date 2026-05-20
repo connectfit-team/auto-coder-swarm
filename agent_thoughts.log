@@ -30437,3 +30437,36 @@ MANDATORY RULES:
 [RESPONSE]
 [RESPONSE]
 [RESPONSE]
+```json
+{
+  "repo_name": "gig_mobile",
+  "changes": [
+    {
+      "file_path": "lib/api/user.api.dart",
+      "description": "사용자 API 메서드에 대한 상세 주석 추가",
+      "instructions": "인증 flow, 전화번호 인증, 프로필 업데이트 시 토큰 갱신 로직, 사용자 권한(IS_WORKER)에 따른 약관 조회 로직에 대한 설명 추가"
+    },
+    {
+      "file_path": "lib/admob/google_admob/admob.manager.dart",
+      "description": "애드몹 매니저 싱글톤 구조 및 관련 로직에 대한 상세 주석 추가",
+      "instructions": "싱글톤 구조 설명, UserProperty를 이용한 Ad ID 캐싱 전략, 서버 동기화 flow, 이벤트 중복 전송 방지 로직에 대한 상세 설명 추가"
+    },
+    {
+      "file_path": "lib/api/work_stamp_api.dart",
+      "description": "근무 기록 API의 벌크 처리 및 청크 업로드 동기화 메커니즘에 대한 상세 주석 추가",
+      "instructions": "근무 기록 생성/삭제의 벌크 처리 방식, 정산(Settle)의 비즈니스 의미, gRPC 스트림을 이용한 1,000개 단위의 청크 업로드 동기화 메커니즘에 대한 상세 설명 추가"
+    },
+    {
+      "file_path": "lib/api/salary.api.dart",
+      "description": "급여 계산 API의 복잡한 필터에 대한 목적과 사용법 설명 추가",
+      "instructions": "급여 계산 시 적용되는 필터(withTax, withHoliday, 태그/타입/요일 필터)의 목적과 사용법을 명시하여 UI 레이어에서의 오용 방지"
+    },
+    {
+      "file_path": "lib/admob/advertisement.controller.dart",
+      "description": "광고 컨트롤러 추상화에 대한 계약 정의 주석 추가",
+      "instructions": "광고 대상 판별 인터페이스(ADTargetChecker) 및 보상형 광고의 생명주기(request → show → useRewarded)에 대한 계약 정의 주석 추가"
+    }
+  ]
+}
+```
+==============================================================

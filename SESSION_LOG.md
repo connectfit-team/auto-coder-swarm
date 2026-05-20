@@ -1,22 +1,23 @@
-# 📝 Session Log: 2026-05-20 (Refined CoT & Full Audit)
+# 📝 Session Log: 2026-05-20 (Dynamic Settings & Model Control)
 
 ## 🎯 Strategic Intent
-- **Policy Refinement**: Optimized log rotation size (100MB) and added auto-cleanup for disk safety.
-- **System Audit**: Conducted end-to-end verification of Phase 8 features and finalized Phase 9 initiation.
-- **Stability Lockdown**: Ensured all documentation and implementation are perfectly synced.
+- **Dynamic Intelligence Control**: Enabled users to choose and switch LLM models via the web dashboard.
+- **Model Drift Resolution**: Addressed the issue of changing models by centralizing model selection in the database.
+- **Immediate Applicability**: Ensured that new model settings apply to the very next task without a server restart.
 
 ## ✅ Accomplishments
-- **Log Management**: Reduced rotation threshold to 100MB and implemented a Keep last 10 backups policy in `internal/agent/agent.go`.
-- **CoT Persistence**: Verified that all agent headers and prompts are persisted in SQLite, enabling immediate intent visibility in history.
-- **Cleanup**: Removed all temporary Go scripts and redundant files to maintain a lean workspace.
-- **Documentation**: Fully updated `PROJECTS.md` and `PROCESSES.md` to reflect the current architectural state.
+- **Storage Layer**: Added `Setting` model to SQLite for persistent configuration.
+- **Dashboard**: Created `/settings` page that fetches live model tags from Ollama and allows selecting Primary and Voter models.
+- **Orchestrator Refactor**: Modified `SwarmOrchestrator` to load models dynamically from the DB at the start of each task.
+- **API Security Control**: Integrated `SWARM_API_KEY` management into the settings dashboard.
+- **Cleanup**: Initialized default settings via script and confirmed system stability.
 
 ## 🛡️ Project Integrity
-- **Safety**: API Key protection is active and verified.
-- **Reliability**: Git Worktree sandboxing is confirmed stable across multiple tasks.
-- **Observability**: SSE History + Real-time stream is functional and tested.
+- **Build**: Successfully rebuilt and redeployed the service with dynamic loading.
+- **UX**: Sidebar now points to Settings, and the UI provides real-time feedback from the Ollama registry.
+- **Concurrency**: Model loading is thread-safe and per-task, preventing global state conflicts.
 
 ## 📈 Future Trajectory
 - **Phase 9 (Enterprise Readiness)**:
-    - Step 37: Advanced Persistence & Crash Recovery.
-    - Step 38: Prometheus Metrics Integration.
+    - Step 38: Enhanced Crash Recovery (Stage-level).
+    - Step 39: Prometheus Metrics.

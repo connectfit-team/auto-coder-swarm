@@ -3,24 +3,23 @@
 ## 📊 Current Status: Phase 9 (Enterprise Readiness) - ACTIVE
 - Remote Host: 192.168.120.54
 - Primary Language: Go
-- Dependencies: code-insight-engine (Oracle), gh CLI
+- Dependencies: code-insight-engine (Oracle), gh CLI, Ollama
 
 ---
 
 ## 🛠️ Recent Achievements
-- [x] Phase 7: Self-Healing, Human-Approval, MSA Chain Modification Completed.
-- [x] Phase 8: Autonomous Ops & Real-time Monitoring Completed.
-- [x] **Step 36: Persistent CoT & History**: Agent reasoning (CoT) is now persisted in SQLite and can be retrieved historically on the dashboard.
-- [x] **Step 35: Enterprise API Security**: X-API-Key based authentication implemented.
-- [x] **Step 34: Live Chain-of-Thought (CoT) Streaming**: SSE-based real-time reasoning visualization.
+- [x] Phase 7~8: Self-Healing, CoT Streaming, Worktree Sandboxing Completed.
+- [x] **Step 37: Dynamic Model Configuration**: Added a Settings page to the dashboard to select Primary and Voter models dynamically from Ollama.
+- [x] **Step 36: Persistent CoT & Log Policy**: 100MB rotation and SQLite-based reasoning history.
+- [x] **Step 35: Enterprise API Security**: X-API-Key based authentication.
 
 ---
 
 ## 🎯 Next Tasks (Phase 9: Enterprise Readiness)
-- [ ] **Step 37: Log Rotation Policy**: Refine 1GB rotation and automatic cleanup of old log files.
-- [ ] **Step 38: Performance Metrics**: Export Prometheus metrics for latency and worker load.
-- [ ] **Step 39: Daily Swarm Activity Reporting**: Automated daily summaries.
+- [ ] **Step 38: State-level Task Recovery**: Detailed stage persistence to resume tasks exactly where they stopped.
+- [ ] **Step 39: Prometheus Metrics**: Export worker utilization and task latency metrics.
+- [ ] **Step 40: Multi-VCS & GitLab Support**: Expand beyond GitHub.
 
 ---
-*Status: Hardening for Enterprise Deployment.*
-*Last Updated: 2026-05-20 20:00*
+*Status: Dynamic Control & Observability Hardened.*
+*Last Updated: 2026-05-20 20:10*
