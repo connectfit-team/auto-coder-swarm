@@ -62,7 +62,6 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
 	o.reportStatus(taskID, "INIT", fmt.Sprintf("Starting task: %s", userRequest))
 
-	o.reportStatus(taskID, "ORACLE", "Requesting analysis...")
 	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
 	if err != nil {
 		return "", fmt.Errorf("oracle query failed: %w", err)
@@ -185,7 +184,7 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 		}
 
 		o.reportStatus(taskID, "SUCCESS", "Creating PR...")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated code modification")
 		if err != nil {
 			return "", fmt.Errorf("failed to generate PR: %w", err)
 		}

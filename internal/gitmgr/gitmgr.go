@@ -28,7 +28,13 @@ func (m *GitManager) CreateBranch(path, branchName string) error {
 	return nil
 }
 
-func (m *GitManager) PushApprovedChanges(path, branchName, message string) (string, error) {
+func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message string) (string, error) {
+	githubURL := fmt.Sprintf("https://github.com/connectfit-team/%s.git", repoName)
+	remoteCmd := exec.Command("git", "-C", path, "remote", "set-url", "origin", githubURL)
+	if out, err := remoteCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to set remote URL: %v, output: %s", err, string(out))
+	}
+
 	if out, err := exec.Command("git", "-C", path, "add", ".").CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git add failed: %v, output: %s", err, string(out))
 	}
@@ -46,7 +52,8 @@ func (m *GitManager) PushApprovedChanges(path, branchName, message string) (stri
 	prCmd := exec.Command("gh", "pr", "create", 
 		"--title", message, 
 		"--body", "This Pull Request was automatically generated and verified by the Auto-Coder Swarm.",
-		"--head", branchName)
+		"--head", branchName,
+		"--repo", fmt.Sprintf("connectfit-team/%s", repoName))
 	prCmd.Dir = path
 
 	out, err := prCmd.CombinedOutput()
