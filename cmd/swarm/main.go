@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -13,9 +16,6 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
-	"encoding/json"
-	"bytes"
-	"fmt"
 )
 
 const webhookURL = "https://hooks.slack.com/services/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"
@@ -34,7 +34,7 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 			continue
 		}
 
-		log.Printf("[Worker %d] Processing Task #%d (Status: %s)", id, task.ID, task.Status)
+		log.Printf("[Worker %d] Task #%d (Status: %s)", id, task.ID, task.Status)
 		store.UpdateTaskStatus(task.ID, storage.StatusRunning, "", "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -46,11 +46,11 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 		}
 
 		var statelessReq orchestrator.StatelessRequest
-		json.Unmarshal([]byte(task.UserRequest), &statelessReq)
+		if err := json.Unmarshal([]byte(task.UserRequest), &statelessReq); err != nil {
+			statelessReq = orchestrator.StatelessRequest{UserRequest: task.UserRequest}
+		}
 		
-		// If status is APPROVED, it means it's a resume from human check
 		isApproved := task.Status == storage.StatusApproved
-
 		res, err := orc.RunStatelessTask(ctx, statelessReq, isApproved, lockFunc)
 		cancel()
 
@@ -61,16 +61,23 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 			store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 		} else if res.WaitingApproval {
 			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
-			sendToSlack(fmt.Sprintf("⏳ *Task #%d 검증 완료*: 수정을 확인하고 승인해주세요.\n🔗 *승인 API*: `POST http://192.168.120.54:8006/api/v1/approve?id=%d`", task.ID, task.ID))
+			sendToSlack(fmt.Sprintf("⏳ *Task #%d 검증 완료*: 승인이 필요합니다.\n🔗 `POST http://192.168.120.54:8006/api/v1/approve?id=%d`", task.ID, task.ID))
 		} else {
-			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n🔗 *PR*: %s", task.ID, res.PRURL))
+			sendToSlack(fmt.Sprintf("✅ *Task #%d 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
+
+			// Step 22: Process Chained Tasks
+			for _, chainReq := range res.ChainTasks {
+				b, _ := json.Marshal(chainReq)
+				newToken, _ := store.CreateTask(string(b))
+				sendToSlack(fmt.Sprintf("🔗 *연쇄 작업 발견!* (#%d): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
+			}
 		}
 	}
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 7: Human-in-the-Loop Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 7: MSA Chain Enabled)")
 
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
