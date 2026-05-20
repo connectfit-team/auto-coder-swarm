@@ -23,9 +23,16 @@ type SwarmTask struct {
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 	UserRequest string         `gorm:"type:text"`
+	RepoName    string         `gorm:"index"` // Targeted repository
 	Status      TaskStatus     `gorm:"index"`
 	Result      string         `gorm:"type:text"`
 	ErrorLog    string         `gorm:"type:text"`
+}
+
+type RepoLock struct {
+	RepoName  string    `gorm:"primaryKey"`
+	LockedAt  time.Time
+	TaskID    uint
 }
 
 type Storage struct {
@@ -38,7 +45,7 @@ func NewStorage(dbPath string) (*Storage, error) {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&SwarmTask{}); err != nil {
+	if err := db.AutoMigrate(&SwarmTask{}, &RepoLock{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate schema: %w", err)
 	}
 
@@ -54,6 +61,10 @@ func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
 		return nil, err
 	}
 	return task, nil
+}
+
+func (s *Storage) UpdateTaskRepo(id uint, repoName string) error {
+	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Update("repo_name", repoName).Error
 }
 
 func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog string) error {
@@ -79,6 +90,31 @@ func (s *Storage) GetNextPendingTask() (*SwarmTask, error) {
 	return &task, nil
 }
 
+func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
+	if repoName == "" { return true, nil } // No repo specified yet
+	
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var lock RepoLock
+		if err := tx.Where("repo_name = ?", repoName).First(&lock).Error; err == nil {
+			// Lock exists
+			return fmt.Errorf("repo already locked")
+		}
+		// Create lock
+		return tx.Create(&RepoLock{RepoName: repoName, LockedAt: time.Now(), TaskID: taskID}).Error
+	})
+	
+	if err != nil {
+		return false, nil // Failed to lock
+	}
+	return true, nil
+}
+
+func (s *Storage) UnlockRepo(repoName string) error {
+	if repoName == "" { return nil }
+	return s.db.Where("repo_name = ?", repoName).Delete(&RepoLock{}).Error
+}
+
 func (s *Storage) ResetRunningToPending() error {
+	s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&RepoLock{})
 	return s.db.Model(&SwarmTask{}).Where("status = ?", StatusRunning).Update("status", StatusPending).Error
 }

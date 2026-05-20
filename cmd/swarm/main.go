@@ -20,19 +20,35 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 	for {
 		task, err := store.GetNextPendingTask()
 		if err != nil {
-			// No pending tasks, sleep and try again
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		log.Printf("[Worker %d] Processing Persistent Task #%d: %s", id, task.ID, task.UserRequest)
-		
-		// Mark as running
+		log.Printf("[Worker %d] Processing Task #%d: %s", id, task.ID, task.UserRequest)
 		store.UpdateTaskStatus(task.ID, storage.StatusRunning, "", "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-		err = orc.RunTask(ctx, task.UserRequest)
+		
+		// Custom Lock Injector: Locks the repo as soon as the Planner identifies it.
+		var lockedRepo string
+		lockFunc := func(repoName string) (bool, error) {
+			ok, err := store.TryLockRepo(repoName, task.ID)
+			if ok { 
+				lockedRepo = repoName 
+				store.UpdateTaskRepo(task.ID, repoName)
+			}
+			return ok, err
+		}
+
+		repoName, err := orc.RunTask(ctx, task.UserRequest, lockFunc)
 		cancel()
+
+		// Final cleanup: Unlock
+		if lockedRepo != "" {
+			store.UnlockRepo(lockedRepo)
+		} else if repoName != "" {
+			store.UnlockRepo(repoName)
+		}
 
 		if err != nil {
 			log.Printf("❌ Task #%d failed: %v", task.ID, err)
@@ -45,7 +61,7 @@ func worker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage)
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: SQLite Persistence Ready)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 4: Conflict Locking Ready)")
 
 	dbPath := os.ExpandEnv("/Users/bae/projects/auto-coder-swarm/swarm.db")
 	store, err := storage.NewStorage(dbPath)
@@ -53,7 +69,6 @@ func main() {
 		log.Fatalf("❌ Failed to init storage: %v", err)
 	}
 
-	// Recovery: Reset tasks that were stuck in 'RUNNING' status during crash
 	if err := store.ResetRunningToPending(); err != nil {
 		log.Printf("⚠️ Recovery warning: %v", err)
 	}
@@ -75,14 +90,12 @@ func main() {
 			http.Error(w, "query is required", http.StatusBadRequest)
 			return
 		}
-
 		task, err := store.CreateTask(query)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to create task: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
-		fmt.Fprintf(w, "Task #%d queued: %s\nCheck logs for progress.", task.ID, query)
+		fmt.Fprintf(w, "Task #%d queued: %s", task.ID, query)
 	})
 
 	log.Println("📡 Swarm listening for requests on :8006")
