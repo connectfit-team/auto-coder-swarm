@@ -32,6 +32,7 @@
 - No-Direct-Commit: 어떤 상황에서도 `main` 또는 `master` 브랜치에 직접 커밋하지 않으며, 오직 피처 브랜치와 PR을 통해서만 수정 사항을 제출함.
 - Multi-Step Verification: 작성-리뷰-위험평가-빌드테스트의 다단계 검증 필수.
 - Oracle-Dependent: 분석은 스스로 하지 않고 오직 `code-insight-engine`의 결과를 신뢰.
+- Chain-Safety: MSA 연쇄 수정(Step 22) 시 무한 루프 및 리소스 폭주 방지를 위해 Depth 제한과 인간 승인 단계를 필수적으로 결합함.
 
 ## 4. 시스템 구조 (Architecture)
 - /cmd/swarm: 메인 진입점 및 워커 풀 관리.
