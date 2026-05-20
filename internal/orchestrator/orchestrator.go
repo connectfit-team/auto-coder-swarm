@@ -64,13 +64,46 @@ func (o *SwarmOrchestrator) runBuildVerification(path string) error {
 	var cmd *exec.Cmd
 	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
+	} else if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
+		cmd = exec.Command("flutter", "analyze")
 	}
+
 	if cmd == nil { return nil }
 	cmd.Dir = path
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build failed: %v, output: %s", err, string(out))
 	}
 	return nil
+}
+
+// trySelfHealing analyzes build error and tries to fix environment.
+func (o *SwarmOrchestrator) trySelfHealing(taskID, path, errMsg string) bool {
+	o.reportStatus(taskID, "HEAL", "Analyzing build error for self-healing...")
+	
+	// Case 1: Missing Go modules
+	if strings.Contains(errMsg, "no required module provides package") || strings.Contains(errMsg, "missing go.sum entry") {
+		o.reportStatus(taskID, "HEAL", "Detected missing Go dependencies. Running go mod tidy...")
+		cmd := exec.Command("/usr/local/go/bin/go", "mod", "tidy")
+		cmd.Dir = path
+		if err := cmd.Run(); err == nil {
+			o.reportStatus(taskID, "HEAL", "go mod tidy successful.")
+			return true
+		}
+	}
+
+	// Case 2: Flutter/Dart dependency issues
+	if strings.Contains(errMsg, "pub get") || strings.Contains(errMsg, "Target of URI doesn't exist") {
+		o.reportStatus(taskID, "HEAL", "Detected missing Flutter dependencies. Running flutter pub get...")
+		cmd := exec.Command("flutter", "pub", "get")
+		cmd.Dir = path
+		if err := cmd.Run(); err == nil {
+			o.reportStatus(taskID, "HEAL", "flutter pub get successful.")
+			return true
+		}
+	}
+
+	o.reportStatus(taskID, "HEAL", "No automated fix available for this error.")
+	return false
 }
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessRequest, repoLockFunc func(string) (bool, error)) (RunResult, error) {
@@ -158,11 +191,27 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, req StatelessR
 			if !strings.HasSuffix(c.FilePath, ".md") { isDocOnly = false; break }
 		}
 		if !isDocOnly {
+			o.reportStatus(taskID, "VERIFY", "Running build verification...")
 			if err := o.runBuildVerification(repoPath); err != nil {
-				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err); exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+				// Step 24: Self-Healing Attempt
+				if o.trySelfHealing(taskID, repoPath, err.Error()) {
+					o.reportStatus(taskID, "VERIFY", "Retrying build after self-healing...")
+					if err = o.runBuildVerification(repoPath); err == nil {
+						o.reportStatus(taskID, "VERIFY", "Build FIXED by self-healing.")
+						goto build_passed
+					}
+				}
+
+				o.reportStatus(taskID, "VERIFY", "BUILD FAILED")
+				lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err)
+				if attempt < maxRetries {
+					exec.Command("git", "-C", repoPath, "checkout", ".").Run()
+				}
+				continue
 			}
 		}
 
+	build_passed:
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		diffStr := string(diffOut)
