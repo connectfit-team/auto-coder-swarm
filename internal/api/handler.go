@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
@@ -24,16 +25,29 @@ type TaskResponse struct {
 }
 
 type StatusResponse struct {
-	TaskID      uint   `json:"task_id"`
-	Status      string `json:"status"`
-	Result      string `json:"result,omitempty"`
-	ErrorLog    string `json:"error_log,omitempty"`
-	UpdatedAt   string `json:"updated_at"`
+	TaskID    uint   `json:"task_id"`
+	Status    string `json:"status"`
+	Result    string `json:"result,omitempty"`
+	ErrorLog  string `json:"error_log,omitempty"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func (h *SwarmHandler) checkAuth(r *http.Request) bool {
+	expectedKey := os.Getenv("SWARM_API_KEY")
+	if expectedKey == "" {
+		return true // Dev mode: No key required if env not set
+	}
+	clientKey := r.Header.Get("X-API-Key")
+	return clientKey == expectedKey
 }
 
 func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.checkAuth(r) {
+		http.Error(w, "Unauthorized: Invalid or missing X-API-Key", http.StatusUnauthorized)
 		return
 	}
 	var req orchestrator.StatelessRequest
@@ -78,9 +92,13 @@ func (h *SwarmHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !h.checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseUint(idStr, 10, 32)
-	
+
 	err := h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
