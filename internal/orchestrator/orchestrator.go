@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -42,17 +43,35 @@ func (o *SwarmOrchestrator) reportStatus(taskID, stage, message string) {
 	log.Printf("[%s] [%s] [%s] %s", taskID, timestamp, stage, message)
 }
 
+func (o *SwarmOrchestrator) runBuildVerification(path string) error {
+	// Detect language and run basic check
+	var cmd *exec.Cmd
+	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
+	} else if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
+		cmd = exec.Command("flutter", "analyze")
+	}
+
+	if cmd == nil {
+		return nil // No known build system found
+	}
+
+	cmd.Dir = path
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("build/analyze failed: %v, output: %s", err, string(out))
+	}
+	return nil
+}
+
 func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, repoLockFunc func(string) (bool, error)) (string, error) {
 	taskID := fmt.Sprintf("T-%d", time.Now().UnixNano()%1000000)
 	o.reportStatus(taskID, "INIT", fmt.Sprintf("Starting task: %s", userRequest))
 
-	o.reportStatus(taskID, "ORACLE", "Consulting Code-Insight Engine for context...")
 	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
 	if err != nil {
 		return "", fmt.Errorf("oracle query failed: %w", err)
 	}
 
-	o.reportStatus(taskID, "SANDBOX", "Creating isolated workspace...")
 	wsPath, err := o.wsMgr.CreateWorkspace()
 	if err != nil {
 		return "", fmt.Errorf("workspace setup failed: %w", err)
@@ -110,8 +129,19 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 			fullPath := filepath.Join(repoPath, change.FilePath)
 			_, err := o.coder.ModifyFile(ctx, fullPath, change.Instructions)
 			if err != nil {
-				return "", fmt.Errorf("coder failed: %w", err)
+				return "", fmt.Errorf("coder failed on %s: %w", change.FilePath, err)
 			}
+		}
+
+		// Step 13: Dynamic Build Verification
+		o.reportStatus(taskID, "VERIFY", "Running dynamic build verification inside sandbox...")
+		if err := o.runBuildVerification(repoPath); err != nil {
+			o.reportStatus(taskID, "VERIFY", fmt.Sprintf("BUILD FAILED: %v", err))
+			lastFeedback = fmt.Sprintf("THE MODIFIED CODE FAILED TO BUILD/ANALYZE:\n%v", err)
+			if attempt < maxRetries {
+				exec.Command("git", "-C", repoPath, "checkout", ".").Run()
+			}
+			continue
 		}
 
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
@@ -148,8 +178,8 @@ func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string, rep
 			continue
 		}
 
-		o.reportStatus(taskID, "SUCCESS", "All checks passed.")
-		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification")
+		o.reportStatus(taskID, "SUCCESS", "All checks passed (Build OK, Review OK, Risk SAFE).")
+		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, currentBranch, "feat: automated code modification with build verification")
 		if err != nil {
 			return "", fmt.Errorf("failed to generate PR: %w", err)
 		}
