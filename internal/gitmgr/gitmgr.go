@@ -2,8 +2,8 @@ package gitmgr
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
+	"strings"
 )
 
 type GitManager struct{}
@@ -29,14 +29,30 @@ func (m *GitManager) CreateBranch(path, branchName string) error {
 }
 
 func (m *GitManager) PushApprovedChanges(path, branchName, message string) (string, error) {
-	exec.Command("git", "-C", path, "add", ".").Run()
-	cmd := exec.Command("git", "-C", path, "commit", "-m", message)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("commit failed: %v, output: %s", err, string(out))
+	if out, err := exec.Command("git", "-C", path, "add", ".").CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add failed: %v, output: %s", err, string(out))
+	}
+
+	commitCmd := exec.Command("git", "-C", path, "commit", "-m", message)
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git commit failed: %v, output: %s", err, string(out))
 	}
 	
-	log.Printf("[GitManager] SIMULATION: git push origin %s", branchName)
-	
-	prURL := fmt.Sprintf("https://github.com/connectfit-team/simulated-pr/%s", branchName)
-	return prURL, nil
+	pushCmd := exec.Command("git", "-C", path, "push", "origin", branchName)
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git push failed: %v, output: %s", err, string(out))
+	}
+
+	prCmd := exec.Command("gh", "pr", "create", 
+		"--title", message, 
+		"--body", "This Pull Request was automatically generated and verified by the Auto-Coder Swarm.",
+		"--head", branchName)
+	prCmd.Dir = path
+
+	out, err := prCmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gh pr create failed: %v, output: %s", err, string(out))
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
