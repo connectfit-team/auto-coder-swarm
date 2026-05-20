@@ -10,16 +10,18 @@ import (
 	"strconv"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
+	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
 )
 
 type DashboardHandler struct {
 	store    *storage.Storage
 	worker   *worker.Manager
+	stream   *stream.Manager
 	tmplPath string
 }
 
-func NewDashboardHandler(s *storage.Storage, w *worker.Manager, tmplPath string) *DashboardHandler {
-	return &DashboardHandler{store: s, worker: w, tmplPath: tmplPath}
+func NewDashboardHandler(s *storage.Storage, w *worker.Manager, sm *stream.Manager, tmplPath string) *DashboardHandler {
+	return &DashboardHandler{store: s, worker: w, stream: sm, tmplPath: tmplPath}
 }
 
 func (h *DashboardHandler) render(w http.ResponseWriter, page string, data interface{}) {
@@ -143,5 +145,6 @@ func (h *DashboardHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /task/stop", h.HandleStopTask)
 	mux.HandleFunc("POST /task/approve", h.HandleApproveTask)
 	mux.HandleFunc("POST /task/reject", h.HandleRejectTask)
+	mux.HandleFunc("GET /task/stream", h.stream.ServeHTTP)
 	mux.HandleFunc("GET /logs", h.HandleLogs)
 }

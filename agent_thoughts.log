@@ -29292,3 +29292,692 @@ class SalaryAPI implements SalaryRepo {
   }
 }
 
+
+==================== [2026-05-20 19:09:46] AGENT: Critic ====================
+[PROMPT]
+You are the Swarm Logic Critic.
+Analyze the following proposed code modification plan and identify potential flaws, edge cases, or risks.
+Be constructive but strict. If the plan is perfect, say 'PERFECT'.
+
+[Proposed Plan]
+```json
+{
+  "repo_name": "gig_mobile",
+  "changes": [
+    {
+      "file_path": "lib/api/user.api.dart",
+      "description": "Add detailed DartDoc comments for User API business logic",
+      "instructions": "Add documentation explaining the authentication flow (isAuthenticated), phone number verification (sendVerifyCode, checkVerifyCode), token renewal logic during profile updates, and the logic for querying terms based on user permissions (IS_WORKER)."
+    },
+    {
+      "file_path": "lib/admob/google_admob/admob.manager.dart",
+      "description": "Add detailed DartDoc comments for AdMob Manager",
+      "instructions": "Add documentation explaining the singleton structure, the Ad ID caching strategy using UserProperty, the server synchronization flow, and the mechanism to prevent duplicate event transmission (_sentEventsByTransaction)."
+    },
+    {
+      "file_path": "lib/api/work_stamp_api.dart",
+      "description": "Add detailed DartDoc comments for Work Stamp API",
+      "instructions": "Add documentation explaining the bulk processing method for creating/deleting work records, the business meaning of 'Settle', and the detailed synchronization mechanism for chunk uploads of 1,000 units using gRPC streams."
+    },
+    {
+      "file_path": "lib/api/salary.api.dart",
+      "description": "Add detailed DartDoc comments for Salary Calculation API",
+      "instructions": "Add documentation clarifying the purpose and usage of complex filters (withTax, withHoliday, and tag/type/day-of-week filters) to prevent misuse in the UI layer."
+    },
+    {
+      "file_path": "lib/admob/advertisement.controller.dart",
+      "description": "Add detailed DartDoc comments for Advertisement Controller abstraction",
+      "instructions": "Add documentation for the ADTargetChecker interface and define the contract for the rewarded ad lifecycle (request → show → useRewarded)."
+    }
+  ]
+}
+```
+[RESPONSE]
+**CRITIQUE REPORT**
+
+The proposed plan is primarily a documentation effort. While the risk of introducing functional regressions is near zero, the risk of **"Documentation Drift"** (where comments inaccurately describe the code) is high.
+
+**Potential Flaws & Risks:**
+
+1.  **The "Truth" Gap:** The plan instructs the developer to explain complex logic (e.g., gRPC stream chunks of 1,000 units in `work_stamp_api.dart` or token renewal in `user.api.dart`). If the developer misinterprets the existing code while writing these comments, the documentation becomes a "lie" that will mislead future developers.
+2.  **Implicit Contract vs. Explicit Contract:** In `advertisement.controller.dart`, the plan asks to "define the contract for the rewarded ad lifecycle." It is unclear if this is purely a text description in DartDoc or if the developer is expected to introduce an actual Interface/Abstract class. If it is purely documentation, a "contract" is not enforceable.
+3.  **Consistency Risk:** There is no mention of a specific documentation standard (e.g., Effective Dart). Without a style guide, different files may have varying levels of detail or formats.
+4.  **Maintenance Burden:** By adding high-detail documentation to volatile business logic (like salary filters), the team creates a maintenance debt where every logic change now requires a corresponding documentation update to prevent the aforementioned "Truth Gap."
+
+**Recommendations:**
+
+*   **Verification Step:** Add a requirement that the documentation must be verified against the current implementation by a second developer or a technical lead.
+*   **Clarification on "Contract":** Explicitly state whether the `ADTargetChecker` "contract" should be implemented via code (interfaces) or strictly via comments.
+*   **Reference Standard:** Specify that DartDoc should follow the [Effective Dart: Documentation](https://dart.dev/guides/language/effective-dart/documentation) guidelines.
+
+**Verdict:**
+**ACCEPTABLE WITH CAUTION.** (The plan is logically sound but requires a verification mechanism to ensure documentation accuracy).
+==============================================================
+
+==================== [2026-05-20 19:10:05] AGENT: Planner ====================
+[PROMPT]
+You are the Swarm Planner (Refinement Mode).
+You previously proposed a plan, but the Swarm Critic identified some issues.
+Improve your plan based on the criticism while staying consistent with the Oracle's analysis.
+
+MANDATORY RULES:
+1. Output ONLY a valid JSON object.
+2. Ensure ALL criticisms are addressed.
+
+[Oracle Analysis]
+[Cached Result] (WorkID: W-564797)
+`gig_mobile` 레포지토리의 핵심 비즈니스 로직 파일들을 분석하여, 유지보수성과 코드 가독성 향상을 위한 상세 주석(DartDoc) 추가 가이드를 작성하였습니다.
+
+분석 결과, 핵심 로직은 잘 구현되어 있으나 메서드 수준의 기술 문서가 부족하여 신규 개발자나 유지보수자가 비즈니스 흐름을 파악하는 데 어려움이 있을 수 있음을 확인했습니다. 이에 따라 다음 5가지 핵심 파일에 대해 상세한 주석 추가 사양을 `export_handoff`를 통해 기록했습니다.
+
+### 📝 주석 추가 대상 및 주요 내용
+
+1.  **`lib/api/user.api.dart` (사용자 API)**
+    *   **내용:** 인증 flow(`isAuthenticated`), 전화번호 인증(`sendVerifyCode`, `checkVerifyCode`), 프로필 업데이트 시 토큰 갱신 로직, 그리고 사용자 권한(`IS_WORKER`)에 따른 약관 조회 로직에 대한 설명 추가.
+
+2.  **`lib/admob/google_admob/admob.manager.dart` (애드몹 매니저)**
+    *   **내용:** 싱글톤 구조 설명, `UserProperty`를 이용한 Ad ID 캐싱 전략, 서버 동기화 flow, 그리고 이벤트 중복 전송 방지 로직(`_sentEventsByTransaction`)에 대한 상세 설명 추가.
+
+3.  **`lib/api/work_stamp_api.dart` (근무 기록 API)**
+    *   **내용:** 근무 기록 생성/삭제의 벌크 처리 방식, '정산(Settle)'의 비즈니스 의미, 특히 gRPC 스트림을 이용한 **1,000개 단위의 청크 업로드 동기화 메커니즘**에 대한 상세 설명 추가.
+
+4.  **`lib/api/salary.api.dart` (급여 계산 API)**
+    *   **내용:** 급여 계산 시 적용되는 복잡한 필터(`withTax`, `withHoliday`, 태그/타입/요일 필터)의 목적과 사용법을 명시하여 UI 레이어에서의 오용 방지.
+
+5.  **`lib/admob/advertisement.controller.dart` (광고 컨트롤러 추상화)**
+    *   **내용:** 광고 대상 판별 인터페이스(`ADTargetChecker`) 및 보상형 광고의 생명주기(`request` → `show` → `useRewarded`)에 대한 계약 정의 주석 추가.
+
+모든 분석 결과와 수정 제안은 WorkID `W-891159`에 기록되었으며, 해당 가이드에 따라 주석을 추가함으로써 코드의 비즈니스 의도를 명확히 할 수 있을 것입니다.
+
+### 📦 Multi-Agent Handoff Ready
+- 5개의 작업 패킷이 생성되었습니다. Auto-Coder Swarm이 이 데이터를 기반으로 수정을 시작할 수 있습니다.
+
+[Original Plan]
+```json
+{
+  "repo_name": "gig_mobile",
+  "changes": [
+    {
+      "file_path": "lib/api/user.api.dart",
+      "description": "Add detailed DartDoc comments for User API business logic",
+      "instructions": "Add documentation explaining the authentication flow (isAuthenticated), phone number verification (sendVerifyCode, checkVerifyCode), token renewal logic during profile updates, and the logic for querying terms based on user permissions (IS_WORKER)."
+    },
+    {
+      "file_path": "lib/admob/google_admob/admob.manager.dart",
+      "description": "Add detailed DartDoc comments for AdMob Manager",
+      "instructions": "Add documentation explaining the singleton structure, the Ad ID caching strategy using UserProperty, the server synchronization flow, and the mechanism to prevent duplicate event transmission (_sentEventsByTransaction)."
+    },
+    {
+      "file_path": "lib/api/work_stamp_api.dart",
+      "description": "Add detailed DartDoc comments for Work Stamp API",
+      "instructions": "Add documentation explaining the bulk processing method for creating/deleting work records, the business meaning of 'Settle', and the detailed synchronization mechanism for chunk uploads of 1,000 units using gRPC streams."
+    },
+    {
+      "file_path": "lib/api/salary.api.dart",
+      "description": "Add detailed DartDoc comments for Salary Calculation API",
+      "instructions": "Add documentation clarifying the purpose and usage of complex filters (withTax, withHoliday, and tag/type/day-of-week filters) to prevent misuse in the UI layer."
+    },
+    {
+      "file_path": "lib/admob/advertisement.controller.dart",
+      "description": "Add detailed DartDoc comments for Advertisement Controller abstraction",
+      "instructions": "Add documentation for the ADTargetChecker interface and define the contract for the rewarded ad lifecycle (request → show → useRewarded)."
+    }
+  ]
+}
+```
+
+[Swarm Critic Feedback]
+**CRITIQUE REPORT**
+
+The proposed plan is primarily a documentation effort. While the risk of introducing functional regressions is near zero, the risk of **"Documentation Drift"** (where comments inaccurately describe the code) is high.
+
+**Potential Flaws & Risks:**
+
+1.  **The "Truth" Gap:** The plan instructs the developer to explain complex logic (e.g., gRPC stream chunks of 1,000 units in `work_stamp_api.dart` or token renewal in `user.api.dart`). If the developer misinterprets the existing code while writing these comments, the documentation becomes a "lie" that will mislead future developers.
+2.  **Implicit Contract vs. Explicit Contract:** In `advertisement.controller.dart`, the plan asks to "define the contract for the rewarded ad lifecycle." It is unclear if this is purely a text description in DartDoc or if the developer is expected to introduce an actual Interface/Abstract class. If it is purely documentation, a "contract" is not enforceable.
+3.  **Consistency Risk:** There is no mention of a specific documentation standard (e.g., Effective Dart). Without a style guide, different files may have varying levels of detail or formats.
+4.  **Maintenance Burden:** By adding high-detail documentation to volatile business logic (like salary filters), the team creates a maintenance debt where every logic change now requires a corresponding documentation update to prevent the aforementioned "Truth Gap."
+
+**Recommendations:**
+
+*   **Verification Step:** Add a requirement that the documentation must be verified against the current implementation by a second developer or a technical lead.
+*   **Clarification on "Contract":** Explicitly state whether the `ADTargetChecker` "contract" should be implemented via code (interfaces) or strictly via comments.
+*   **Reference Standard:** Specify that DartDoc should follow the [Effective Dart: Documentation](https://dart.dev/guides/language/effective-dart/documentation) guidelines.
+
+**Verdict:**
+**ACCEPTABLE WITH CAUTION.** (The plan is logically sound but requires a verification mechanism to ensure documentation accuracy).
+[RESPONSE]
+```json
+{
+  "repo_name": "gig_mobile",
+  "global_instructions": "All documentation must strictly follow the [Effective Dart: Documentation](https://dart.dev/guides/language/effective-dart/documentation) guidelines. To prevent 'Documentation Drift', the developer must first perform a thorough code analysis to ensure the comments accurately reflect the current implementation. Focus on the 'intent' and 'business logic' rather than just repeating the code's syntax.",
+  "changes": [
+    {
+      "file_path": "lib/api/user.api.dart",
+      "description": "Add detailed DartDoc comments for User API business logic",
+      "instructions": "Verify the current implementation of authentication and token management. Add documentation explaining: 1) the authentication flow (isAuthenticated), 2) phone number verification (sendVerifyCode, checkVerifyCode), 3) the specific trigger and mechanism for token renewal during profile updates, and 4) how user permissions (IS_WORKER) determine the terms being queried."
+    },
+    {
+      "file_path": "lib/admob/google_admob/admob.manager.dart",
+      "description": "Add detailed DartDoc comments for AdMob Manager",
+      "instructions": "Analyze the singleton lifecycle and caching mechanism. Add documentation explaining: 1) the singleton structure, 2) the Ad ID caching strategy using UserProperty, 3) the synchronization flow with the server, and 4) the internal logic of _sentEventsByTransaction used to prevent duplicate event transmission."
+    },
+    {
+      "file_path": "lib/api/work_stamp_api.dart",
+      "description": "Add detailed DartDoc comments for Work Stamp API",
+      "instructions": "Verify the gRPC stream implementation. Add documentation explaining: 1) the bulk processing method for creating/deleting records, 2) the business definition of 'Settle' in the context of work records, and 3) the specific technical mechanism of the 1,000-unit chunk upload synchronization using gRPC streams to ensure data integrity."
+    },
+    {
+      "file_path": "lib/api/salary.api.dart",
+      "description": "Add detailed DartDoc comments for Salary Calculation API",
+      "instructions": "Document the business intent of complex filters (withTax, withHoliday, tag/type/day-of-week filters) to prevent misuse in the UI layer. Focus on 'when' and 'why' these filters should be applied rather than just 'what' they do, to minimize maintenance burden when logic shifts."
+    },
+    {
+      "file_path": "lib/admob/advertisement.controller.dart",
+      "description": "Add detailed DartDoc comments for Advertisement Controller abstraction",
+      "instructions": "Strictly via DartDoc (no code changes to interfaces), define the behavioral contract for the ADTargetChecker interface and the required lifecycle sequence for rewarded ads (request → show → useRewarded). The documentation should serve as a guide for future implementers of this controller."
+    }
+  ],
+  "verification_step": "After completing the documentation, the developer must perform a self-review checklist to ensure no 'Documentation Drift' exists: 1. Does the comment accurately describe the current code? 2. Does it follow Effective Dart standards? 3. Are business-critical constants (like the 1,000-unit chunk) correctly documented?"
+}
+```
+==============================================================
+
+==================== [2026-05-20 19:10:57] AGENT: Coder ====================
+[PROMPT]
+You are the Swarm Coder.
+Modify the following code based on the technical instructions.
+
+MANDATORY RULES:
+1. Provide the FULL file content after modification.
+2. Do not include any conversational text, ONLY the code.
+3. Maintain existing coding style.
+
+[Technical Instructions]
+Verify the current implementation of authentication and token management. Add documentation explaining: 1) the authentication flow (isAuthenticated), 2) phone number verification (sendVerifyCode, checkVerifyCode), 3) the specific trigger and mechanism for token renewal during profile updates, and 4) how user permissions (IS_WORKER) determine the terms being queried.
+
+[Original Code: /tmp/swarm_ws_a846e97f-7885-442a-977d-024c6a0abcc2/repo/lib/api/user.api.dart]
+// Package imports:
+import 'package:fixnum/fixnum.dart';
+
+// Project imports:
+import 'package:gig/model/app_repo.dart';
+import 'package:gig/model/common.dart';
+import 'package:gig/model/user.dart' as user;
+import 'package:gig_mobile_proto/proto/app.message.proto.dart' as pb_alarm hide Agreement;
+import 'package:gig_mobile_proto/proto/app.message.proto.dart' hide Agreement;
+import 'package:gig_mobile_proto/proto/app.notice.proto.dart';
+import 'package:gig_mobile_proto/proto_v2/common/type/v1/proto.dart';
+import 'package:gig_mobile_proto/proto_v2/google/protobuf/proto.dart' hide Duration;
+import 'package:gig_mobile_proto/proto_v2/policyapis/policy/v1/proto.dart' ;
+
+import 'package:gig_mobile_proto/proto_v2/userapis/advertisement/v1/proto.dart';
+
+
+import 'package:gig_mobile_proto/proto_v2/userapis/user/v1/proto.dart' hide Agreement;
+import 'package:gig_mobile_proto/proto_v2/userapis/user/v1/proto.dart'
+    as user_commu_pb;
+
+import 'package:gig_mobile_proto/proto_v2/userapis/user/v1/proto.dart' as user_msg_pb;
+
+import 'package:gig/rpc/client.dart';
+import 'package:gig/gig.dart';
+import 'package:grpc/grpc.dart';
+
+class UserAPI implements UserRepo {
+  @override
+  Future<GrpcResponse<ResponseAuthenticateFixed>> isAuthenticated({
+    required bool isGuest,
+    required bool afterSignIn,
+    required AccessData accessData,
+    String? adID,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().authenticateFixed,
+      RequestAuthenticateFixed(
+        isGuest: isGuest,
+        afterSignIn: afterSignIn,
+        accessData: accessData,
+        adid: adID,
+      ),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<GrpcResponse<ResponseSendVerificationCode>> sendVerifyCode(
+      String phoneNumber) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().sendVerificationCode,
+      user_commu_pb.RequestSendVerificationCode(
+        phoneNumber: phoneNumber.trim(),
+        countryCode: "",
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseCheckVerificationCode>> checkVerifyCode(
+      String phoneNumber, String verifyCode) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().checkVerificationCode,
+      user_commu_pb.RequestCheckVerificationCode(
+        phoneNumber: phoneNumber,
+        code: verifyCode,
+        countryCode: "",
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<String?> updateUser({
+    required String token,
+    required user.User user,
+  }) async {
+    final headers = <String, String>{};
+    headers['authorization'] = token;
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User(headers: headers).userUpdate,
+      user_commu_pb.RequestUserUpdate(
+        name: user.name,
+        gender: user.gender,
+        birthYear: user.birth_year == null ? 0 : user.birth_year!.year,
+        birthDate: user.birthDate == null
+            ? Int64(0)
+            : user.birthDate!.secondsSinceEpoch(),
+        phoneNumber: user.phoneNumber,
+        bankCode: user.bankCode,
+        accountNumber: user.accountNumber,
+        registrationNumber: user.requestAESRegistrationNumber,
+        address: user.address,
+        deviceId: await APP_DEVICE_ID,
+        deviceExecutedAt: Timestamp.fromDateTime(DateTime.now()),
+        email: user.email,
+      ),
+    ).perform();
+    if (resp.hasError || !resp.hasMessage) {
+      throw Exception('Failed to update profile: ${resp.errorText}');
+    }
+    final newToken = resp.message!.token;
+    return newToken;
+  }
+
+  @override
+  Future<GrpcResponse> deleteAccount(
+    List<UserSignOutReasonType> reasonTypes,
+    String otherText,
+  ) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().accountDelete,
+      user_commu_pb.RequestAccountDelete(
+        reasonTypes: reasonTypes,
+        otherText: otherText,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<user_commu_pb.ResponseSignUpCEO> signUpCEO({
+    required user_msg_pb.SignUpForm form,
+    required String tradeName,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().signUpCEO,
+      user_commu_pb.RequestSignUpCEO(
+        form: form,
+        tradeName: tradeName,
+      ),
+    ).exec();
+  }
+
+  @override
+  Future<Agreement> getAgreement() async {
+    final resp = await GrpcHandler.makeRequest(
+      IS_WORKER
+          ? AppGrpcClient().Policy().getWorkerAgreement
+          : AppGrpcClient().Policy().getCEOAgreement,
+      GetAgreementRequest(),
+    ).perform();
+    if (!resp.hasMessage || resp.hasError) {
+      logger.e("getAgreement error: ${resp.errorText}");
+      throw resp.throwError();
+    }
+    return resp.message!.agreement;
+  }
+
+  @override
+  Future<Agreement> updateAgreement(List<AgreementUpdateItem> items) async {
+    final resp = await GrpcHandler.makeRequest(
+      IS_WORKER
+          ? AppGrpcClient().Policy().updateWorkerAgreement
+          : AppGrpcClient().Policy().updateCEOAgreement,
+      UpdateAgreementRequest(items: items),
+    ).exec();
+    return resp.agreement;
+  }
+
+  @override
+  Future<List<pb_alarm.Alarm>> getAlarmList() async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().App().alarmList,
+      AlarmRequest(),
+    ).perform();
+    if (resp.hasError) throw resp.throwError();
+    return resp.message!.alarms;
+  }
+
+  @override
+  Future<GrpcResponse<user_commu_pb.ResponsePrepareSignUpCEOFromWorker>>
+      prepareSignUpCEOFromWorker() async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().prepareSignUpCEOFromWorker,
+      user_commu_pb.RequestPrepareSignUpCEOFromWorker(),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<GrpcResponse<user_commu_pb.ResponseSignUpCEOFromWorker>>
+      signUpCEOFromWorker({
+    required user_msg_pb.SignUpForm form,
+    required String tradeName,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().signUpCEOFromWorker,
+      user_commu_pb.RequestSignUpCEOFromWorker(
+        signUpForm: form,
+        tradeName: tradeName,
+      ),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<String?> updateCEOProfile({
+    required String email,
+    required String phoneNumber,
+    required String name,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().updateCEOProfile,
+      user_commu_pb.RequestUpdateCEOProfile(
+        email: email,
+        phone: phoneNumber,
+        name: name,
+      ),
+    ).perform();
+    if (resp.hasError || !resp.hasMessage) return null;
+    final newToken = resp.message!.token;
+    return newToken;
+  }
+
+  @override
+  Future<GrpcResponse<ResponseGetAdvertisementList>> getAdvertisement({
+    required Environment environment,
+    required Target target,
+    required Position position,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().AdvertisementService().getAdvertisementList,
+      RequestGetAdvertisementList(
+        environment: environment,
+        target: target,
+        position: position,
+      ),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<GrpcResponse<ResponseCountAdvertisement>> getAdvertisementCount({
+    required Environment environment,
+    required Target target,
+    required Position position,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().AdvertisementService().countAdvertisement,
+      RequestCountAdvertisement(
+        environment: environment,
+        target: target,
+        position: position,
+      ),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<GrpcResponse<ResponseListMonthlyMemoExistence>> getMonthlyMemo({
+    required String startDate,
+    required String endDate,
+    String? requestDate,
+  }) async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().listMonthlyMemoExistence,
+      RequestListMonthlyMemoExistence(
+        startDate: startDate,
+        endDate: endDate,
+        requestDate: requestDate,
+      ),
+    ).perform();
+    return resp;
+  }
+
+  @override
+  Future<void> updateMonthlyMemo({
+    required String targetDate,
+    required String content,
+  }) async {
+    await GrpcHandler.makeRequest(
+      AppGrpcClient().User().updateMonthlyMemo,
+      RequestUpdateMonthlyMemo(
+        targetDate: targetDate,
+        content: content,
+      ),
+    ).exec();
+  }
+
+  @override
+  Future<List<AppNotice>> getNotices() async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().App().appNoticeShowListGet,
+      RequestAppNoticeShowListGet(),
+    ).exec();
+    return resp.notices;
+  }
+
+  @override
+  Future<List<AccessDevice>> getAccessDevices() async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().listAccessDevice,
+      RequestListAccessDevice(),
+    ).exec();
+    return resp.accessDevices;
+  }
+
+  @override
+  Future<GrpcResponse<ResponseDeleteAccessDevice>> deleteAccessDevice(
+      String deviceID) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().deleteAccessDevice,
+      RequestDeleteAccessDevice(deviceId: deviceID),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseSignOut>> signOut({
+    required String deviceID,
+    String? reason,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().signOut,
+      RequestSignOut(
+        deviceId: deviceID,
+        case_2: reason,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseUpdateFCMToken>> updateFCMToken({
+    required String token,
+    required String deviceID,
+    required String fcmToken,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User(token: token).updateFCMToken,
+      RequestUpdateFCMToken(
+        deviceId: deviceID,
+        fcmToken: fcmToken,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseSendChangePasswordEmailCode>>
+      sendResetPasswordEmailCode({
+    required String email,
+    required String appID,
+    required String version,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().sendChangePasswordEmailCode,
+      RequestSendChangePasswordEmailCode(
+        email: email,
+        appId: appID,
+        version: version,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseCheckChangePasswordEmailCode>>
+      checkResetPasswordEmailCode({
+    required String email,
+    required String code,
+    required isSignIn,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().checkChangePasswordEmailCode,
+      RequestCheckChangePasswordEmailCode(
+        email: email,
+        code: code,
+        isSignIn: isSignIn,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseChangePassword>> resetPassword({
+    required String excludeDeviceID,
+    required String password,
+    required String token,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User(token: token).changePassword,
+      RequestChangePassword(
+        excludeDeviceId: excludeDeviceID,
+        password: password,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseChangePasswordWithoutToken>>
+      resetPasswordWithoutToken({
+    required String excludeDeviceID,
+    required String code,
+    required String email,
+    required String password,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().changePasswordWithoutToken,
+      RequestChangePasswordWithoutToken(
+        excludeDeviceId: excludeDeviceID,
+        code: code,
+        email: email,
+        password: password,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseCheckAuthenticationFixed>> checkAuthentication({
+    required bool isGuest,
+    required String deviceID,
+    String? adID,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().User().checkAuthenticationFixed,
+      RequestCheckAuthenticationFixed(
+        isGuest: isGuest,
+        deviceId: deviceID,
+        adid: adID,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseGetActiveExternalAdvertisement>>
+      getActiveExternalAdvertisement() async {
+    final env = IS_PROD
+        ? Environment.ENVIRONMENT_PRODUCTION
+        : Environment.ENVIRONMENT_STAGING;
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().AdvertisementService().getActiveExternalAdvertisement,
+      RequestGetActiveExternalAdvertisement(environment: env),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseGetCEOActiveExternalAdvertisement>>
+      getCEOActiveExternalAdvertisement(String originID) async {
+    final env = IS_PROD
+        ? Environment.ENVIRONMENT_PRODUCTION
+        : Environment.ENVIRONMENT_STAGING;
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().AdvertisementService().getCEOActiveExternalAdvertisement,
+      RequestGetCEOActiveExternalAdvertisement(
+        environment: env,
+        originId: originID,
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<GrpcResponse<ResponseGetCoupangCozyProduct>> getCoupangCozyProduct({
+    required String userID,
+    required String adID,
+    required String subID,
+    required String size,
+    required String? di,
+  }) async {
+    return await GrpcHandler.makeRequest(
+      AppGrpcClient().AdvertisementService().getCoupangCozyProduct,
+      RequestGetCoupangCozyProduct(
+        userId: userID,
+        metadata: CoupangCozyMetadata(
+          adId: adID,
+          subId: subID,
+          imageSize: size, // e.g., "80x80", "94x94", "200x200"
+          di: di,
+        ),
+      ),
+    ).perform();
+  }
+
+  @override
+  Future<SocialAccess?> getSocialAccessInfo() async {
+    final resp = await GrpcHandler.makeRequest(
+      AppGrpcClient().User().getSocialAccessInfo,
+      RequestGetSocialAccessInfo(),
+    ).perform();
+
+    if (!resp.hasMessage || resp.hasError) {
+      throw Exception("Failed to get social access info: ${resp.errorText}");
+    }
+
+    final message = resp.message!;
+    return message.socialAccess;
+  }
+}
+

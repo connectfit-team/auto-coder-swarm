@@ -19,6 +19,8 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/web"
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
+	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
 
 const webhookURL = "https://hooks.slack.com/services/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"
@@ -29,9 +31,21 @@ func sendToSlack(message string) {
 	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
 }
 
+// StreamAdapter connects the stream manager to the agent layer
+type StreamAdapter struct {
+	manager *stream.Manager
+}
+
+func (a *StreamAdapter) Broadcast(taskID uint, agentName, message string) {
+	a.manager.Broadcast(stream.Thought{
+		TaskID:    taskID,
+		AgentName: agentName,
+		Message:   message,
+	})
+}
+
 func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage, wm *worker.Manager) {
 	for {
-		// STEP: Atomic Task Claiming (Concurrency Safe)
 		task, err := store.ClaimNextTask()
 		if err != nil {
 			time.Sleep(2 * time.Second)
@@ -40,7 +54,9 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		log.Printf("[Worker %d] Task #%d (Status: %s)", id, task.ID, task.Status)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		// Inject task_id into context for streaming
+		ctx := context.WithValue(context.Background(), "task_id", task.ID)
+		ctx, cancel := context.WithCancel(ctx)
 		wm.Register(task.ID, cancel)
 
 		lockFunc := func(repoName string) (bool, error) {
@@ -90,7 +106,7 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 8: Multi-Worker Enabled)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 9: Enterprise Readiness)")
 
 	dbPath := "/home/cnf/projects/auto-coder-swarm/swarm.db"
 	store, err := storage.NewStorage(dbPath)
@@ -100,8 +116,11 @@ func main() {
 	store.ResetRunningToPending()
 
 	wm := worker.NewManager()
+	sm := stream.NewManager()
 	
-	// Multi-Model Setup for Voting (Step 26)
+	// Plug the stream manager into the global agent layer
+	agent.GlobalStream = &StreamAdapter{manager: sm}
+	
 	baseURL := "http://localhost:11434"
 	gemma4 := llm.NewOllamaModel("gemma4:31b", baseURL)
 	llama3 := llm.NewOllamaModel("llama3:70b-instruct-q8_0", baseURL)
@@ -114,7 +133,6 @@ func main() {
 	gitSvc := gitmgr.NewGitManager()
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, gemma4, store, v)
 
-	// STEP: Parallel Scalability (Multi-Worker)
 	workerCount := 3
 	log.Printf("⚙️ Starting %d concurrent swarm workers...", workerCount)
 	for w := 1; w <= workerCount; w++ {
@@ -124,9 +142,9 @@ func main() {
 	mux := http.NewServeMux()
 	handler := api.NewSwarmHandler(store)
 	handler.RegisterRoutes(mux)
-	dashHandler := web.NewDashboardHandler(store, wm, "/home/cnf/projects/auto-coder-swarm/web/templates")
+	dashHandler := web.NewDashboardHandler(store, wm, sm, "/home/cnf/projects/auto-coder-swarm/web/templates")
 	dashHandler.RegisterRoutes(mux)
 
-	log.Println("📡 Swarm API & Dashboard listening on :8006")
+	log.Println("📡 Swarm API & Dashboard & CoT Stream listening on :8006")
 	log.Fatal(http.ListenAndServe(":8006", mux))
 }

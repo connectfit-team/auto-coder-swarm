@@ -10,6 +10,12 @@ import (
 	"google.golang.org/genai"
 )
 
+type Broadcaster interface {
+	Broadcast(taskID uint, agentName, message string)
+}
+
+var GlobalStream Broadcaster
+
 type Agent interface {
 	Name() string
 	Process(ctx context.Context, input string) (string, error)
@@ -27,6 +33,8 @@ type FileChange struct {
 }
 
 func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string, error) {
+	taskID, _ := ctx.Value("task_id").(uint)
+
 	logPath := "/home/cnf/projects/auto-coder-swarm/agent_thoughts.log"
 	f, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if f != nil {
@@ -54,7 +62,11 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 			return "", err
 		}
 		for _, p := range resp.Content.Parts {
-			respText += p.Text
+			chunk := p.Text
+			respText += chunk
+			if GlobalStream != nil && taskID > 0 {
+				GlobalStream.Broadcast(taskID, agentName, chunk)
+			}
 		}
 	}
 
