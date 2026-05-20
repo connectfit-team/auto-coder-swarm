@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
@@ -12,27 +14,57 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 )
 
-func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Phase 2: Step 5 Implementation)")
+type Task struct {
+	UserRequest string
+	ResponseCh  chan error
+}
 
-	// 1. Setup Dependencies
+func worker(id int, orc *orchestrator.SwarmOrchestrator, tasks <-chan Task) {
+	for t := range tasks {
+		log.Printf("[Worker %d] Processing task: %s", id, t.UserRequest)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		err := orc.RunTask(ctx, t.UserRequest)
+		cancel()
+		t.ResponseCh <- err
+	}
+}
+
+func main() {
+	log.Println("🚀 Auto-Coder Swarm Starting (Phase 3: Step 9 Concurrency Ready)")
+
 	ollamaModel := llm.NewOllamaModel("gemma4:31b", "http://localhost:11434")
 	ic := insightclient.NewClient("http://localhost:8005")
 	wsMgr := workspace.NewLocalManager("/tmp")
 	gitSvc := gitmgr.NewGitManager()
-	
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, ollamaModel)
 
-	// 2. Define a real task
-	userRequest := "gig_mobile 레포지토리의 easy_locale_manager.dart 파일에서 deviceLanguage 함수가 한국어(KR)를 명시적으로 처리하도록 코드를 수정해줘."
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-	defer cancel()
-
-	// 3. Run Pipeline (Analysis -> Planning -> Sandbox -> Cloning -> Coding)
-	if err := orc.RunTask(ctx, userRequest); err != nil {
-		log.Fatalf("❌ Swarm task failed: %v", err)
+	taskQueue := make(chan Task, 100)
+	numWorkers := 2 
+	for w := 1; w <= numWorkers; w++ {
+		go worker(w, orc, taskQueue)
 	}
 
-	log.Println("✅ Swarm task: changes successfully applied in isolated workspace.")
+	http.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		if query == "" {
+			http.Error(w, "query is required", http.StatusBadRequest)
+			return
+		}
+
+		respCh := make(chan error)
+		taskQueue <- Task{UserRequest: query, ResponseCh: respCh}
+		
+		fmt.Fprintf(w, "Task queued: %s\nWaiting for results...", query)
+		go func() {
+			err := <-respCh
+			if err != nil {
+				log.Printf("❌ Task failed: %v", err)
+			} else {
+				log.Printf("✅ Task completed: %s", query)
+			}
+		}()
+	})
+
+	log.Println("📡 Swarm listening for requests on :8006")
+	log.Fatal(http.ListenAndServe(":8006", nil))
 }
