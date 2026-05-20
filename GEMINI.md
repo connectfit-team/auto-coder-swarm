@@ -6,6 +6,7 @@
 - **Exception**: Document updates (e.g., this `GEMINI.md`) should be maintained in synchronization with the local workspace.
 
 ## Engineering Standards
+- **Branch Protection**: NEVER commit directly to `main` or `master`. All changes must occur in a unique feature branch and be submitted via Pull Request.
 - **Language**: Go 1.23+
 - **Architecture**: Layered Architecture (cmd/app, internal/agent, internal/workspace, etc.)
 - **Conventions**:

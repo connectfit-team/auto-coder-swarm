@@ -29,6 +29,7 @@
 
 ## 3. 설계 철학 (Design Philosophy)
 - Isolation-First: 메인 소스 코드 보호를 위해 항상 격리된 임시 폴더에서 작업.
+- No-Direct-Commit: 어떤 상황에서도 `main` 또는 `master` 브랜치에 직접 커밋하지 않으며, 오직 피처 브랜치와 PR을 통해서만 수정 사항을 제출함.
 - Multi-Step Verification: 작성-리뷰-위험평가-빌드테스트의 다단계 검증 필수.
 - Oracle-Dependent: 분석은 스스로 하지 않고 오직 `code-insight-engine`의 결과를 신뢰.
 
