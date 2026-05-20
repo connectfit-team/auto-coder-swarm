@@ -1,0 +1,48 @@
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
+	"google.golang.org/adk/model"
+)
+
+type SwarmOrchestrator struct {
+	insightClient *insightclient.Client
+	planner       *agent.PlannerAgent
+	coder         *agent.CoderAgent
+	reviewer      *agent.ReviewerAgent
+}
+
+func NewSwarmOrchestrator(ic *insightclient.Client, llm model.LLM) *SwarmOrchestrator {
+	return &SwarmOrchestrator{
+		insightClient: ic,
+		planner:       agent.NewPlannerAgent(llm),
+		coder:         agent.NewCoderAgent(llm),
+		reviewer:      agent.NewReviewerAgent(llm),
+	}
+}
+
+func (o *SwarmOrchestrator) RunTask(ctx context.Context, userRequest string) error {
+	log.Printf("[Orchestrator] Starting task: %s", userRequest)
+
+	log.Println("[Orchestrator] Step 1: Consulting the Oracle...")
+	analysis, err := o.insightClient.QueryOracle(ctx, userRequest)
+	if err != nil {
+		return fmt.Errorf("failed to get analysis from oracle: %w", err)
+	}
+	log.Println("[Orchestrator] Oracle analysis received.")
+
+	log.Println("[Orchestrator] Step 2: Planning modifications...")
+	plan, err := o.planner.Process(ctx, analysis)
+	if err != nil {
+		return fmt.Errorf("planning failed: %w", err)
+	}
+	log.Printf("[Orchestrator] Plan generated: %s", plan)
+
+	// Coder and Reviewer logic will be implemented next
+	return nil
+}
