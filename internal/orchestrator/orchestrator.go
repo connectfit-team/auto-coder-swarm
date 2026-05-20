@@ -28,6 +28,7 @@ type SwarmOrchestrator struct {
 	coder         *agent.CoderAgent
 	reviewer      *agent.ReviewerAgent
 	riskAssessor  *agent.RiskAssessorAgent
+	critic        *agent.CriticAgent
 	summarizer    *agent.SummarizerAgent
 	llm           model.LLM
 	store         *storage.Storage
@@ -59,6 +60,7 @@ func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gi
 		coder:         agent.NewCoderAgent(llm),
 		reviewer:      agent.NewReviewerAgent(llm),
 		riskAssessor:  agent.NewRiskAssessorAgent(llm),
+		critic:        agent.NewCriticAgent(llm),
 		summarizer:    agent.NewSummarizerAgent(llm),
 		llm:           llm,
 		store:         s,
@@ -180,21 +182,28 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		}
 
 		// STEP 26: Multi-Model Voting for Planning
-		var plan agent.Plan
 		var planRaw string
 		if o.voter != nil {
 			o.recordStage(taskID, "VOTING", "다중 모델 투표 기반 최적 계획 선정 중 (Step 26)...")
 			prompt := o.planner.BuildPrompt(input)
 			voteRes, _ := o.voter.Vote(ctx, "Planner", prompt)
 			planRaw = voteRes.Winner
-			if voteRes.Conflicting {
-				o.recordStage(taskID, "CONFLICT", "모델 간 의견 불일치 감지. 다수결 채택.")
-			}
 		} else {
 			planRaw, _ = o.planner.Process(ctx, input)
 		}
+
+		// STEP 33: Agentic Dialogue (Critic Loop)
+		o.recordStage(taskID, "DIALOGUE", "에이전트 간 비판 및 보완 토론 진행 중 (Step 33)...")
+		criticism, _ := o.critic.Process(ctx, planRaw)
+		if strings.Contains(strings.ToUpper(criticism), "PERFECT") {
+			o.recordStage(taskID, "CONSENSUS", "계획이 완벽함으로 합의됨.")
+		} else {
+			o.recordStage(taskID, "REFINE", "비판 의견 수용 및 계획 보강 중...")
+			refinedPlan, _ := o.planner.Refine(ctx, analysis, planRaw, criticism)
+			planRaw = refinedPlan
+		}
 		
-		plan, err = o.planner.ParsePlan(planRaw)
+		plan, err := o.planner.ParsePlan(planRaw)
 		if err != nil { return RunResult{}, err }
 
 		if attempt == 1 {
@@ -310,7 +319,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		}
 
 		o.reportStatus(logID, "SUCCESS", "Creating PR...")
-		o.recordStage(taskID, "SUCCESS", "GitHub Pull Request 생성 중...")
+		o.reportStatus(logID, "SUCCESS", "GitHub Pull Request 생성 중...")
 		prURL, err := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated modification")
 		if err != nil { 
 			o.recordStage(taskID, "ERROR", "PR 생성 실패: "+err.Error())

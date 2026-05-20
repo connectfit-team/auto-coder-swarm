@@ -45,8 +45,31 @@ MANDATORY RULES:
 ` + oracleAnalysis
 }
 
+func (a *PlannerAgent) BuildRefinePrompt(oracleAnalysis, originalPlan, criticism string) string {
+	return fmt.Sprintf(`You are the Swarm Planner (Refinement Mode).
+You previously proposed a plan, but the Swarm Critic identified some issues.
+Improve your plan based on the criticism while staying consistent with the Oracle's analysis.
+
+MANDATORY RULES:
+1. Output ONLY a valid JSON object.
+2. Ensure ALL criticisms are addressed.
+
+[Oracle Analysis]
+%s
+
+[Original Plan]
+%s
+
+[Swarm Critic Feedback]
+%s`, oracleAnalysis, originalPlan, criticism)
+}
+
 func (a *PlannerAgent) Process(ctx context.Context, oracleAnalysis string) (string, error) {
 	return CallLLM(ctx, a.llm, a.Name(), a.BuildPrompt(oracleAnalysis))
+}
+
+func (a *PlannerAgent) Refine(ctx context.Context, oracleAnalysis, originalPlan, criticism string) (string, error) {
+	return CallLLM(ctx, a.llm, a.Name(), a.BuildRefinePrompt(oracleAnalysis, originalPlan, criticism))
 }
 
 func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {
