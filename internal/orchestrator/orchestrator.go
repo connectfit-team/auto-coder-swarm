@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -20,15 +21,13 @@ import (
 	"google.golang.org/adk/model"
 )
 
-type ProjectType string
-
-const (
-	TypeGo      ProjectType = "Go"
-	TypeFlutter ProjectType = "Flutter"
-	TypePython  ProjectType = "Python"
-	TypeNodeJS  ProjectType = "NodeJS"
-	TypeUnknown ProjectType = "Unknown"
-)
+type ProjectMetadata struct {
+	Type          string   `json:"type"`           // e.g., "Go", "Flutter", "Hybrid"
+	BuildCommand  string   `json:"build_command"`  // e.g., "flutter analyze"
+	BenchCommand  string   `json:"bench_command"`  // e.g., "go test -bench=."
+	KeyFiles      []string `json:"key_files"`      // Files identified as critical
+	RiskAssessment string   `json:"risk_assessment"` // Potential build/env risks
+}
 
 type SwarmOrchestrator struct {
 	insightClient *insightclient.Client
@@ -92,54 +91,53 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 		newState := fmt.Sprintf("%s\n[%s] %s: %s", task.ContextState, time.Now().Format("15:04:05"), stage, message)
 		o.store.UpdateContextState(taskID, newState)
 	}
-	log.Printf("[T-%d] [%s] %s", taskID, stage, message)
 }
 
-func (o *SwarmOrchestrator) detectProjectType(path string) ProjectType {
-	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
-		return TypeGo
+func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, path string) ProjectMetadata {
+	primary, _ := o.loadModels()
+	
+	// Get directory structure via ls -R for LLM analysis
+	cmd := exec.Command("ls", "-R", path)
+	out, _ := cmd.CombinedOutput()
+	structure := string(out)
+	if len(structure) > 3000 { structure = structure[:3000] + "..." }
+
+	prompt := fmt.Sprintf(`레포지토리의 파일 구조를 분석하여 프로젝트의 성격과 최적의 빌드/검증 명령어를 판단해줘.
+단순히 특정 파일의 존재만 보지 말고, 전체적인 레이아웃과 설정 파일들의 연관성을 지능적으로 분석해라.
+
+[Directory Structure]
+%s
+
+MANDATORY JSON FORMAT:
+{
+  "type": "Go/Flutter/Python/NodeJS/etc",
+  "build_command": "상세 빌드 또는 분석 명령어 (예: flutter analyze, go build ./...)",
+  "bench_command": "성능 측정 명령어 (없으면 빈값)",
+  "key_files": ["감지된 주요 파일 목록"],
+  "risk_assessment": "환경적 리스크 요인 또는 주의사항"
+}
+출력은 오직 JSON만 허용한다.`, structure)
+
+	resp, _ := agent.CallLLM(ctx, primary, "Classifier", prompt)
+	
+	var meta ProjectMetadata
+	// Using the helper to clean markdown if LLM outputs it
+	jsonStr := extractJSON(resp)
+	if err := json.Unmarshal([]byte(jsonStr), &meta); err != nil {
+		log.Printf("[Classifier] Failed to parse LLM response: %v, RAW: %s", err, resp)
+		// Fallback to basic detection if LLM fails
+		return ProjectMetadata{Type: "Unknown", BuildCommand: "ls"}
 	}
-	if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
-		return TypeFlutter
-	}
-	if _, err := os.Stat(filepath.Join(path, "requirements.txt")); err == nil {
-		return TypePython
-	}
-	if _, err := os.Stat(filepath.Join(path, "package.json")); err == nil {
-		return TypeNodeJS
-	}
-	return TypeUnknown
+	return meta
 }
 
-func (o *SwarmOrchestrator) runBuildVerification(path string, pType ProjectType) (string, error) {
-	var cmd *exec.Cmd
-	switch pType {
-	case TypeGo:
-		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
-	case TypeFlutter:
-		cmd = exec.Command("/home/cnf/flutter/bin/flutter", "analyze")
-	case TypeNodeJS:
-		cmd = exec.Command("npm", "run", "build")
-	default:
-		return "Unknown project type, skipping build", nil
+func extractJSON(raw string) string {
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start != -1 && end != -1 && end > start {
+		return raw[start : end+1]
 	}
-	cmd.Dir = path
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("build failed (%s): %v", pType, err)
-	}
-	return string(out), nil
-}
-
-func (o *SwarmOrchestrator) runBenchmark(path string, pType ProjectType) (string, error) {
-	if pType == TypeGo {
-		cmd := exec.Command("/usr/local/go/bin/go", "test", "-bench=.", "-benchmem", "./...")
-		cmd.Dir = path
-		out, err := cmd.CombinedOutput()
-		if err != nil { return "", err }
-		return string(out), nil
-	}
-	return "", nil
+	return raw
 }
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
@@ -149,7 +147,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	reviewer := agent.NewReviewerAgent(primaryLLM)
 	critic := agent.NewCriticAgent(primaryLLM)
 
-	o.logDeepTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo), "", "")
+	o.logDeepTechnical(ctx, taskID, "INIT", "수정 작업 환경 준비", "", "")
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
@@ -161,7 +159,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 	var lastFeedback, currentBranch, targetRepo, finalDiff string
 	var preBench, postBench string
-	var pType ProjectType
+	var meta ProjectMetadata
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
@@ -182,10 +180,16 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
 			
-			// Intelligent Project Detection
-			pType = o.detectProjectType(repoPath)
-			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("프로젝트 타입 판별 결과: [%s]", pType), "", string(pType))
-			preBench, _ = o.runBenchmark(repoPath, pType)
+			// Autonomous Project Detection via LLM
+			meta = o.detectProjectTypeLLM(ctx, repoPath)
+			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별: [%s], 명령어: [%s]", meta.Type, meta.BuildCommand), "", meta.RiskAssessment)
+			
+			if meta.BenchCommand != "" {
+				cmd := exec.Command("bash", "-c", meta.BenchCommand)
+				cmd.Dir = repoPath
+				bOut, _ := cmd.CombinedOutput()
+				preBench = string(bOut)
+			}
 		}
 
 		for _, change := range plan.Changes {
@@ -193,15 +197,25 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 			coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
 		}
 
-		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 빌드 실행 중", pType), "", "")
-		buildOut, err := o.runBuildVerification(repoPath, pType)
+		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 자율 빌드 및 분석 실행", meta.Type), meta.BuildCommand, "")
+		
+		// Run the LLM-prescribed command
+		bCmd := exec.Command("bash", "-c", meta.BuildCommand)
+		bCmd.Dir = repoPath
+		buildOut, err := bCmd.CombinedOutput()
+		
 		if err != nil {
-			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자동 수리 시도", err.Error(), buildOut)
-			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, buildOut)
+			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도", string(buildOut), "")
+			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, string(buildOut))
 			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
-		if preBench != "" { postBench, _ = o.runBenchmark(repoPath, pType) }
+		if meta.BenchCommand != "" {
+			cmd := exec.Command("bash", "-c", meta.BenchCommand)
+			cmd.Dir = repoPath
+			bOut, _ := cmd.CombinedOutput()
+			postBench = string(bOut)
+		}
 		
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
