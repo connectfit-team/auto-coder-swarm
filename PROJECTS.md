@@ -1,36 +1,25 @@
 # 📘 Projects: Auto-Coder Swarm (Master Spec)
 
 ## 1. 프로젝트 목적 (Purpose)
-code-insight-engine의 분석 결과를 바탕으로 실제 코드를 수정하고, 다중 에이전트 협업을 통해 검증하며, 최종적으로 Pull Request를 자동 생성하는 자율형 코드 수정 플랫폼입니다.
+`code-insight-engine`의 분석 결과를 바탕으로 실제 코드를 수정하고, 다중 에이전트 협업을 통해 검증하며, 최종적으로 Pull Request를 자동 생성하는 자율형 코드 수정 플랫폼입니다.
 
-## 2. 프로젝트 로드맵 (Roadmap)
+## 2. 관리 핵심 문서 (Core Documents)
+1. **PROJECTS.md**: 마스터 사양 및 로드맵.
+2. **PROGRESS.md**: 현재 진행 중인 단계 및 성과 추적.
+3. **PROCESSES.md**: 시스템 운영, 복구 및 자원 관리 프로세스.
+4. **API_SPEC.md**: 외부 연동을 위한 Headless REST API 명세.
+5. **DEPLOYMENT.md**: 설치 및 배포 가이드.
 
-### Phase 1~7: 기반 구축 및 자율성 확보 (Completed)
-- UUID 격리, Git 연동, SQLite 작업 큐, 자가 치유(Self-Healing), Human-in-the-loop 승인 체계.
+## 3. 핵심 아키텍처 (Key Architecture)
+- **Headless API-First**: 모든 기능이 REST API로 노출.
+- **Deep Inspection Timeline**: 인터랙티브 타임라인을 통해 에이전트의 사고 과정, 프롬프트, 상세 요약을 투명하게 공개.
+- **Extensible UI Helper**: Go 템플릿 엔진에 사용자 정의 함수(FuncMap)를 도입하여 대시보드 확장성 확보.
 
-### Phase 8: 전략적 지능 및 관찰성 (Completed)
-- [x] Step 25~26: 성능 벤치마크 및 다중 모델(Gemma/Llama/Qwen) 투표 시스템.
-- [x] Step 30~32: 3x 동시 워커, 지능형 수리, Git Worktree 샌드박싱.
-- [x] Step 33~34: 에이전트 간 토론(Dialogue) 및 실시간 사고 과정(CoT) SSE 스트리밍.
-
+## 4. 로드맵 (Roadmap)
 ### Phase 9: 엔터프라이즈 엔지니어링 (Active)
-- [x] **Step 35: Enterprise API Security**: X-API-Key 기반 인증 구현.
-- [x] **Step 36: Persistent CoT & Log Policy**: 사고 과정 DB 영구 저장 및 100MB 단위 로그 로테이션(최대 10개 유지).
-- [ ] **Step 37: Persistence & Recovery**: 작업 상태 상세 추적 및 충돌 후 자동 복구 강화.
-- [ ] **Step 38: Prometheus Metrics**: 시스템 성능 지표(레이턴시, 워커 부하) 시각화.
-- [ ] **Step 39: Daily Activity Reporting**: 작업 내역 자동 요약 및 보고.
-
-## 3. 설계 철학 (Design Philosophy)
-- Isolation-First: Git Worktree를 통한 깨끗하고 빠른 격리 환경 유지.
-- High-Precision: 다중 모델 합의 및 에이전트 간 토론을 통한 무결점 지향.
-- Transparency: DB 영구 저장 및 SSE 스트리밍을 통한 투명한 사고 과정 노출.
-- Resource-Friendly: 100MB 단위 로그 로테이션 및 자동 정리를 통한 디스크 관리.
-
-## 4. 시스템 구조 (Architecture)
-- /cmd/swarm: 진입점 및 워커 제어.
-- /internal/agent: 에이전트 논리 및 LLM 래퍼 (로그 로테이션 포함).
-- /internal/stream: 실시간 SSE 중계 (히스토리 로드 지원).
-- /internal/storage: SQLite 기반 영속성 (ThoughtLog 추가).
+- [x] **Step 38: Headless API & SPEC**: API 기반 아키텍처 전환 완료.
+- [x] **Step 39: Deep Inspection UI**: 타임라인 아코디언 및 프롬프트 감사 기능 완료.
+- [x] **Step 40: Extensible Template Engine**: 템플릿 엔진 버그 수정 및 확장 구조 구축 완료.
 
 ---
-*최종 갱신: 2026-05-20 (Full Audit 완료)*
+*최종 감사: 2026-05-21 (UI 확장성 강화 완료)*

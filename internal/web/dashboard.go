@@ -28,7 +28,7 @@ func NewDashboardHandler(s *storage.Storage, w *worker.Manager, sm *stream.Manag
 	return &DashboardHandler{store: s, worker: w, stream: sm, tmplPath: tmplPath}
 }
 
-// helpers defines custom functions for Go templates, making the UI extensible.
+// helpers defines custom functions for Go templates.
 func (h *DashboardHandler) helpers() template.FuncMap {
 	return template.FuncMap{
 		"lower": strings.ToLower,
@@ -44,21 +44,29 @@ func (h *DashboardHandler) helpers() template.FuncMap {
 }
 
 func (h *DashboardHandler) render(w http.ResponseWriter, page string, data interface{}) {
-	layout := filepath.Join(h.tmplPath, "layout.html")
-	content := filepath.Join(h.tmplPath, page)
+	// Root-cause Fix: In Go html/template, Funcs() MUST be called before ParseFiles().
+	// Also, the template name used in New() must match the base name of one of the files being parsed.
+	tmpl := template.New(filepath.Base(page)).Funcs(h.helpers())
+	
+	// Add layout and actual page to the template group
+	layoutPath := filepath.Join(h.tmplPath, "layout.html")
+	contentPath := filepath.Join(h.tmplPath, page)
 
-	// Create a new template with custom functions before parsing files
-	tmpl := template.New("layout.html").Funcs(h.helpers())
-	tmpl, err := tmpl.ParseFiles(layout, content)
+	// Ensure layout is also named correctly if we want to use 'define "content"' patterns
+	// A more robust way is to use template.ParseFiles with a shared FuncMap template
+	baseTmpl := template.New("base").Funcs(h.helpers())
+	parsedTmpl, err := baseTmpl.ParseFiles(layoutPath, contentPath)
+	
 	if err != nil {
-		log.Printf("[Web] Template error: %v", err)
+		log.Printf("[Web] Template parse error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = tmpl.Execute(w, data)
+	// We execute "layout.html" which contains the overall structure and calls {{template "content" .}}
+	err = parsedTmpl.ExecuteTemplate(w, "layout.html", data)
 	if err != nil {
-		log.Printf("[Web] Execution error: %v", err)
+		log.Printf("[Web] Template execution error: %v", err)
 	}
 }
 
@@ -157,7 +165,6 @@ func (h *DashboardHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request) {
-	// 1. Fetch available models from Ollama
 	resp, err := http.Get("http://localhost:11434/api/tags")
 	var models struct {
 		Models []struct {
@@ -172,7 +179,6 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 		resp.Body.Close()
 	}
 
-	// 2. Fetch current settings from DB
 	primary := h.store.GetSetting("primary_model")
 	if primary == "" {
 		primary = "gemma4:31b"
