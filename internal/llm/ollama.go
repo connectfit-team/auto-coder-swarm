@@ -39,6 +39,8 @@ type ollamaRequest struct {
 	Model    string          `json:"model"`
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
+	Options  map[string]any  `json:"options,omitempty"`
+	KeepAlive string         `json:"keep_alive,omitempty"`
 }
 
 type ollamaResponse struct {
@@ -91,10 +93,12 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			})
 		}
 
+		// Optimization: keep_alive: -1 prevents unloading models between stages
 		apiReq := ollamaRequest{
-			Model:    m.name,
-			Messages: messages,
-			Stream:   false,
+			Model:     m.name,
+			Messages:  messages,
+			Stream:    false,
+			KeepAlive: "-1", 
 		}
 
 		body, _ := json.Marshal(apiReq)
