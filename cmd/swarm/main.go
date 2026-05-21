@@ -149,7 +149,7 @@ func main() {
 
 	// 5. Web Interface & API
 	mux := http.NewServeMux()
-	handler := api.NewSwarmHandler(store)
+	handler := api.NewSwarmHandler(store, wm)
 	handler.RegisterRoutes(mux)
 	dashHandler := web.NewDashboardHandler(store, wm, sm, templatesPath)
 	dashHandler.RegisterRoutes(mux)
