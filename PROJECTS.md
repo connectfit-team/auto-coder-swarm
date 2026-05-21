@@ -12,7 +12,9 @@
 ## 3. 핵심 아키텍처 (Key Architecture)
 - **4-Stage Intelligent Pipeline**: `INSPECTION`(규모 파악) -> `STRATEGY`(전략 수립) -> `ANALYSIS`(CIE 이해) -> `IMPLEMENTATION`(Swarm 구현) 체계.
 - **Multi-Agent Governance**: `Planner`(설계), `Coder`(수행), `Critic`(리스크), `Reviewer`(기능 승인)의 상호 견제 체계.
-- **Normalized WorkID (W-XXXXXX)**: CIE와 정렬된 랜덤 기반 고유 식별자 체계를 통한 작업 추적성 확보.
+- **Deep Observability (Prometheus)**: 에이전트별 소요 시간, 토큰 소모량, 성공률을 실시간 수집하여 `/metrics` 엔드포인트로 노출하는 모니터링 계층.
+- **Advanced Self-Healing v2**: 빌드/테스트 실패 시 `Healer` 에이전트가 오류 로그를 분석하여 지능적 수정(의존성 설치, 코드 보정)을 수행하는 자가 치유 루프.
+
 - **Context-Aware Lifecycle**: `exec.CommandContext`를 통한 즉각적인 작업 중단 및 안전한 자원 회수.
 
 ## 4. 로드맵 (Roadmap)
@@ -23,9 +25,12 @@
 - [x] **Step 45: Functional Integrity Mandate**: GEMINI.md에 무결성 보장 원칙 및 역할 분리(Eyes/Hands) 각인 완료.
 - [x] **Step 46: Multi-Agent Consensus**: 4단계 거버넌스 및 리스크 검토 프로세스 고도화 완료.
 - [x] **Step 47: Security Guardrails**: 코드 내 기밀 정보(Secrets) 및 취약점 자동 감지 엔진 구축 완료.
-- [ ] **Step 42: Prometheus Metrics**: 작업 지연 시간 및 워커 부하 지표 시각화.
+- [x] **Step 48: Advanced Self-Healing v2**: LLM 기반 오류 진단 및 자동 코드 보정 엔진 구축 완료.
+- [x] **Step 42: Prometheus Metrics**: 작업 지연 시간, 에이전트 성공률 및 토큰 사용량 시각화 완료.
 - [ ] **Step 43: Swarm Activity Reporting**: 일일 작업 요약 및 브리핑 자동 생성.
 
 ---
 *최종 감사: 2026-05-21 (4단계 지능형 파이프라인 및 W-ID 체계 확립 완료)*
+ 지능형 파이프라인 및 W-ID 체계 확립 완료)*
+-ID 체계 확립 완료)*
  지능형 파이프라인 및 W-ID 체계 확립 완료)*

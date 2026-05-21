@@ -21,6 +21,7 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/security"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func getEnv(key, fallback string) string {
@@ -161,6 +162,8 @@ func main() {
 	handler.RegisterRoutes(mux)
 	dashHandler := web.NewDashboardHandler(store, wm, sm, templatesPath)
 	dashHandler.RegisterRoutes(mux)
+
+	mux.Handle("GET /metrics", promhttp.Handler())
 
 	log.Printf("📡 Swarm API & Dashboard listening on %s", listenAddr)
 	log.Fatal(http.ListenAndServe(listenAddr, mux))

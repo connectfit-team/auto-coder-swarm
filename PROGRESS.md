@@ -26,7 +26,10 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Database Purge & Reset**: 모든 이전 데이터를 청소하고 새로운 ID 체계와 4단계 워크플로우를 위한 클린 환경을 구축했습니다.
 - [x] **4-Stage Workflow (Eyes & Hands)**: `Inspection-Strategy-Analysis-Implementation` 파이프라인을 구축하여 작업 규모를 사전에 제어하고 역할(이해/구현)을 분리했습니다.
 - [x] **Modular Security Guardrails**: PR 생성 전 Secrets 및 보안 취약점을 스캔하는 모듈형 가드레 일 체계를 구축하여 `Critic` 에이전트와 연동했습니다.
+- [x] **Advanced Self-Healing v2**: 빌드 실패 시 `Healer` 에이전트가 진단하고 코드를 자동 수정 하는 지능형 자가 치유 루프를 구현했습니다.
+- [x] **Deep Observability (Prometheus)**: 에이전트별 지연 시간, 성공률, 토큰 사용량을 실시간 수 집하여 \`/metrics\` 엔드포인트로 제공합니다.
 - [x] **Systemd Daemonization**: `nohup`을 폐기하고 공식 서비스 등록을 완료했습니다.
+
 - [x] **Documentation Unification**: 운영 지침과 진행 상황을 본 문서로 통합했습니다.
 
 ---

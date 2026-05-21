@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
+	"github.com/connectfit-team/auto-coder-swarm/internal/observability"
 )
 
 type Broadcaster interface {
@@ -100,10 +101,17 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 	if f != nil { fmt.Fprint(f, "[RESPONSE]\n") }
 
 	for resp, err := range it {
-		if err != nil { return "", err }
+		if err != nil {
+			observability.IncrementAgentOp(agentName, "llm_error")
+			return "", err
+		}
 		for _, p := range resp.Content.Parts {
 			chunk := p.Text
 			respText += chunk
+
+			// [Observability] Estimate token usage
+			observability.AddTokenUsage(agentName, m.Name(), len(chunk)/4+1)
+
 			if taskID != "" {
 				if GlobalStream != nil { GlobalStream.Broadcast(taskID, agentName, chunk) }
 				if GlobalStorage != nil { GlobalStorage.AddThought(taskID, agentName, chunk) }
