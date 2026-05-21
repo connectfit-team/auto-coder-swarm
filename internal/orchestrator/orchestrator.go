@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -21,11 +20,11 @@ import (
 )
 
 type ProjectMetadata struct {
-	Type          string   `json:"type"`           // e.g., "Go", "Flutter", "Hybrid"
-	BuildCommand  string   `json:"build_command"`  // e.g., "flutter analyze"
-	BenchCommand  string   `json:"bench_command"`  // e.g., "go test -bench=."
-	KeyFiles      []string `json:"key_files"`      // Files identified as critical
-	RiskAssessment string   `json:"risk_assessment"` // Potential build/env risks
+	Type          string   `json:"type"`
+	BuildCommand  string   `json:"build_command"`
+	BenchCommand  string   `json:"bench_command"`
+	KeyFiles      []string `json:"key_files"`
+	RiskAssessment string   `json:"risk_assessment"`
 }
 
 type SwarmOrchestrator struct {
@@ -95,42 +94,34 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, path string) ProjectMetadata {
 	primary, _ := o.loadModels()
 
-	// Get directory structure via tree (preferred) or ls -R for LLM analysis
 	var structure string
-	cmd := exec.Command("tree", "-L", "3", "-F", path)
+	cmd := exec.CommandContext(ctx, "tree", "-L", "3", "-F", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// Fallback to ls -R if tree is not installed
-		cmd = exec.Command("ls", "-R", path)
+		cmd = exec.CommandContext(ctx, "ls", "-R", path)
 		out, _ = cmd.CombinedOutput()
 	}
 	structure = string(out)
 	if len(structure) > 4000 { structure = structure[:4000] + "..." }
 
 	prompt := fmt.Sprintf(`레포지토리의 파일 구조를 분석하여 프로젝트의 성격과 최적의 빌드/검증 명령어를 판단해줘.
-단순히 특정 파일의 존재만 보지 말고, 전체적인 레이아웃과 설정 파일들의 연관성을 지능적으로 분석해라.
-
 [Directory Structure]
 %s
 
 MANDATORY JSON FORMAT:
 {
   "type": "Go/Flutter/Python/NodeJS/etc",
-  "build_command": "상세 빌드 또는 분석 명령어 (예: flutter analyze, go build ./...)",
-  "bench_command": "성능 측정 명령어 (없으면 빈값)",
-  "key_files": ["감지된 주요 파일 목록"],
-  "risk_assessment": "환경적 리스크 요인 또는 주의사항"
+  "build_command": "상세 빌드 명령어",
+  "bench_command": "성능 측정 명령어",
+  "key_files": ["주요 파일"],
+  "risk_assessment": "리스크"
 }
 출력은 오직 JSON만 허용한다.`, structure)
 
 	resp, _ := agent.CallLLM(ctx, primary, "Classifier", prompt)
-
 	var meta ProjectMetadata
-	// Using the helper to clean markdown if LLM outputs it
 	jsonStr := extractJSON(resp)
 	if err := json.Unmarshal([]byte(jsonStr), &meta); err != nil {
-		log.Printf("[Classifier] Failed to parse LLM response: %v, RAW: %s", err, resp)
-		// Fallback to basic detection if LLM fails
 		return ProjectMetadata{Type: "Unknown", BuildCommand: "ls"}
 	}
 	return meta
@@ -166,8 +157,9 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	var meta ProjectMetadata
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
+		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
+		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
 		input := analysis
 		if lastFeedback != "" { input += "\n\nFEEDBACK:\n" + lastFeedback }
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
@@ -183,45 +175,46 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		if attempt == 1 {
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
-
-			// Autonomous Project Detection via LLM
 			meta = o.detectProjectTypeLLM(ctx, repoPath)
-			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별: [%s], 명령어: [%s]", meta.Type, meta.BuildCommand), "", meta.RiskAssessment)
+			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별: [%s]", meta.Type), "", meta.RiskAssessment)
 
 			if meta.BenchCommand != "" {
-				cmd := exec.Command("bash", "-c", meta.BenchCommand)
+				cmd := exec.CommandContext(ctx, "bash", "-c", meta.BenchCommand)
 				cmd.Dir = repoPath
 				bOut, _ := cmd.CombinedOutput()
 				preBench = string(bOut)
 			}
 		}
 
+		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
+
 		for _, change := range plan.Changes {
 			o.logDeepTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 수정 중", change.FilePath), change.Instructions, "")
 			coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
 		}
 
-		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 자율 빌드 및 분석 실행", meta.Type), meta.BuildCommand, "")
+		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
-		// Run the LLM-prescribed command
-		bCmd := exec.Command("bash", "-c", meta.BuildCommand)
+		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 실행", meta.Type), meta.BuildCommand, "")
+		bCmd := exec.CommandContext(ctx, "bash", "-c", meta.BuildCommand)
 		bCmd.Dir = repoPath
 		buildOut, err := bCmd.CombinedOutput()
 
 		if err != nil {
+			if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도", string(buildOut), "")
 			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, string(buildOut))
-			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+			exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
 		if meta.BenchCommand != "" {
-			cmd := exec.Command("bash", "-c", meta.BenchCommand)
+			cmd := exec.CommandContext(ctx, "bash", "-c", meta.BenchCommand)
 			cmd.Dir = repoPath
 			bOut, _ := cmd.CombinedOutput()
 			postBench = string(bOut)
 		}
 
-		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
+		diffCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
 		o.store.UpdateTaskProposedDiff(taskID, finalDiff)
@@ -231,7 +224,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		if !reviewer.IsApproved(reviewResp) {
 			o.logDeepTechnical(ctx, taskID, "REJECTED", "내부 감사 반려", reviewInput, reviewResp)
-			lastFeedback = reviewResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+			lastFeedback = reviewResp; exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
 		if !isApproved {

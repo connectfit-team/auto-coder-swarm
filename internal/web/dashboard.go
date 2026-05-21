@@ -3,7 +3,6 @@ package web
 import (
 	"encoding/json"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,7 +26,6 @@ func NewDashboardHandler(s *storage.Storage, w *worker.Manager, sm *stream.Manag
 	return &DashboardHandler{store: s, worker: w, stream: sm, tmplPath: tmplPath}
 }
 
-// UISafeLog is a view-model to ensure templates never fail due to missing functions
 type UISafeLog struct {
 	CreatedAt  string
 	Stage      string
@@ -40,19 +38,12 @@ type UISafeLog struct {
 func (h *DashboardHandler) render(w http.ResponseWriter, page string, data interface{}) {
 	layoutPath := filepath.Join(h.tmplPath, "layout.html")
 	contentPath := filepath.Join(h.tmplPath, page)
-
-	// Create template without custom functions to avoid registration order risks
 	tmpl, err := template.ParseFiles(layoutPath, contentPath)
 	if err != nil {
-		log.Printf("[Web] Template parse error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	err = tmpl.ExecuteTemplate(w, "layout.html", data)
-	if err != nil {
-		log.Printf("[Web] Template execution error: %v", err)
-	}
+	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
 
 func (h *DashboardHandler) HandleHome(w http.ResponseWriter, r *http.Request) {
@@ -65,17 +56,14 @@ func (h *DashboardHandler) HandleTaskDetail(w http.ResponseWriter, r *http.Reque
 	idInt, _ := strconv.Atoi(idStr)
 	task, _ := h.store.GetTaskByID(uint(idInt))
 	rawLogs, _ := h.store.GetLogs(uint(idInt))
-	
+
 	var uiLogs []UISafeLog
 	for _, l := range rawLogs {
-		msg := l.Message
-		if msg == "" { msg = "(상세 메시지 없음)" }
-		
 		uiLogs = append(uiLogs, UISafeLog{
 			CreatedAt:  l.CreatedAt.Format("2006-01-02 15:04:05"),
 			Stage:      l.Stage,
 			StageLower: strings.ToLower(l.Stage),
-			Message:    msg,
+			Message:    l.Message,
 			Prompt:     l.Prompt,
 			Summary:    l.Summary,
 		})
@@ -90,9 +78,8 @@ func (h *DashboardHandler) HandleTaskDetail(w http.ResponseWriter, r *http.Reque
 func (h *DashboardHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	idInt, _ := strconv.Atoi(idStr)
-	if h.worker.Stop(uint(idInt)) {
-		h.store.UpdateTaskStatus(uint(idInt), storage.StatusCancelled, "", "Stopped by user")
-	}
+	h.store.UpdateTaskStatus(uint(idInt), storage.StatusCancelled, "", "Stopping...")
+	h.worker.Stop(uint(idInt))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -135,19 +122,13 @@ func (h *DashboardHandler) HandleUpdateProgress(w http.ResponseWriter, r *http.R
 }
 
 func (h *DashboardHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
-	cmd := exec.Command("git", "-C", "/home/cnf/projects/auto-coder-swarm", "log", "-n", "20", "--oneline", "--decorate", "--graph")
-	gitOut, _ := cmd.CombinedOutput()
-	
-	svcOut, _ := os.ReadFile("/home/cnf/projects/auto-coder-swarm/service.log")
-	lines := strings.Split(string(svcOut), "\n")
-	if len(lines) > 100 {
-		lines = lines[len(lines)-100:]
-	}
-	svcTail := strings.Join(lines, "\n")
+	gitOut, _ := exec.Command("git", "-C", "/home/cnf/projects/auto-coder-swarm", "log", "-n", "20", "--oneline", "--decorate", "--graph").CombinedOutput()
+
+	svcOut, _ := exec.Command("tail", "-n", "100", "/home/cnf/projects/auto-coder-swarm/service.log").CombinedOutput()
 
 	h.render(w, "logs.html", map[string]interface{}{
 		"Logs":    string(gitOut),
-		"SvcLogs": svcTail,
+		"SvcLogs": string(svcOut),
 	})
 }
 
@@ -155,8 +136,7 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 	resp, _ := http.Get("http://localhost:11434/api/tags")
 	var models struct {
 		Models []struct {
-			Name    string `json:"name"`
-			Details struct { ParameterSize string `json:"parameter_size"` } `json:"details"`
+			Name string `json:"name"`
 		} `json:"models"`
 	}
 	if resp != nil {
@@ -165,7 +145,6 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 	}
 
 	primary := h.store.GetSetting("primary_model")
-	if primary == "" { primary = "gemma4:31b" }
 	voters := h.store.GetSetting("voter_models")
 	voterMap := make(map[string]bool)
 	for _, m := range strings.Split(voters, ",") {
