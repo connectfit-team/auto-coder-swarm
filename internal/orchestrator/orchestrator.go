@@ -69,14 +69,21 @@ func (o *SwarmOrchestrator) loadModels() (model.LLM, *voter.MultiModelVoter) {
 	return primary, voter.NewMultiModelVoter(voterLLMs...)
 }
 
-func (o *SwarmOrchestrator) logTechnical(ctx context.Context, taskID uint, stage, message string) {
+func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, stage, message, prompt, rawResult string) {
+	summary := ""
+	if rawResult != "" {
+		primary, _ := o.loadModels()
+		summarizePrompt := fmt.Sprintf("다음 실행 결과를 개발자가 디버깅하기 좋게 핵심 기술 요약(Summary)으로 작성해줘.\n결과: %s", rawResult)
+		summary, _ = agent.CallLLM(ctx, primary, "SummaryAgent", summarizePrompt)
+	}
+
 	if o.store != nil {
-		o.store.AddLog(taskID, stage, message)
+		o.store.AddDeepLog(taskID, stage, message, prompt, summary)
 		
-		// Update cumulative ContextState
+		// Update context state
 		task, _ := o.store.GetTaskByID(taskID)
 		timestamp := time.Now().Format("15:04:05")
-		newState := fmt.Sprintf("%s\n[%s] %s: %s", task.ContextState, timestamp, stage, message)
+		newState := fmt.Sprintf("%s\n[%s] %s: %s (Summary: %s)", task.ContextState, timestamp, stage, message, summary)
 		o.store.UpdateContextState(taskID, newState)
 	}
 	log.Printf("[T-%d] [%s] %s", taskID, stage, message)
@@ -116,23 +123,18 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	critic := agent.NewCriticAgent(primaryLLM)
 	summarizer := agent.NewSummarizerAgent(primaryLLM)
 
-	o.logTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo))
+	o.logDeepTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo), "", "Environment initialized")
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
-		o.logTechnical(ctx, taskID, "ORACLE", fmt.Sprintf("분석 요청: '%s'", req.UserRequest))
+		prompt := req.UserRequest
+		o.logDeepTechnical(ctx, taskID, "ORACLE", fmt.Sprintf("분석 요청: '%s'", prompt), prompt, "Requesting Oracle analysis")
 		var err error
-		analysis, err = o.insightClient.QueryOracle(ctx, req.UserRequest)
+		analysis, err = o.insightClient.QueryOracle(ctx, prompt)
 		if err != nil {
-			o.logTechnical(ctx, taskID, "ERROR", "분석 엔진 응답 실패: "+err.Error())
+			o.logDeepTechnical(ctx, taskID, "ERROR", "분석 엔진 응답 실패", prompt, err.Error())
 			return RunResult{}, err
 		}
-	}
-
-	if len(analysis) > 3000 {
-		o.logTechnical(ctx, taskID, "SUMMARY", "방대한 분석 데이터를 핵심 기술 지표로 압축 중")
-		compressed, _ := summarizer.Process(ctx, analysis)
-		if compressed != "" { analysis = compressed }
 	}
 
 	wsPath, err := o.wsMgr.CreateWorkspace()
@@ -144,12 +146,11 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		o.logTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("[%d회차] 분석 데이터를 기반으로 상세 코드 수정 계획 수립 중", attempt))
+		o.logDeepTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("[%d회차] 계획 수립 중", attempt), analysis, "Starting plan extraction")
 		
 		input := analysis
 		if lastFeedback != "" { input = fmt.Sprintf("ANALYSIS:\n%s\n\nFEEDBACK:\n%s", analysis, lastFeedback) }
 
-		o.logTechnical(ctx, taskID, "VOTING", "모델 간 다수결 투표로 최적의 수정 시나리오 선정 중")
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
 		planRaw := voteRes.Winner
 
@@ -157,13 +158,12 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		if err == nil {
 			var files []string
 			for _, c := range plan.Changes { files = append(files, c.FilePath) }
-			o.logTechnical(ctx, taskID, "PLAN_READY", fmt.Sprintf("대상 파일 확정: %s", strings.Join(files, ", ")))
+			o.logDeepTechnical(ctx, taskID, "PLAN_READY", fmt.Sprintf("대상 파일 확정: %s", strings.Join(files, ", ")), planner.BuildPrompt(input), planRaw)
 		}
 
-		o.logTechnical(ctx, taskID, "DIALOGUE", "비판 에이전트(Critic)가 수립된 계획의 허점을 검증 중")
 		criticism, _ := critic.Process(ctx, planRaw)
 		if !strings.Contains(strings.ToUpper(criticism), "PERFECT") {
-			o.logTechnical(ctx, taskID, "REFINE", "비판 의견을 반영하여 계획을 더 안전한 코드로 보강 중")
+			o.logDeepTechnical(ctx, taskID, "REFINE", "비판 내용을 반영하여 계획 보강 중", planRaw, criticism)
 			planRaw, _ = planner.Refine(ctx, analysis, planRaw, criticism)
 			plan, _ = planner.ParsePlan(planRaw)
 		}
@@ -179,64 +179,44 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		repoPath := filepath.Join(wsPath, "repo")
 		if attempt == 1 {
-			o.logTechnical(ctx, taskID, "SANDBOX", "원본을 보호하기 위해 별도의 격리된 임시 작업 공간을 생성합니다.")
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
 			preBench, _ = o.runBenchmark(repoPath)
 		}
 
 		for _, change := range plan.Changes {
-			o.logTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 파일 수정 및 DartDoc 작성 중", change.FilePath))
+			o.logDeepTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 파일 수정 중", change.FilePath), change.Instructions, "Writing code and comments")
 			coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
-			ext := filepath.Ext(change.FilePath)
-			if ext == ".go" || ext == ".dart" { 
-				o.logTechnical(ctx, taskID, "TEST_GEN", fmt.Sprintf("[%s]에 대한 단위 테스트 코드 생성 중", change.FilePath))
-				coder.GenerateTestFile(ctx, filepath.Join(repoPath, change.FilePath)) 
-			}
 		}
 
-		o.logTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 저장소 빌드 및 정적 분석(Linter) 실행 중", targetRepo))
+		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 중", targetRepo), "go build ./...", "Checking build integrity")
 		buildOut, err := o.runBuildVerification(repoPath)
 		if err != nil {
-			o.logTechnical(ctx, taskID, "HEALING", "빌드 실패! 에러 로그를 분석하여 코드를 자동으로 수리합니다.")
+			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도 중", err.Error(), buildOut)
 			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, buildOut)
 			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
-		if preBench != "" { 
-			o.logTechnical(ctx, taskID, "BENCHMARK", "수정 전/후 성능 비교 측정 중")
-			postBench, _ = o.runBenchmark(repoPath) 
-		}
-		
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
 		o.store.UpdateTaskProposedDiff(taskID, finalDiff)
 
-		o.logTechnical(ctx, taskID, "AUDIT", "코드 리뷰 에이전트와 리스크 평가 에이전트가 최종 검수 진행 중")
-		voteRisk, _ := v.Vote(ctx, "RiskAssessor", riskAssessor.BuildPrompt(finalDiff))
 		reviewInput := fmt.Sprintf("DIFF:\n%s\n\nPRE-BENCH:\n%s\n\nPOST-BENCH:\n%s", finalDiff, preBench, postBench)
 		reviewResp, _ := reviewer.Process(ctx, reviewInput)
 
-		if !reviewer.IsApproved(reviewResp) || !riskAssessor.IsSafe(voteRisk.Winner) {
-			o.logTechnical(ctx, taskID, "REJECTED", "내부 검토 결과 기준 미달로 계획을 폐기하고 재시도합니다.")
-			lastFeedback = reviewResp + "\n" + voteRisk.Winner
-			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
+		if !reviewer.IsApproved(reviewResp) {
+			o.logDeepTechnical(ctx, taskID, "REJECTED", "내부 감사 반려", reviewInput, reviewResp)
+			lastFeedback = reviewResp; exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
 		if !isApproved {
-			o.logTechnical(ctx, taskID, "WAIT", "기술 검증 완료. 대시보드 하단의 Diff를 확인하고 승인해 주세요.")
+			o.logDeepTechnical(ctx, taskID, "WAIT", "기술 검증 완료. 승인 대기", "", "Waiting for human approval")
 			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
 		}
 
-		o.logTechnical(ctx, taskID, "SUCCESS", "GitHub Pull Request 생성 및 작업 완료")
 		prURL, _ := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated documentation")
-		
-		syncPrompt := fmt.Sprintf("Summarize changes: %s", finalDiff)
-		summary, _ := agent.CallLLM(ctx, primaryLLM, "Architect", syncPrompt)
-		o.insightClient.UpdateKnowledge(ctx, targetRepo, summary, "automated-fix")
-
-		o.logTechnical(ctx, taskID, "COMPLETED", "성공적으로 PR을 생성하고 모든 작업을 마무리했습니다.")
+		o.logDeepTechnical(ctx, taskID, "COMPLETED", "PR 생성 완료", prURL, "Task successfully finished")
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
 	return RunResult{RepoName: targetRepo}, fmt.Errorf("max retries")

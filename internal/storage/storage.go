@@ -31,7 +31,7 @@ type SwarmTask struct {
 	ErrorLog      string         `gorm:"type:text"`
 	ProposedDiff  string         `gorm:"type:text"`
 	HumanFeedback string         `gorm:"type:text"`
-	ContextState  string         `gorm:"type:text"` // New: Cumulative LLM-summarized state for debugging
+	ContextState  string         `gorm:"type:text"` 
 }
 
 type RepoLock struct {
@@ -45,6 +45,8 @@ type TaskLog struct {
 	TaskID    uint      `gorm:"index"`
 	Stage     string
 	Message   string    `gorm:"type:text"`
+	Prompt    string    `gorm:"type:text"` // Captures the exact prompt sent to LLM
+	Summary   string    `gorm:"type:text"` // Captures a detailed technical summary
 	CreatedAt time.Time
 }
 
@@ -123,6 +125,14 @@ func (s *Storage) UpdateContextState(id uint, state string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("context_state", state).Error
 }
 
+func (s *Storage) GetContextState(id uint) string {
+	var task SwarmTask
+	if err := s.DB.Select("context_state").First(&task, id).Error; err != nil {
+		return ""
+	}
+	return task.ContextState
+}
+
 func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 	var task SwarmTask
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
@@ -189,6 +199,18 @@ func (s *Storage) AddLog(taskID uint, stage, message string) error {
 		TaskID:    taskID,
 		Stage:     stage,
 		Message:   message,
+		CreatedAt: time.Now(),
+	}
+	return s.DB.Create(log).Error
+}
+
+func (s *Storage) AddDeepLog(taskID uint, stage, message, prompt, summary string) error {
+	log := &TaskLog{
+		TaskID:    taskID,
+		Stage:     stage,
+		Message:   message,
+		Prompt:    prompt,
+		Summary:   summary,
 		CreatedAt: time.Now(),
 	}
 	return s.DB.Create(log).Error

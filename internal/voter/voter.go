@@ -29,6 +29,15 @@ type NamedLLM interface {
 	Name() string
 }
 
+func extractJSON(raw string) string {
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start != -1 && end != -1 && end > start {
+		return raw[start : end+1]
+	}
+	return strings.TrimSpace(raw)
+}
+
 func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (VoteResult, error) {
 	var wg sync.WaitGroup
 	results := make([]string, len(v.models))
@@ -44,14 +53,14 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 				modelName = n.Name()
 			}
 			
-			// Use agent.CallLLM for logging and streaming
 			specificAgentName := fmt.Sprintf("%s (%s)", agentName, modelName)
 			text, err := agent.CallLLM(ctx, llm, specificAgentName, prompt)
 			if err != nil {
 				errors[idx] = err
 				return
 			}
-			results[idx] = strings.TrimSpace(text)
+			// Normalize by extracting JSON to increase consensus probability
+			results[idx] = extractJSON(text)
 		}(i, m)
 	}
 	wg.Wait()
@@ -72,9 +81,13 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 		}
 	}
 
-	// Fallback if no consensus
-	if winner == "" && len(results) > 0 {
-		winner = results[0]
+	if winner == "" {
+		for _, res := range results {
+			if res != "" {
+				winner = res
+				break
+			}
+		}
 	}
 
 	res := VoteResult{
@@ -83,6 +96,6 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 		Details:     results,
 	}
 
-	log.Printf("[Voter] [%s] Voting complete. Winner agreement: %d/%d", agentName, maxCount, len(v.models))
+	log.Printf("[Voter] [%s] Voting complete. Agreement: %d/%d. Winner Length: %d", agentName, maxCount, len(v.models), len(winner))
 	return res, nil
 }
