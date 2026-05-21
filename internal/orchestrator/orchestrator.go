@@ -147,15 +147,19 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	analysis := req.AnalysisContext
 	if analysis == "" {
 		sessionID := fmt.Sprintf("swarm-task-%d", taskID)
-		o.logDeepTechnical(ctx, taskID, "ORACLE", "코드 인사이트 엔진(CIE) 분석 쿼리 전송", req.UserRequest, "")
 		
-		res, err := o.insightClient.QueryOracle(ctx, req.UserRequest, sessionID)
+		// [Intelligence-First] Swarm generates a technical analysis prompt for CIE
+		oraclePrompt := fmt.Sprintf("[User Request]\n%s\n\n위 요청을 수행하기 위해 레포지토리를 정밀 분석해줘.\n1. 수정이 필요한 대상 파일들의 정확한 경로 목록\n2. 각 파일별 수정/추가해야 할 코드에 대한 상세 가이드 (함수명, 로직 설명 등)\n3. 해당 작업 시 주의해야 할 의존성이나 사이드 이펙트\n분석 결과는 나(Auto-Coder Swarm)의 코딩 에이전트가 즉시 작업에 착수할 수 있도록 구체적인 '기술 설계서' 형태로 제공해라.", req.UserRequest)
+
+		o.logDeepTechnical(ctx, taskID, "ORACLE", "코드 인사이트 엔진(CIE) 지능형 분석 요청 전송", oraclePrompt, "")
+		
+		res, err := o.insightClient.QueryOracle(ctx, oraclePrompt, sessionID)
 		if err != nil {
 			o.logDeepTechnical(ctx, taskID, "ERROR", "CIE 분석 쿼리 실패", err.Error(), "")
 			return RunResult{}, err
 		}
 		analysis = res
-		o.logDeepTechnical(ctx, taskID, "INIT", "분석 컨텍스트 확보 완료", "", analysis)
+		o.logDeepTechnical(ctx, taskID, "INIT", "분석 컨텍스트 확보 완료 (기술 설계서 수신)", "", analysis)
 	} else {
 		o.logDeepTechnical(ctx, taskID, "INIT", "외부 분석 컨텍스트 주입됨", "", analysis)
 	}
