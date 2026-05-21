@@ -30,6 +30,7 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Deep Observability (Prometheus & Raw Logs)**: 에이전트별 지연 시간, 성공률, 토큰 사용량을 수집하며, 대시보드 실시간 로그(Live Tail)에 **RAW LLM Prompt & Response**를 노출합니다.
 - [x] **Codebase Modularization**: Orchestrator 패키지 내 장문 파일(`flow.go`)을 기능별(`_analysis`, `_planning`, `_execution`, `_verification`)로 분리하여 유지보수성을 극대화했습니다.
 - [x] **Deep Stop (CIE API Sync)**: Swarm 작업 취소 시 CIE의 취소 API(`POST /api/v1/tasks/cancel`)를 연쇄 호출하여 원격 리소스를 안전하게 회수합니다.
+- [x] **Conversational Interface & API Split**: 대시보드 내에 채팅형 지시 기능(`chat.html`)을 추가하고, 방대해진 `handler.go` 및 `dashboard.go`를 분할하여 응집도를 높였습니다.
 - [x] **Systemd Daemonization**: `nohup`을 폐기하고 공식 서비스 등록을 완료했습니다.
 
 - [x] **Documentation Unification**: 운영 지침과 진행 상황을 본 문서로 통합했습니다.
@@ -39,8 +40,9 @@ The swarm engine is managed as a systemd daemon for stability.
 ## 🎯 Next Tasks (Phase 9 Expansion)
 - [x] **Step 42: Prometheus Metrics**: Export task latency and worker utilization metrics.
 - [x] **Step 43: Swarm Activity Reporting**: Automated daily summary generation.
-- [ ] **Step 51: MSA Chain Reaction**: Cross-repository trigger analysis and automated execution.
+- [x] **Step 51: API/Web Modularization & Conversational UI**: 대화형 인터페이스 구축 및 3차 코드베이스 모듈화.
+- [ ] **Step 52: MSA Chain Reaction**: Cross-repository trigger analysis and automated execution.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established. (System Purge & Reset Performed)*
-*Last Updated: 2026-05-21 16:45*
+*Last Updated: 2026-05-21 16:55*

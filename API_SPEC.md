@@ -15,12 +15,17 @@
 - **URL**: `GET /api/v1/tasks/detail?id={work_id}`
 - **Example**: `/api/v1/tasks/detail?id=W-54281`
 
-### 2.3 Submit Task
+### 2.3 Submit Task (Programmatic)
 - **URL**: `POST /api/v1/tasks`
 - **Body**: `orchestrator.StatelessRequest`
 - **Response**: `{ task_id: W-54281, status: PENDING }`
 
-### 2.4 Stop Task
+### 2.4 Submit Chat (Conversational)
+- **URL**: `POST /api/v1/chat`
+- **Body**: `{"message": "user request text"}`
+- **Response**: `{ task_id: W-54281, status: PENDING, message: "Task created from chat" }`
+
+### 2.5 Stop Task & Cascade CIE (Deep Stop)
 - **URL**: `POST /api/v1/tasks/stop?id={work_id}`
 
 ## 3. Real-time Streaming
@@ -29,4 +34,4 @@
 - **Data**: `data: { agent: Planner, message: ... }`
 
 ---
-*Last Updated: 2026-05-21 (WorkID Normalization & Deep Stop Integration Completed)*
+*Last Updated: 2026-05-21 (Chat API Integration & Handler Modularization)*
