@@ -24,7 +24,7 @@
 - **Response**: `{ "task_id": 1, "status": "PENDING" }`
 
 ### 2.4 Stop Task
-실행 중인 작업을 즉시 중단합니다.
+실행 중인 작업을 즉시 중단합니다. 작업 상태는 `CANCELLED`로 변경됩니다.
 - **URL**: `POST /api/v1/tasks/stop?id={task_id}`
 - **Response**: `Plain Text Confirmation`
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -151,7 +150,6 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	planner := agent.NewPlannerAgent(primaryLLM)
 	coder := agent.NewCoderAgent(primaryLLM)
 	reviewer := agent.NewReviewerAgent(primaryLLM)
-	critic := agent.NewCriticAgent(primaryLLM)
 
 	o.logDeepTechnical(ctx, taskID, "INIT", "수정 작업 환경 준비", "", "")
 

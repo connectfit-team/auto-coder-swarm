@@ -18,7 +18,14 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3>🤖 작업 상세 정보 (Task #{{.Task.ID}})</h3>
-        <a href="/" class="btn" style="background: #95a5a6;">목록으로 돌아가기</a>
+        <div style="display: flex; gap: 10px;">
+            {{if or (eq .Task.Status "PENDING") (eq .Task.Status "RUNNING") (eq .Task.Status "WAITING_APPROVAL")}}
+            <form action="/task/stop?id={{.Task.ID}}" method="POST" onsubmit="return confirm('정말 이 작업을 중단하시겠습니까?')">
+                <button type="submit" class="btn" style="background: #e67e22;">⏹️ 작업 중단 (Stop)</button>
+            </form>
+            {{end}}
+            <a href="/" class="btn" style="background: #95a5a6;">목록으로 돌아가기</a>
+        </div>
     </div>
     
     <div style="margin-top: 20px;">
@@ -37,6 +44,14 @@
                 <button type="submit" class="btn" style="background: #2ecc71;">✅ 최종 승인 및 PR 생성</button>
             </form>
             <button onclick="document.getElementById('reject-form').style.display='block'" class="btn" style="background: #e74c3c;">❌ 반려 및 피드백</button>
+        </div>
+
+        <div id="reject-form" style="display: none; margin-top: 20px;">
+            <form action="/task/reject?id={{.Task.ID}}" method="POST">
+                <span class="detail-label">반려 사유 및 피드백 입력:</span>
+                <textarea name="feedback" style="height: 100px; margin-bottom: 10px;" placeholder="수정이 필요한 부분을 상세히 입력해주세요..."></textarea>
+                <button type="submit" class="btn" style="background: #e74c3c;">반려 제출</button>
+            </form>
         </div>
     </div>
     {{end}}

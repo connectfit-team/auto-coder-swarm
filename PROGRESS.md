@@ -18,6 +18,7 @@
 ## 🎯 Next Tasks (Phase 9 Expansion)
 - [ ] **Step 42: Prometheus Metrics**: Export task latency and worker utilization metrics.
 - [ ] **Step 43: Activity Briefing**: Automated daily summary generation.
+- [x] **Step 44: Task Termination**: API_SPEC 및 대시보드 중단 기능 연동 완료.
 
 ---
 *Status: Intelligence Baseline Established.*

@@ -91,7 +91,7 @@ func (h *DashboardHandler) HandleStopTask(w http.ResponseWriter, r *http.Request
 	idStr := r.URL.Query().Get("id")
 	idInt, _ := strconv.Atoi(idStr)
 	if h.worker.Stop(uint(idInt)) {
-		h.store.UpdateTaskStatus(uint(idInt), storage.StatusFailed, "", "Stopped by user")
+		h.store.UpdateTaskStatus(uint(idInt), storage.StatusCancelled, "", "Stopped by user")
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

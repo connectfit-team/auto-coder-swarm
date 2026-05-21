@@ -120,7 +120,7 @@ func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseUint(idStr, 10, 32)
 	
 	if h.worker.Stop(uint(id)) {
-		h.store.UpdateTaskStatus(uint(id), storage.StatusFailed, "", "Stopped via API")
+		h.store.UpdateTaskStatus(uint(id), storage.StatusCancelled, "", "Stopped via API")
 		fmt.Fprintf(w, "Task %d stopped", id)
 	} else {
 		http.Error(w, "Task not running or not found", http.StatusNotFound)

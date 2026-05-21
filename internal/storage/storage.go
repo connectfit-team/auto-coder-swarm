@@ -17,6 +17,7 @@ const (
 	StatusApproved         TaskStatus = "APPROVED"
 	StatusCompleted        TaskStatus = "COMPLETED"
 	StatusFailed           TaskStatus = "FAILED"
+	StatusCancelled        TaskStatus = "CANCELLED"
 )
 
 type SwarmTask struct {

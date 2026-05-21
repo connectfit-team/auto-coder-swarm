@@ -22,6 +22,7 @@
 - [x] **Step 39: Deep Inspection UI**: 타임라인 아코디언 및 프롬프트 감사 기능 완료.
 - [x] **Step 40: Extensible Template Engine**: 템플릿 엔진 버그 수정 및 확장 구조 구축 완료.
 - [x] **Step 41: LLM-Autonomous Classification**: 브레인 기반 프로젝트 판별 및 적응형 빌드 구축 완료.
+- [x] **Step 44: Task Termination Control**: API 및 UI를 통한 작업 중단 기능 구현 완료.
 - [ ] **Step 42: Prometheus Metrics**: 작업 지연 시간 및 워커 부하 지표 시각화.
 
 ---
