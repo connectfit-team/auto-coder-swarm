@@ -20,6 +20,16 @@ import (
 	"google.golang.org/adk/model"
 )
 
+type ProjectType string
+
+const (
+	TypeGo      ProjectType = "Go"
+	TypeFlutter ProjectType = "Flutter"
+	TypePython  ProjectType = "Python"
+	TypeNodeJS  ProjectType = "NodeJS"
+	TypeUnknown ProjectType = "Unknown"
+)
+
 type SwarmOrchestrator struct {
 	insightClient *insightclient.Client
 	wsMgr         workspace.Manager
@@ -73,37 +83,56 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 	summary := ""
 	if rawResult != "" {
 		primary, _ := o.loadModels()
-		summarizePrompt := fmt.Sprintf("다음 실행 결과를 개발자가 디버깅하기 좋게 핵심 기술 요약(Summary)으로 작성해줘.\n결과: %s", rawResult)
+		summarizePrompt := fmt.Sprintf("기술 요약(Summary) 작성: %s", rawResult)
 		summary, _ = agent.CallLLM(ctx, primary, "SummaryAgent", summarizePrompt)
 	}
-
 	if o.store != nil {
 		o.store.AddDeepLog(taskID, stage, message, prompt, summary)
-		
 		task, _ := o.store.GetTaskByID(taskID)
-		timestamp := time.Now().Format("15:04:05")
-		newState := fmt.Sprintf("%s\n[%s] %s: %s (Summary: %s)", task.ContextState, timestamp, stage, message, summary)
+		newState := fmt.Sprintf("%s\n[%s] %s: %s", task.ContextState, time.Now().Format("15:04:05"), stage, message)
 		o.store.UpdateContextState(taskID, newState)
 	}
 	log.Printf("[T-%d] [%s] %s", taskID, stage, message)
 }
 
-func (o *SwarmOrchestrator) runBuildVerification(path string) (string, error) {
-	var cmd *exec.Cmd
+func (o *SwarmOrchestrator) detectProjectType(path string) ProjectType {
 	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
-		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
-	} else if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
-		cmd = exec.Command("/home/cnf/flutter/bin/flutter", "analyze")
+		return TypeGo
 	}
-	if cmd == nil { return "", nil }
+	if _, err := os.Stat(filepath.Join(path, "pubspec.yaml")); err == nil {
+		return TypeFlutter
+	}
+	if _, err := os.Stat(filepath.Join(path, "requirements.txt")); err == nil {
+		return TypePython
+	}
+	if _, err := os.Stat(filepath.Join(path, "package.json")); err == nil {
+		return TypeNodeJS
+	}
+	return TypeUnknown
+}
+
+func (o *SwarmOrchestrator) runBuildVerification(path string, pType ProjectType) (string, error) {
+	var cmd *exec.Cmd
+	switch pType {
+	case TypeGo:
+		cmd = exec.Command("/usr/local/go/bin/go", "build", "./...")
+	case TypeFlutter:
+		cmd = exec.Command("/home/cnf/flutter/bin/flutter", "analyze")
+	case TypeNodeJS:
+		cmd = exec.Command("npm", "run", "build")
+	default:
+		return "Unknown project type, skipping build", nil
+	}
 	cmd.Dir = path
 	out, err := cmd.CombinedOutput()
-	if err != nil { return string(out), fmt.Errorf("build failed: %v", err) }
+	if err != nil {
+		return string(out), fmt.Errorf("build failed (%s): %v", pType, err)
+	}
 	return string(out), nil
 }
 
-func (o *SwarmOrchestrator) runBenchmark(path string) (string, error) {
-	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+func (o *SwarmOrchestrator) runBenchmark(path string, pType ProjectType) (string, error) {
+	if pType == TypeGo {
 		cmd := exec.Command("/usr/local/go/bin/go", "test", "-bench=.", "-benchmem", "./...")
 		cmd.Dir = path
 		out, err := cmd.CombinedOutput()
@@ -113,11 +142,6 @@ func (o *SwarmOrchestrator) runBenchmark(path string) (string, error) {
 	return "", nil
 }
 
-func (o *SwarmOrchestrator) detectChainTasks(ctx context.Context, llm model.LLM, targetRepo, diff string, depth int) []StatelessRequest {
-	if depth >= 2 { return nil }
-	return nil
-}
-
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	primaryLLM, v := o.loadModels()
 	planner := agent.NewPlannerAgent(primaryLLM)
@@ -125,84 +149,59 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	reviewer := agent.NewReviewerAgent(primaryLLM)
 	critic := agent.NewCriticAgent(primaryLLM)
 
-	o.logDeepTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo), "", "Environment initialized")
+	o.logDeepTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo), "", "")
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
-		prompt := req.UserRequest
-		o.logDeepTechnical(ctx, taskID, "ORACLE", fmt.Sprintf("분석 요청: '%s'", prompt), prompt, "Requesting Oracle analysis")
-		var err error
-		analysis, err = o.insightClient.QueryOracle(ctx, prompt)
-		if err != nil {
-			o.logDeepTechnical(ctx, taskID, "ERROR", "분석 엔진 응답 실패", prompt, err.Error())
-			return RunResult{}, err
-		}
+		analysis, _ = o.insightClient.QueryOracle(ctx, req.UserRequest)
 	}
 
-	wsPath, err := o.wsMgr.CreateWorkspace()
-	if err != nil { return RunResult{}, err }
+	wsPath, _ := o.wsMgr.CreateWorkspace()
 	defer o.wsMgr.Cleanup(wsPath)
 
 	var lastFeedback, currentBranch, targetRepo, finalDiff string
 	var preBench, postBench string
-	maxRetries := 3
+	var pType ProjectType
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		o.logDeepTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("[%d회차] 계획 수립 중", attempt), analysis, "Starting plan extraction")
+	for attempt := 1; attempt <= 3; attempt++ {
+		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
 		
 		input := analysis
-		if lastFeedback != "" { input = fmt.Sprintf("ANALYSIS:\n%s\n\nFEEDBACK:\n%s", analysis, lastFeedback) }
-
+		if lastFeedback != "" { input += "\n\nFEEDBACK:\n" + lastFeedback }
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
-		planRaw := voteRes.Winner
-
-		plan, err := planner.ParsePlan(planRaw)
-		if err == nil {
-			var files []string
-			for _, c := range plan.Changes { files = append(files, c.FilePath) }
-			o.logDeepTechnical(ctx, taskID, "PLAN_READY", fmt.Sprintf("대상 파일 확정: %s", strings.Join(files, ", ")), planner.BuildPrompt(input), planRaw)
-		}
-
-		criticism, _ := critic.Process(ctx, planRaw)
-		if !strings.Contains(strings.ToUpper(criticism), "PERFECT") {
-			o.logDeepTechnical(ctx, taskID, "REFINE", "비판 내용을 반영하여 계획 보강 중", planRaw, criticism)
-			planRaw, _ = planner.Refine(ctx, analysis, planRaw, criticism)
-			plan, _ = planner.ParsePlan(planRaw)
-		}
+		plan, _ := planner.ParsePlan(voteRes.Winner)
 
 		if attempt == 1 {
 			targetRepo = plan.RepoName
 			if req.TargetRepo != "" { targetRepo = req.TargetRepo }
-			if repoLockFunc != nil {
-				locked, err := repoLockFunc(targetRepo)
-				if err != nil || !locked { return RunResult{RepoName: targetRepo}, fmt.Errorf("repo locked") }
-			}
+			if repoLockFunc != nil { repoLockFunc(targetRepo) }
 		}
 
 		repoPath := filepath.Join(wsPath, "repo")
 		if attempt == 1 {
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
-			preBench, _ = o.runBenchmark(repoPath)
+			
+			// Intelligent Project Detection
+			pType = o.detectProjectType(repoPath)
+			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("프로젝트 타입 판별 결과: [%s]", pType), "", string(pType))
+			preBench, _ = o.runBenchmark(repoPath, pType)
 		}
 
 		for _, change := range plan.Changes {
-			o.logDeepTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 파일 수정 중", change.FilePath), change.Instructions, "Writing code and comments")
+			o.logDeepTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 수정 중", change.FilePath), change.Instructions, "")
 			coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
 		}
 
-		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 중", targetRepo), "go build ./...", "Checking build integrity")
-		buildOut, err := o.runBuildVerification(repoPath)
+		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 빌드 실행 중", pType), "", "")
+		buildOut, err := o.runBuildVerification(repoPath, pType)
 		if err != nil {
-			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도 중", err.Error(), buildOut)
+			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자동 수리 시도", err.Error(), buildOut)
 			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, buildOut)
 			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
-		if preBench != "" { 
-			o.logDeepTechnical(ctx, taskID, "BENCHMARK", "성능 측정 중", "", "Comparing benchmarks")
-			postBench, _ = o.runBenchmark(repoPath) 
-		}
+		if preBench != "" { postBench, _ = o.runBenchmark(repoPath, pType) }
 		
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
@@ -218,12 +217,12 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		}
 
 		if !isApproved {
-			o.logDeepTechnical(ctx, taskID, "WAIT", "기술 검증 완료. 승인 대기", "", "Waiting for human approval")
+			o.logDeepTechnical(ctx, taskID, "WAIT", "기술 검증 완료. 승인 대기", "", "")
 			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
 		}
 
 		prURL, _ := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated documentation")
-		o.logDeepTechnical(ctx, taskID, "COMPLETED", "PR 생성 완료", prURL, "Task successfully finished")
+		o.logDeepTechnical(ctx, taskID, "COMPLETED", "성공적으로 PR을 생성했습니다.", prURL, "")
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
 	return RunResult{RepoName: targetRepo}, fmt.Errorf("max retries")

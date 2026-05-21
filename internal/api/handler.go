@@ -3,10 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
@@ -20,6 +22,19 @@ type SwarmHandler struct {
 
 func NewSwarmHandler(s *storage.Storage, w *worker.Manager) *SwarmHandler {
 	return &SwarmHandler{store: s, worker: w}
+}
+
+// Middleware: Request Logger
+func (h *SwarmHandler) requestLogger(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		// Capture request details for service.log
+		log.Printf("[API] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		
+		next(w, r)
+		
+		log.Printf("[API] Completed %s %s in %v", r.Method, r.URL.Path, time.Since(start))
+	}
 }
 
 // Middleware: CORS
@@ -162,18 +177,17 @@ func (h *SwarmHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/tasks", h.enableCORS(h.HandleListTasks))
-	mux.HandleFunc("GET /api/v1/tasks/detail", h.enableCORS(h.HandleGetTask))
-	mux.HandleFunc("POST /api/v1/tasks", h.enableCORS(h.HandleSubmitTask))
-	mux.HandleFunc("POST /api/v1/tasks/stop", h.enableCORS(h.HandleStopTask))
-	mux.HandleFunc("GET /api/v1/settings", h.enableCORS(h.HandleGetSettings))
-	mux.HandleFunc("POST /api/v1/settings", h.enableCORS(h.HandleUpdateSettings))
+	mux.HandleFunc("GET /api/v1/tasks", h.requestLogger(h.enableCORS(h.HandleListTasks)))
+	mux.HandleFunc("GET /api/v1/tasks/detail", h.requestLogger(h.enableCORS(h.HandleGetTask)))
+	mux.HandleFunc("POST /api/v1/tasks", h.requestLogger(h.enableCORS(h.HandleSubmitTask)))
+	mux.HandleFunc("POST /api/v1/tasks/stop", h.requestLogger(h.enableCORS(h.HandleStopTask)))
+	mux.HandleFunc("GET /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleGetSettings)))
+	mux.HandleFunc("POST /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleUpdateSettings)))
 	
-	// Legacy support for approve (can be expanded later)
-	mux.HandleFunc("POST /api/v1/approve", h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/approve", h.requestLogger(h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		idStr := r.URL.Query().Get("id")
 		id, _ := strconv.ParseUint(idStr, 10, 32)
 		h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
 		fmt.Fprintf(w, "Task %d approved", id)
-	}))
+	})))
 }
