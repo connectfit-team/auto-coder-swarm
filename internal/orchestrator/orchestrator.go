@@ -140,9 +140,12 @@ func extractJSON(raw string) string {
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
 	primaryLLM, v := o.loadModels()
+	
+	// [Multi-Agent Architecture] Initializing specialized agents
 	planner := agent.NewPlannerAgent(primaryLLM)
 	coder := agent.NewCoderAgent(primaryLLM)
 	reviewer := agent.NewReviewerAgent(primaryLLM)
+	critic := agent.NewCriticAgent(primaryLLM) // Added Critic for risk & architectural oversight
 
 	analysis := req.AnalysisContext
 	if analysis == "" {
@@ -174,7 +177,8 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	for attempt := 1; attempt <= 3; attempt++ {
 		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
-		o.logDeepTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("코드 수정 계획 수립 중 (시도 %d/3)", attempt), analysis, "")
+		// Step 1: Planning with Voter Consensus
+		o.logDeepTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("다중 에이전트 합의 기반 계획 수립 (시도 %d/3)", attempt), analysis, "")
 		input := analysis
 		if lastFeedback != "" { input += "\n\nFEEDBACK:\n" + lastFeedback }
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
@@ -190,6 +194,8 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		if attempt == 1 {
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
+			
+			// Step 2: Intelligent Project Detection & Risk Assessment
 			meta = o.detectProjectTypeLLM(ctx, taskID, repoPath)
 			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별 결과: [%s]", meta.Type), "", meta.RiskAssessment)
 
@@ -203,6 +209,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
+		// Step 3: Coding (Execution)
 		for _, change := range plan.Changes {
 			o.logDeepTechnical(ctx, taskID, "CODING", fmt.Sprintf("[%s] 수정 중", change.FilePath), change.Instructions, "")
 			coder.ModifyFile(ctx, filepath.Join(repoPath, change.FilePath), change.Instructions)
@@ -210,6 +217,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
+		// Step 4: Verification (Build/Analyze)
 		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 실행 (%s)", meta.Type, meta.BuildCommand), meta.BuildCommand, "")
 		bCmd := exec.CommandContext(ctx, "bash", "-c", meta.BuildCommand)
 		bCmd.Dir = repoPath
@@ -217,7 +225,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		if err != nil {
 			if ctx.Err() != nil { return RunResult{}, ctx.Err() }
-			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도", string(buildOut), "")
+			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 및 계획 재수립", string(buildOut), "")
 			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, string(buildOut))
 			exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
@@ -229,27 +237,43 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 			postBench = string(bOut)
 		}
 
+		// Step 5: Post-Action Multi-Agent Review (Critic & Reviewer)
 		diffCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
 		o.store.UpdateTaskProposedDiff(taskID, finalDiff)
 
 		reviewInput := fmt.Sprintf("DIFF:\n%s\n\nPRE-BENCH:\n%s\n\nPOST-BENCH:\n%s", finalDiff, preBench, postBench)
-		reviewResp, _ := reviewer.Process(ctx, reviewInput)
-
-		if !reviewer.IsApproved(reviewResp) {
-			o.logDeepTechnical(ctx, taskID, "REJECTED", "내부 감사 반려", reviewInput, reviewResp)
-			lastFeedback = reviewResp; exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
+		
+		// Critic Agent evaluates Risk & Architecture consistency
+		criticResp, _ := critic.Process(ctx, reviewInput)
+		o.logDeepTechnical(ctx, taskID, "CRITIC", "비판적 아키텍처 및 리스크 검토", reviewInput, criticResp)
+		
+		if !critic.IsApproved(criticResp) {
+			o.logDeepTechnical(ctx, taskID, "REJECTED_CRITIC", "비판적 검토 반려: 리스크 감지됨", criticResp, "")
+			lastFeedback = "CRITIC REJECTION: " + criticResp
+			exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
+		// Reviewer Agent makes the final functional approval
+		reviewResp, _ := reviewer.Process(ctx, reviewInput)
+		o.logDeepTechnical(ctx, taskID, "REVIEW", "최종 기능 무결성 검토", reviewInput, reviewResp)
+
+		if !reviewer.IsApproved(reviewResp) {
+			o.logDeepTechnical(ctx, taskID, "REJECTED_REVIEWER", "기능 검토 반려: 논리적 오류 발견", reviewResp, "")
+			lastFeedback = "REVIEWER REJECTION: " + reviewResp
+			exec.CommandContext(ctx, "git", "-C", repoPath, "checkout", ".").Run(); continue
+		}
+
+		// Step 6: Human Approval Gate (or Auto-Push if approved)
 		if !isApproved {
-			o.logDeepTechnical(ctx, taskID, "WAIT", "기술 검증 완료. 승인 대기", "", "")
+			o.logDeepTechnical(ctx, taskID, "WAIT", "기술 및 리스크 검증 완료. 최종 승인 대기 중", "", "")
 			return RunResult{RepoName: targetRepo, WaitingApproval: true}, nil
 		}
 
-		prURL, _ := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated documentation")
+		prURL, _ := o.gitMgr.PushApprovedChanges(repoPath, targetRepo, currentBranch, "feat: automated code enhancement with multi-agent consensus")
 		o.logDeepTechnical(ctx, taskID, "COMPLETED", "성공적으로 PR을 생성했습니다.", prURL, "")
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
-	return RunResult{RepoName: targetRepo}, fmt.Errorf("최대 재시도 횟수(3회)를 초과했습니다. Auditor가 계속 반려 중입니다.")
+	return RunResult{RepoName: targetRepo}, fmt.Errorf("최대 재시도 횟수(3회)를 초과했습니다. Critic 또는 Reviewer가 계속 반려 중입니다.")
 }

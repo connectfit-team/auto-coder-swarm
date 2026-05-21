@@ -11,10 +11,11 @@
 5. **GEMINI.md**: 시스템 무결성 보장(Functional Integrity) 원칙 및 통합 지침.
 
 ## 3. 핵심 아키텍처 (Key Architecture)
+- **Multi-Agent Governance**: `Planner`(설계), `Coder`(수행), `Critic`(리스크 검토), `Reviewer`(승인)의 4단계 협업 체계를 통해 코드의 무결성을 보장합니다.
+- **Intelligence-First Prompting**: 분석 엔진(CIE)에 원본 요청 대신, 에이전트가 생성한 정교한 '기술 설계서 요청' 프롬프트를 전달하여 고품질 가이드를 확보합니다.
 - **CIE-Async Integration**: CIE의 비동기 분석 API를 준수하며, 결과 폴링 및 고유 세션 ID 격리를 통해 무결성을 확보합니다.
-- **Deep Inspection Timeline**: `ORACLE`(CIE 질의), `DETECTION_RAW`(LLM 응답 원본) 등 모든 의사결정 단계를 가감 없이 노출합니다.
-- **Context-Aware Lifecycle**: `exec.CommandContext`를 전면 도입하여 하위 프로세스까지 즉시 제어 및 중단이 가능합니다.
-- **LLM-Autonomous Classification**: `tree` 기반 구조 분석을 통해 프로젝트 정체를 파악하고 적응형 빌드 트랙을 자동 선택합니다.
+- **Deep Inspection Timeline**: `ORACLE`(분석), `CRITIC`(리스크), `REVIEW`(검증) 등 모든 의사결정 단계를 투명하게 공개합니다.
+- **Context-Aware Lifecycle**: `exec.CommandContext`를 전면 도입하여 즉각적인 작업 중단 및 자원 회수가 가능합니다.
 
 ## 4. 로드맵 (Roadmap)
 ### Phase 9: 엔터프라이즈 엔지니어링 (Stable)
@@ -22,8 +23,9 @@
 - [x] **Step 41: LLM-Autonomous Classification**: 브레인 기반 프로젝트 판별 및 적응형 빌드 구축 완료.
 - [x] **Step 44: Task Termination & CIE Sync**: 즉각적인 작업 중단 및 CIE 비동기 API 완전 동기화 완료.
 - [x] **Step 45: Functional Integrity Mandate**: GEMINI.md에 무결성 보장 4대 원칙 각인 완료.
+- [x] **Step 46: Multi-Agent Governance**: Planner-Coder-Critic-Reviewer 협업 체계 및 리스크 검토 프로세스 구현 완료.
 - [ ] **Step 42: Prometheus Metrics**: 작업 지연 시간 및 워커 부하 지표 시각화.
 - [ ] **Step 43: Swarm Activity Reporting**: 일일 작업 요약 및 브리핑 자동 생성.
 
 ---
-*최종 감사: 2026-05-21 (시스템 무결성 및 비동기 동기화 완료)*
+*최종 감사: 2026-05-21 (다중 에이전트 거버넌스 및 리스크 검토 체계 확립 완료)*
