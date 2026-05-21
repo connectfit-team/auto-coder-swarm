@@ -14,12 +14,15 @@
 - **Headless API-First**: 모든 기능이 REST API로 노출.
 - **Deep Inspection Timeline**: 인터랙티브 타임라인을 통해 에이전트의 사고 과정, 프롬프트, 상세 요약을 투명하게 공개.
 - **Extensible UI Helper**: Go 템플릿 엔진에 사용자 정의 함수(FuncMap)를 도입하여 대시보드 확장성 확보.
+- **LLM-Autonomous Classification**: 프로젝트의 정체를 스스로 파악하고 최적의 검증 도구를 선택하는 지능형 엔진.
 
 ## 4. 로드맵 (Roadmap)
 ### Phase 9: 엔터프라이즈 엔지니어링 (Active)
 - [x] **Step 38: Headless API & SPEC**: API 기반 아키텍처 전환 완료.
 - [x] **Step 39: Deep Inspection UI**: 타임라인 아코디언 및 프롬프트 감사 기능 완료.
 - [x] **Step 40: Extensible Template Engine**: 템플릿 엔진 버그 수정 및 확장 구조 구축 완료.
+- [x] **Step 41: LLM-Autonomous Classification**: 브레인 기반 프로젝트 판별 및 적응형 빌드 구축 완료.
+- [ ] **Step 42: Prometheus Metrics**: 작업 지연 시간 및 워커 부하 지표 시각화.
 
 ---
-*최종 감사: 2026-05-21 (UI 확장성 강화 완료)*
+*최종 감사: 2026-05-21 (LLM 자율 분류 시스템 도입 완료)*

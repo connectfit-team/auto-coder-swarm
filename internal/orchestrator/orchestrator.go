@@ -95,12 +95,18 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 
 func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, path string) ProjectMetadata {
 	primary, _ := o.loadModels()
-	
-	// Get directory structure via ls -R for LLM analysis
-	cmd := exec.Command("ls", "-R", path)
-	out, _ := cmd.CombinedOutput()
-	structure := string(out)
-	if len(structure) > 3000 { structure = structure[:3000] + "..." }
+
+	// Get directory structure via tree (preferred) or ls -R for LLM analysis
+	var structure string
+	cmd := exec.Command("tree", "-L", "3", "-F", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Fallback to ls -R if tree is not installed
+		cmd = exec.Command("ls", "-R", path)
+		out, _ = cmd.CombinedOutput()
+	}
+	structure = string(out)
+	if len(structure) > 4000 { structure = structure[:4000] + "..." }
 
 	prompt := fmt.Sprintf(`레포지토리의 파일 구조를 분석하여 프로젝트의 성격과 최적의 빌드/검증 명령어를 판단해줘.
 단순히 특정 파일의 존재만 보지 말고, 전체적인 레이아웃과 설정 파일들의 연관성을 지능적으로 분석해라.
@@ -119,7 +125,7 @@ MANDATORY JSON FORMAT:
 출력은 오직 JSON만 허용한다.`, structure)
 
 	resp, _ := agent.CallLLM(ctx, primary, "Classifier", prompt)
-	
+
 	var meta ProjectMetadata
 	// Using the helper to clean markdown if LLM outputs it
 	jsonStr := extractJSON(resp)
@@ -163,7 +169,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
-		
+
 		input := analysis
 		if lastFeedback != "" { input += "\n\nFEEDBACK:\n" + lastFeedback }
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
@@ -179,11 +185,11 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		if attempt == 1 {
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
-			
+
 			// Autonomous Project Detection via LLM
 			meta = o.detectProjectTypeLLM(ctx, repoPath)
 			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별: [%s], 명령어: [%s]", meta.Type, meta.BuildCommand), "", meta.RiskAssessment)
-			
+
 			if meta.BenchCommand != "" {
 				cmd := exec.Command("bash", "-c", meta.BenchCommand)
 				cmd.Dir = repoPath
@@ -198,12 +204,12 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		}
 
 		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 자율 빌드 및 분석 실행", meta.Type), meta.BuildCommand, "")
-		
+
 		// Run the LLM-prescribed command
 		bCmd := exec.Command("bash", "-c", meta.BuildCommand)
 		bCmd.Dir = repoPath
 		buildOut, err := bCmd.CombinedOutput()
-		
+
 		if err != nil {
 			o.logDeepTechnical(ctx, taskID, "HEALING", "빌드 실패, 자가 치유 시도", string(buildOut), "")
 			lastFeedback = fmt.Sprintf("BUILD FAILED: %v\nOutput: %s", err, string(buildOut))
@@ -216,7 +222,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 			bOut, _ := cmd.CombinedOutput()
 			postBench = string(bOut)
 		}
-		
+
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
