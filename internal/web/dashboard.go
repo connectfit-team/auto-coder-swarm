@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
@@ -27,18 +28,35 @@ func NewDashboardHandler(s *storage.Storage, w *worker.Manager, sm *stream.Manag
 	return &DashboardHandler{store: s, worker: w, stream: sm, tmplPath: tmplPath}
 }
 
+// helpers defines custom functions for Go templates, making the UI extensible.
+func (h *DashboardHandler) helpers() template.FuncMap {
+	return template.FuncMap{
+		"lower": strings.ToLower,
+		"upper": strings.ToUpper,
+		"json": func(v interface{}) string {
+			b, _ := json.MarshalIndent(v, "", "  ")
+			return string(b)
+		},
+		"formatTime": func(t time.Time) string {
+			return t.Format("2006-01-02 15:04:05")
+		},
+	}
+}
+
 func (h *DashboardHandler) render(w http.ResponseWriter, page string, data interface{}) {
 	layout := filepath.Join(h.tmplPath, "layout.html")
 	content := filepath.Join(h.tmplPath, page)
 
-	tmpl, err := template.ParseFiles(layout, content)
+	// Create a new template with custom functions before parsing files
+	tmpl := template.New("layout.html").Funcs(h.helpers())
+	tmpl, err := tmpl.ParseFiles(layout, content)
 	if err != nil {
 		log.Printf("[Web] Template error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = tmpl.ExecuteTemplate(w, "layout.html", data)
+	err = tmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("[Web] Execution error: %v", err)
 	}
@@ -192,8 +210,6 @@ func (h *DashboardHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.R
 	h.store.SaveSetting("voter_models", strings.Join(voters, ","))
 	h.store.SaveSetting("swarm_api_key", apiKey)
 
-	// Update environment variable for immediate effect in api.handler (if possible)
-	// Note: os.Setenv only affects the current process, which is fine since api.handler reads it.
 	os.Setenv("SWARM_API_KEY", apiKey)
 
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
