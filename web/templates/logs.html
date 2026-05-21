@@ -1,6 +1,16 @@
 {{define "content"}}
 <div class="card">
-    <h3>📝 Swarm 개발 타임라인</h3>
-    <pre>{{.Logs}}</pre>
+    <h3>📝 Swarm 서비스 로그 (Live Tail)</h3>
+    <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">현재 실행 중인 auto-coder-swarm 서비스의 최신 시스템 로그입니다.</p>
+    <pre style="background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 8px; height: 400px; overflow: auto; font-family: monospace; font-size: 13px; line-height: 1.4;">{{.SvcLogs}}</pre>
+</div>
+
+<div class="card">
+    <h3>🌳 Git 배포 이력 (Commit Log)</h3>
+    <pre style="background: #2d3436; color: #fab1a0; padding: 20px; border-radius: 8px; height: 300px; overflow: auto;">{{.Logs}}</pre>
+</div>
+
+<div style="text-align: right; margin-top: 10px;">
+    <a href="/logs" class="btn" style="background: #95a5a6;">🔄 로그 새로고침</a>
 </div>
 {{end}}

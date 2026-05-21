@@ -49,8 +49,8 @@
         <div class="log-item">
             <div class="log-header" onclick="this.nextElementSibling.classList.toggle('active')">
                 <div>
-                    <span style="color: #adb5bd; font-family: monospace;">[{{.CreatedAt.Format "15:04:05"}}]</span>
-                    <span class="tag tag-{{.Stage | lower}}" style="margin-left: 10px;">{{.Stage}}</span>
+                    <span style="color: #adb5bd; font-family: monospace;">[{{.CreatedAt}}]</span>
+                    <span class="tag tag-{{.StageLower}}" style="margin-left: 10px;">{{.Stage}}</span>
                     <span style="margin-left: 15px; font-weight: 500;">{{.Message}}</span>
                 </div>
                 <span style="color: #adb5bd;">▼</span>
