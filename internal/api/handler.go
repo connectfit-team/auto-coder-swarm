@@ -6,53 +6,84 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
+	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 )
 
 type SwarmHandler struct {
-	store *storage.Storage
+	store  *storage.Storage
+	worker *worker.Manager
 }
 
-func NewSwarmHandler(s *storage.Storage) *SwarmHandler {
-	return &SwarmHandler{store: s}
+func NewSwarmHandler(s *storage.Storage, w *worker.Manager) *SwarmHandler {
+	return &SwarmHandler{store: s, worker: w}
 }
 
-type TaskResponse struct {
-	TaskID uint   `json:"task_id"`
-	Status string `json:"status"`
-}
+// Middleware: CORS
+func (h *SwarmHandler) enableCORS(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
 
-type StatusResponse struct {
-	TaskID    uint   `json:"task_id"`
-	Status    string `json:"status"`
-	Result    string `json:"result,omitempty"`
-	ErrorLog  string `json:"error_log,omitempty"`
-	UpdatedAt string `json:"updated_at"`
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (h *SwarmHandler) checkAuth(r *http.Request) bool {
 	expectedKey := os.Getenv("SWARM_API_KEY")
 	if expectedKey == "" {
-		return true // Dev mode: No key required if env not set
+		return true
 	}
 	clientKey := r.Header.Get("X-API-Key")
 	return clientKey == expectedKey
 }
 
-func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func (h *SwarmHandler) HandleListTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := h.store.GetAllTasks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tasks)
+}
+
+func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, _ := strconv.ParseUint(idStr, 10, 32)
+	task, err := h.store.GetTaskByID(uint(id))
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+	
+	logs, _ := h.store.GetLogs(uint(id))
+	
+	response := map[string]interface{}{
+		"task": task,
+		"logs": logs,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) {
 	if !h.checkAuth(r) {
-		http.Error(w, "Unauthorized: Invalid or missing X-API-Key", http.StatusUnauthorized)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	var req orchestrator.StatelessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 	b, _ := json.Marshal(req)
@@ -62,54 +93,87 @@ func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TaskResponse{TaskID: task.ID, Status: string(storage.StatusPending)})
+	json.NewEncoder(w).Encode(map[string]interface{}{"task_id": task.ID, "status": "PENDING"})
 }
 
-func (h *SwarmHandler) HandleGetStatus(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-	task, err := h.store.GetTaskByID(uint(id))
-	if err != nil {
-		http.Error(w, "Task not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(StatusResponse{
-		TaskID:    task.ID,
-		Status:    string(task.Status),
-		Result:    task.Result,
-		ErrorLog:  task.ErrorLog,
-		UpdatedAt: task.UpdatedAt.Format("2006-01-02 15:04:05"),
-	})
-}
-
-func (h *SwarmHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 	if !h.checkAuth(r) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseUint(idStr, 10, 32)
+	
+	if h.worker.Stop(uint(id)) {
+		h.store.UpdateTaskStatus(uint(id), storage.StatusFailed, "", "Stopped via API")
+		fmt.Fprintf(w, "Task %d stopped", id)
+	} else {
+		http.Error(w, "Task not running or not found", http.StatusNotFound)
+	}
+}
 
-	err := h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
+	// Fetch available models from Ollama
+	resp, err := http.Get("http://localhost:11434/api/tags")
+	var ollamaResp struct {
+		Models []interface{} `json:"models"`
+	}
+	if err == nil {
+		json.NewDecoder(resp.Body).Decode(&ollamaResp)
+		resp.Body.Close()
+	}
+
+	primary := h.store.GetSetting("primary_model")
+	voters := h.store.GetSetting("voter_models")
+	apiKey := h.store.GetSetting("swarm_api_key")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"available_models": ollamaResp.Models,
+		"primary_model":    primary,
+		"voter_models":      strings.Split(voters, ","),
+		"api_key_set":      apiKey != "",
+	})
+}
+
+func (h *SwarmHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	if !h.checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	var settings map[string]interface{}
+	json.NewDecoder(r.Body).Decode(&settings)
+
+	if v, ok := settings["primary_model"].(string); ok {
+		h.store.SaveSetting("primary_model", v)
+	}
+	if v, ok := settings["voter_models"].([]interface{}); ok {
+		var names []string
+		for _, m := range v { names = append(names, m.(string)) }
+		h.store.SaveSetting("voter_models", strings.Join(names, ","))
+	}
+	if v, ok := settings["swarm_api_key"].(string); ok {
+		h.store.SaveSetting("swarm_api_key", v)
+		os.Setenv("SWARM_API_KEY", v)
+	}
+
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Task %d approved and queued for PR generation", id)
+	fmt.Fprint(w, "Settings updated")
 }
 
 func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/tasks", h.HandleSubmitTask)
-	mux.HandleFunc("GET /api/v1/status", h.HandleGetStatus)
-	mux.HandleFunc("POST /api/v1/approve", h.HandleApproveTask)
+	mux.HandleFunc("GET /api/v1/tasks", h.enableCORS(h.HandleListTasks))
+	mux.HandleFunc("GET /api/v1/tasks/detail", h.enableCORS(h.HandleGetTask))
+	mux.HandleFunc("POST /api/v1/tasks", h.enableCORS(h.HandleSubmitTask))
+	mux.HandleFunc("POST /api/v1/tasks/stop", h.enableCORS(h.HandleStopTask))
+	mux.HandleFunc("GET /api/v1/settings", h.enableCORS(h.HandleGetSettings))
+	mux.HandleFunc("POST /api/v1/settings", h.enableCORS(h.HandleUpdateSettings))
+	
+	// Legacy support for approve (can be expanded later)
+	mux.HandleFunc("POST /api/v1/approve", h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.URL.Query().Get("id")
+		id, _ := strconv.ParseUint(idStr, 10, 32)
+		h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
+		fmt.Fprintf(w, "Task %d approved", id)
+	}))
 }
