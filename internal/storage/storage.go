@@ -31,6 +31,7 @@ type SwarmTask struct {
 	ErrorLog      string         `gorm:"type:text"`
 	ProposedDiff  string         `gorm:"type:text"`
 	HumanFeedback string         `gorm:"type:text"`
+	ContextState  string         `gorm:"type:text"` // New: Cumulative LLM-summarized state for debugging
 }
 
 type RepoLock struct {
@@ -61,7 +62,7 @@ type Setting struct {
 }
 
 type Storage struct {
-	db *gorm.DB
+	DB *gorm.DB
 }
 
 func NewStorage(dbPath string) (*Storage, error) {
@@ -70,12 +71,12 @@ func NewStorage(dbPath string) (*Storage, error) {
 		return nil, err
 	}
 	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{}, &Setting{})
-	return &Storage{db: db}, nil
+	return &Storage{DB: db}, nil
 }
 
 func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
 	task := &SwarmTask{UserRequest: request, Status: StatusPending}
-	if err := s.db.Create(task).Error; err != nil {
+	if err := s.DB.Create(task).Error; err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -83,7 +84,7 @@ func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
 
 func (s *Storage) GetTaskByID(id uint) (*SwarmTask, error) {
 	var task SwarmTask
-	if err := s.db.First(&task, id).Error; err != nil {
+	if err := s.DB.First(&task, id).Error; err != nil {
 		return nil, err
 	}
 	return &task, nil
@@ -91,12 +92,12 @@ func (s *Storage) GetTaskByID(id uint) (*SwarmTask, error) {
 
 func (s *Storage) GetAllTasks() ([]SwarmTask, error) {
 	var tasks []SwarmTask
-	err := s.db.Order("created_at desc").Limit(50).Find(&tasks).Error
+	err := s.DB.Order("created_at desc").Limit(50).Find(&tasks).Error
 	return tasks, err
 }
 
 func (s *Storage) UpdateTaskRepo(id uint, repoName string) error {
-	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Update("repo_name", repoName).Error
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("repo_name", repoName).Error
 }
 
 func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog string) error {
@@ -107,20 +108,24 @@ func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog st
 	if errLog != "" {
 		updates["error_log"] = errLog
 	}
-	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (s *Storage) UpdateTaskProposedDiff(id uint, diff string) error {
-	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Update("proposed_diff", diff).Error
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("proposed_diff", diff).Error
 }
 
 func (s *Storage) UpdateHumanFeedback(id uint, feedback string) error {
-	return s.db.Model(&SwarmTask{}).Where("id = ?", id).Update("human_feedback", feedback).Error
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("human_feedback", feedback).Error
+}
+
+func (s *Storage) UpdateContextState(id uint, state string) error {
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("context_state", state).Error
 }
 
 func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 	var task SwarmTask
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var lockedRepos []string
 		tx.Model(&RepoLock{}).Pluck("repo_name", &lockedRepos)
 
@@ -146,7 +151,7 @@ func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 
 func (s *Storage) GetNextPendingTask() (*SwarmTask, error) {
 	var task SwarmTask
-	err := s.db.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending}).Order("created_at asc").First(&task).Error
+	err := s.DB.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending}).Order("created_at asc").First(&task).Error
 	return &task, err
 }
 
@@ -154,7 +159,7 @@ func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
 	if repoName == "" {
 		return true, nil
 	}
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var lock RepoLock
 		if err := tx.Where("repo_name = ?", repoName).First(&lock).Error; err == nil {
 			if lock.TaskID == taskID {
@@ -171,12 +176,12 @@ func (s *Storage) UnlockRepo(repoName string) error {
 	if repoName == "" {
 		return nil
 	}
-	return s.db.Where("repo_name = ?", repoName).Delete(&RepoLock{}).Error
+	return s.DB.Where("repo_name = ?", repoName).Delete(&RepoLock{}).Error
 }
 
 func (s *Storage) ResetRunningToPending() error {
-	s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&RepoLock{})
-	return s.db.Model(&SwarmTask{}).Where("status = ?", StatusRunning).Update("status", StatusPending).Error
+	s.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&RepoLock{})
+	return s.DB.Model(&SwarmTask{}).Where("status = ?", StatusRunning).Update("status", StatusPending).Error
 }
 
 func (s *Storage) AddLog(taskID uint, stage, message string) error {
@@ -186,12 +191,12 @@ func (s *Storage) AddLog(taskID uint, stage, message string) error {
 		Message:   message,
 		CreatedAt: time.Now(),
 	}
-	return s.db.Create(log).Error
+	return s.DB.Create(log).Error
 }
 
 func (s *Storage) GetLogs(taskID uint) ([]TaskLog, error) {
 	var logs []TaskLog
-	err := s.db.Where("task_id = ?", taskID).Order("created_at asc").Find(&logs).Error
+	err := s.DB.Where("task_id = ?", taskID).Order("created_at asc").Find(&logs).Error
 	return logs, err
 }
 
@@ -202,27 +207,27 @@ func (s *Storage) AddThought(taskID uint, agentName, message string) error {
 		Message:   message,
 		CreatedAt: time.Now(),
 	}
-	return s.db.Create(thought).Error
+	return s.DB.Create(thought).Error
 }
 
 func (s *Storage) GetThoughts(taskID uint) ([]ThoughtLog, error) {
 	var thoughts []ThoughtLog
-	err := s.db.Where("task_id = ?", taskID).Order("created_at asc").Find(&thoughts).Error
+	err := s.DB.Where("task_id = ?", taskID).Order("created_at asc").Find(&thoughts).Error
 	return thoughts, err
 }
 
 func (s *Storage) GetSetting(key string) string {
 	var setting Setting
-	if err := s.db.Where("key = ?", key).First(&setting).Error; err != nil {
+	if err := s.DB.Where("key = ?", key).First(&setting).Error; err != nil {
 		return ""
 	}
 	return setting.Value
 }
 
 func (s *Storage) SaveSetting(key, value string) error {
-	return s.db.Save(&Setting{Key: key, Value: value}).Error
+	return s.DB.Save(&Setting{Key: key, Value: value}).Error
 }
 
 func (s *Storage) MigrateLogs() {
-	s.db.AutoMigrate(&TaskLog{}, &ThoughtLog{}, &Setting{})
+	s.DB.AutoMigrate(&TaskLog{}, &ThoughtLog{}, &Setting{}, &SwarmTask{})
 }
