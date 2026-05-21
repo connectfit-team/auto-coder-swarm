@@ -52,6 +52,7 @@ MANDATORY JSON FORMAT:
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_RESOLVED", fmt.Sprintf("탐색 대상 확정 - Repo: %s, Path: %s", scope.Repo, scope.Path), "", "")
 
 	// [Step 0-1-B: High-Precision Introspection] Fetch Inventory & Files
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "FETCHING_INVENTORY", "CIE 인벤토리 및 파일 목록 조회 중", "", "")
 	inventory, _ := t.orchestrator.insightClient.GetRepoInventory(t.ctx, scope.Repo)
 	
 	// Intelligently decide extension to filter based on user request (simple heuristic for now)

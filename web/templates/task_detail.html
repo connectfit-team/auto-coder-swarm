@@ -104,15 +104,27 @@
 <script>
     const taskID = "{{.Task.ID}}";
     const streamDiv = document.getElementById('thought-stream');
+    let lastAgent = "";
+    let lastContentSpan = null;
     
     if (!!window.EventSource) {
         const source = new EventSource(`/task/stream?id=${taskID}`);
         source.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.agent && data.message) {
-                const div = document.createElement('div');
-                div.innerHTML = `<b style="color: #81ecec;">${data.agent}:</b> ${data.message}`;
-                streamDiv.appendChild(div);
+                if (data.agent !== lastAgent) {
+                    const block = document.createElement('div');
+                    block.style.marginTop = "8px";
+                    block.innerHTML = `<b style="color: #81ecec;">${data.agent}:</b> `;
+                    lastContentSpan = document.createElement('span');
+                    block.appendChild(lastContentSpan);
+                    streamDiv.appendChild(block);
+                    lastAgent = data.agent;
+                }
+                
+                if (lastContentSpan) {
+                    lastContentSpan.innerText += data.message;
+                }
                 streamDiv.scrollTop = streamDiv.scrollHeight;
             }
         };

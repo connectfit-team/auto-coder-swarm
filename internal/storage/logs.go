@@ -39,7 +39,14 @@ func (s *Storage) AddThought(taskID string, agentName, message string) error {
 		Message:   message,
 		CreatedAt: time.Now(),
 	}
-	return s.DB.Create(thought).Error
+	
+	// Non-blocking send to async queue
+	select {
+	case s.thoughtQueue <- thought:
+	default:
+		// Queue full, fallback to sync or skip (logging failure)
+	}
+	return nil
 }
 
 func (s *Storage) GetThoughts(taskID string) ([]ThoughtLog, error) {
