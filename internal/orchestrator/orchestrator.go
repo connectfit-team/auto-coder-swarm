@@ -119,9 +119,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	planner := agent.NewPlannerAgent(primaryLLM)
 	coder := agent.NewCoderAgent(primaryLLM)
 	reviewer := agent.NewReviewerAgent(primaryLLM)
-	riskAssessor := agent.NewRiskAssessorAgent(primaryLLM)
 	critic := agent.NewCriticAgent(primaryLLM)
-	summarizer := agent.NewSummarizerAgent(primaryLLM)
 
 	o.logDeepTechnical(ctx, taskID, "INIT", fmt.Sprintf("프로젝트 [%s]에 대한 수정 작업 준비 중", req.TargetRepo), "", "Environment initialized")
 
@@ -197,6 +195,11 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 			exec.Command("git", "-C", repoPath, "checkout", ".").Run(); continue
 		}
 
+		if preBench != "" { 
+			o.logDeepTechnical(ctx, taskID, "BENCHMARK", "성능 측정 중", "", "Comparing benchmarks")
+			postBench, _ = o.runBenchmark(repoPath) 
+		}
+		
 		diffCmd := exec.Command("git", "-C", repoPath, "diff", "HEAD")
 		diffOut, _ := diffCmd.CombinedOutput()
 		finalDiff = string(diffOut)
