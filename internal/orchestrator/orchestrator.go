@@ -80,7 +80,6 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 	if o.store != nil {
 		o.store.AddDeepLog(taskID, stage, message, prompt, summary)
 		
-		// Update context state
 		task, _ := o.store.GetTaskByID(taskID)
 		timestamp := time.Now().Format("15:04:05")
 		newState := fmt.Sprintf("%s\n[%s] %s: %s (Summary: %s)", task.ContextState, timestamp, stage, message, summary)
@@ -112,6 +111,11 @@ func (o *SwarmOrchestrator) runBenchmark(path string) (string, error) {
 		return string(out), nil
 	}
 	return "", nil
+}
+
+func (o *SwarmOrchestrator) detectChainTasks(ctx context.Context, llm model.LLM, targetRepo, diff string, depth int) []StatelessRequest {
+	if depth >= 2 { return nil }
+	return nil
 }
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
@@ -28,31 +27,31 @@ func NewDashboardHandler(s *storage.Storage, w *worker.Manager, sm *stream.Manag
 	return &DashboardHandler{store: s, worker: w, stream: sm, tmplPath: tmplPath}
 }
 
-// UI-Safe Log Model to avoid template function dependency
+// UISafeLog is a view-model to ensure templates never fail due to missing functions
 type UISafeLog struct {
-	CreatedAt string
-	Stage     string
-	StageLower string // Pre-converted for CSS classes
-	Message   string
-	Prompt    string
-	Summary   string
+	CreatedAt  string
+	Stage      string
+	StageLower string
+	Message    string
+	Prompt     string
+	Summary    string
 }
 
 func (h *DashboardHandler) render(w http.ResponseWriter, page string, data interface{}) {
-	// Fallback to absolute simplest rendering to bypass function issues
 	layoutPath := filepath.Join(h.tmplPath, "layout.html")
 	contentPath := filepath.Join(h.tmplPath, page)
 
+	// Create template without custom functions to avoid registration order risks
 	tmpl, err := template.ParseFiles(layoutPath, contentPath)
 	if err != nil {
-		log.Printf("[Web] Template error: %v", err)
+		log.Printf("[Web] Template parse error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.ExecuteTemplate(w, "layout.html", data)
 	if err != nil {
-		log.Printf("[Web] Execution error: %v", err)
+		log.Printf("[Web] Template execution error: %v", err)
 	}
 }
 
@@ -67,16 +66,18 @@ func (h *DashboardHandler) HandleTaskDetail(w http.ResponseWriter, r *http.Reque
 	task, _ := h.store.GetTaskByID(uint(idInt))
 	rawLogs, _ := h.store.GetLogs(uint(idInt))
 	
-	// Convert logs to UI-safe format on the server side
 	var uiLogs []UISafeLog
 	for _, l := range rawLogs {
+		msg := l.Message
+		if msg == "" { msg = "(상세 메시지 없음)" }
+		
 		uiLogs = append(uiLogs, UISafeLog{
-			CreatedAt: l.CreatedAt.Format("15:04:05"),
-			Stage:     l.Stage,
+			CreatedAt:  l.CreatedAt.Format("2006-01-02 15:04:05"),
+			Stage:      l.Stage,
 			StageLower: strings.ToLower(l.Stage),
-			Message:   l.Message,
-			Prompt:    l.Prompt,
-			Summary:   l.Summary,
+			Message:    msg,
+			Prompt:     l.Prompt,
+			Summary:    l.Summary,
 		})
 	}
 
@@ -134,11 +135,9 @@ func (h *DashboardHandler) HandleUpdateProgress(w http.ResponseWriter, r *http.R
 }
 
 func (h *DashboardHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
-	// Git logs
 	cmd := exec.Command("git", "-C", "/home/cnf/projects/auto-coder-swarm", "log", "-n", "20", "--oneline", "--decorate", "--graph")
 	gitOut, _ := cmd.CombinedOutput()
 	
-	// NEW: System service.log (Tail 100 lines)
 	svcOut, _ := os.ReadFile("/home/cnf/projects/auto-coder-swarm/service.log")
 	lines := strings.Split(string(svcOut), "\n")
 	if len(lines) > 100 {
