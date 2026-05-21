@@ -69,7 +69,7 @@ type Storage struct {
 }
 
 func NewStorage(dbPath string) (*Storage, error) {
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(dbPath + "?_pragma=busy_timeout(5000)"), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}

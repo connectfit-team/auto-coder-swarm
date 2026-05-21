@@ -91,7 +91,7 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID uint, s
 	}
 }
 
-func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, path string) ProjectMetadata {
+func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, taskID uint, path string) ProjectMetadata {
 	primary, _ := o.loadModels()
 
 	var structure string
@@ -111,14 +111,16 @@ func (o *SwarmOrchestrator) detectProjectTypeLLM(ctx context.Context, path strin
 MANDATORY JSON FORMAT:
 {
   "type": "Go/Flutter/Python/NodeJS/etc",
-  "build_command": "상세 빌드 명령어",
+  "build_command": "상세 빌드 명령어 (예: flutter analyze, go build ./...)",
   "bench_command": "성능 측정 명령어",
   "key_files": ["주요 파일"],
-  "risk_assessment": "리스크"
+  "risk_assessment": "환경적 리스크"
 }
 출력은 오직 JSON만 허용한다.`, structure)
 
 	resp, _ := agent.CallLLM(ctx, primary, "Classifier", prompt)
+	o.logDeepTechnical(ctx, taskID, "DETECTION_RAW", "프로젝트 분류 LLM 원본 응답", prompt, resp)
+	
 	var meta ProjectMetadata
 	jsonStr := extractJSON(resp)
 	if err := json.Unmarshal([]byte(jsonStr), &meta); err != nil {
@@ -142,11 +144,20 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	coder := agent.NewCoderAgent(primaryLLM)
 	reviewer := agent.NewReviewerAgent(primaryLLM)
 
-	o.logDeepTechnical(ctx, taskID, "INIT", "수정 작업 환경 준비", "", "")
-
 	analysis := req.AnalysisContext
 	if analysis == "" {
-		analysis, _ = o.insightClient.QueryOracle(ctx, req.UserRequest)
+		sessionID := fmt.Sprintf("swarm-task-%d", taskID)
+		o.logDeepTechnical(ctx, taskID, "ORACLE", "코드 인사이트 엔진(CIE) 분석 쿼리 전송", req.UserRequest, "")
+		
+		res, err := o.insightClient.QueryOracle(ctx, req.UserRequest, sessionID)
+		if err != nil {
+			o.logDeepTechnical(ctx, taskID, "ERROR", "CIE 분석 쿼리 실패", err.Error(), "")
+			return RunResult{}, err
+		}
+		analysis = res
+		o.logDeepTechnical(ctx, taskID, "INIT", "분석 컨텍스트 확보 완료", "", analysis)
+	} else {
+		o.logDeepTechnical(ctx, taskID, "INIT", "외부 분석 컨텍스트 주입됨", "", analysis)
 	}
 
 	wsPath, _ := o.wsMgr.CreateWorkspace()
@@ -159,7 +170,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 	for attempt := 1; attempt <= 3; attempt++ {
 		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
-		o.logDeepTechnical(ctx, taskID, "PLANNING", "코드 수정 계획 수립 중", analysis, "")
+		o.logDeepTechnical(ctx, taskID, "PLANNING", fmt.Sprintf("코드 수정 계획 수립 중 (시도 %d/3)", attempt), analysis, "")
 		input := analysis
 		if lastFeedback != "" { input += "\n\nFEEDBACK:\n" + lastFeedback }
 		voteRes, _ := v.Vote(ctx, "Planner", planner.BuildPrompt(input))
@@ -175,8 +186,8 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		if attempt == 1 {
 			currentBranch = fmt.Sprintf("swarm-fix-%d", time.Now().Unix())
 			o.wsMgr.CreateWorktree(targetRepo, repoPath, currentBranch)
-			meta = o.detectProjectTypeLLM(ctx, repoPath)
-			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별: [%s]", meta.Type), "", meta.RiskAssessment)
+			meta = o.detectProjectTypeLLM(ctx, taskID, repoPath)
+			o.logDeepTechnical(ctx, taskID, "DETECTION", fmt.Sprintf("LLM 프로젝트 판별 결과: [%s]", meta.Type), "", meta.RiskAssessment)
 
 			if meta.BenchCommand != "" {
 				cmd := exec.CommandContext(ctx, "bash", "-c", meta.BenchCommand)
@@ -195,7 +206,7 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 
 		if ctx.Err() != nil { return RunResult{}, ctx.Err() }
 
-		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 실행", meta.Type), meta.BuildCommand, "")
+		o.logDeepTechnical(ctx, taskID, "BUILD", fmt.Sprintf("[%s] 검증 실행 (%s)", meta.Type, meta.BuildCommand), meta.BuildCommand, "")
 		bCmd := exec.CommandContext(ctx, "bash", "-c", meta.BuildCommand)
 		bCmd.Dir = repoPath
 		buildOut, err := bCmd.CombinedOutput()
@@ -236,5 +247,5 @@ func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID uint, r
 		o.logDeepTechnical(ctx, taskID, "COMPLETED", "성공적으로 PR을 생성했습니다.", prURL, "")
 		return RunResult{RepoName: targetRepo, PRURL: prURL}, nil
 	}
-	return RunResult{RepoName: targetRepo}, fmt.Errorf("max retries")
+	return RunResult{RepoName: targetRepo}, fmt.Errorf("최대 재시도 횟수(3회)를 초과했습니다. Auditor가 계속 반려 중입니다.")
 }
