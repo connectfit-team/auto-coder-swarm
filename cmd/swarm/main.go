@@ -10,17 +10,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
+	"github.com/connectfit-team/auto-coder-swarm/internal/llm"
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
+	"github.com/connectfit-team/auto-coder-swarm/internal/reporting"
+	"github.com/connectfit-team/auto-coder-swarm/internal/security"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
+	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
 	"github.com/connectfit-team/auto-coder-swarm/internal/web"
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
-	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
-	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
-	"github.com/connectfit-team/auto-coder-swarm/internal/security"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -119,6 +121,7 @@ func main() {
 	// 1. Environmental Configuration
 	dbPath := getEnv("SWARM_DB_PATH", "./swarm.db")
 	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
+	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
 	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
 	workspaceBase := getEnv("WORKSPACE_BASE_PATH", "/tmp")
 	templatesPath := getEnv("TEMPLATES_PATH", "./web/templates")
@@ -142,6 +145,12 @@ func main() {
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 
+	// [Reporting Service] Initialize reporting service
+	primaryModelName := store.GetSetting("primary_model")
+	if primaryModelName == "" { primaryModelName = "gemma4:latest" }
+	primaryModel := llm.NewOllamaModel(primaryModelName, ollamaURL)
+	reportingSvc := reporting.NewService(store, primaryModel)
+
 	// [Security Guard] Initialize modular scanners
 	sg := security.NewGuardrail(
 		&security.SecretScanner{},
@@ -158,7 +167,7 @@ func main() {
 
 	// 5. Web Interface & API
 	mux := http.NewServeMux()
-	handler := api.NewSwarmHandler(store, wm)
+	handler := api.NewSwarmHandler(store, wm, reportingSvc, ic)
 	handler.RegisterRoutes(mux)
 	dashHandler := web.NewDashboardHandler(store, wm, sm, templatesPath)
 	dashHandler.RegisterRoutes(mux)

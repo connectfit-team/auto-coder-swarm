@@ -31,6 +31,7 @@ type SwarmTask struct {
 	ProposedDiff  string         `gorm:"type:text"`
 	HumanFeedback string         `gorm:"type:text"`
 	ContextState  string         `gorm:"type:text"`
+	CIEWorkID     string         `gorm:"index"`
 }
 
 type RepoLock struct {

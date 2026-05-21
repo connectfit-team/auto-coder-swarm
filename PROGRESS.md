@@ -27,7 +27,9 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **4-Stage Workflow (Eyes & Hands)**: `Inspection-Strategy-Analysis-Implementation` 파이프라인을 구축하여 작업 규모를 사전에 제어하고 역할(이해/구현)을 분리했습니다.
 - [x] **Modular Security Guardrails**: PR 생성 전 Secrets 및 보안 취약점을 스캔하는 모듈형 가드레 일 체계를 구축하여 `Critic` 에이전트와 연동했습니다.
 - [x] **Advanced Self-Healing v2**: 빌드 실패 시 `Healer` 에이전트가 진단하고 코드를 자동 수정 하는 지능형 자가 치유 루프를 구현했습니다.
-- [x] **Deep Observability (Prometheus)**: 에이전트별 지연 시간, 성공률, 토큰 사용량을 실시간 수 집하여 \`/metrics\` 엔드포인트로 제공합니다.
+- [x] **Deep Observability (Prometheus & Raw Logs)**: 에이전트별 지연 시간, 성공률, 토큰 사용량을 수집하며, 대시보드 실시간 로그(Live Tail)에 **RAW LLM Prompt & Response**를 노출합니다.
+- [x] **Codebase Modularization**: Orchestrator 패키지 내 장문 파일(`flow.go`)을 기능별(`_analysis`, `_planning`, `_execution`, `_verification`)로 분리하여 유지보수성을 극대화했습니다.
+- [x] **Deep Stop (CIE API Sync)**: Swarm 작업 취소 시 CIE의 취소 API(`POST /api/v1/tasks/cancel`)를 연쇄 호출하여 원격 리소스를 안전하게 회수합니다.
 - [x] **Systemd Daemonization**: `nohup`을 폐기하고 공식 서비스 등록을 완료했습니다.
 
 - [x] **Documentation Unification**: 운영 지침과 진행 상황을 본 문서로 통합했습니다.
@@ -35,9 +37,10 @@ The swarm engine is managed as a systemd daemon for stability.
 ---
 
 ## 🎯 Next Tasks (Phase 9 Expansion)
-- [ ] **Step 42: Prometheus Metrics**: Export task latency and worker utilization metrics.
-- [ ] **Step 43: Swarm Activity Reporting**: Automated daily summary generation.
+- [x] **Step 42: Prometheus Metrics**: Export task latency and worker utilization metrics.
+- [x] **Step 43: Swarm Activity Reporting**: Automated daily summary generation.
+- [ ] **Step 51: MSA Chain Reaction**: Cross-repository trigger analysis and automated execution.
 
 ---
-*Status: Advanced Infrastructure & Architecture Baseline Established.*
-*Last Updated: 2026-05-21 15:25*
+*Status: Advanced Infrastructure & High-Modularity Baseline Established. (System Purge & Reset Performed)*
+*Last Updated: 2026-05-21 16:45*

@@ -11,7 +11,7 @@ func (o *SwarmOrchestrator) loadModels() (model.LLM, []model.LLM) {
 	baseURL := "http://localhost:11434"
 	primaryName := o.store.GetSetting("primary_model")
 	if primaryName == "" {
-		primaryName = "gemma4:31b"
+		primaryName = "gemma4:latest"
 	}
 	primary := llm.NewOllamaModel(primaryName, baseURL)
 

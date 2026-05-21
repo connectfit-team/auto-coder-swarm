@@ -93,12 +93,11 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			})
 		}
 
-		// Optimization: keep_alive: -1 prevents unloading models between stages
 		apiReq := ollamaRequest{
 			Model:     m.name,
 			Messages:  messages,
-			Stream:    false,
-			KeepAlive: "-1", 
+			Stream:    true,
+			KeepAlive: "24h", 
 		}
 
 		body, _ := json.Marshal(apiReq)
@@ -106,28 +105,49 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 
 		resp, err := http.DefaultClient.Do(httpReq)
 		if err != nil {
-			yield(nil, err)
+			yield(nil, fmt.Errorf("ollama http request failed: %w", err))
 			return
 		}
 		defer resp.Body.Close()
 
-		var apiResp ollamaResponse
-		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-			yield(nil, err)
+		if resp.StatusCode != http.StatusOK {
+			var errBody bytes.Buffer
+			errBody.ReadFrom(resp.Body)
+			yield(nil, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, errBody.String()))
 			return
 		}
 
-		rawContent := apiResp.Message.Content
-		res := &model.LLMResponse{
-			Content: &genai.Content{
-				Role: "model",
-			},
+		decoder := json.NewDecoder(resp.Body)
+		var fullContent strings.Builder
+
+		for {
+			var apiResp ollamaResponse
+			if err := decoder.Decode(&apiResp); err != nil {
+				break
+			}
+			
+			if apiResp.Message.Content != "" {
+				fullContent.WriteString(apiResp.Message.Content)
+				res := &model.LLMResponse{
+					Content: &genai.Content{
+						Role: "model",
+						Parts: []*genai.Part{{Text: apiResp.Message.Content}},
+					},
+				}
+				if !yield(res, nil) {
+					return
+				}
+			}
 		}
 
+		rawContent := fullContent.String()
 		re := regexp.MustCompile("(?s)<\\|tool_call\\>call:([^\\{]+)(\\{.*?\\})<\\|tool_call\\>")
 		matches := re.FindAllStringSubmatch(rawContent, -1)
 
 		if len(matches) > 0 {
+			res := &model.LLMResponse{
+				Content: &genai.Content{Role: "model"},
+			}
 			for _, m := range matches {
 				name := strings.TrimSpace(m[1])
 				argsStr := m[2]
@@ -142,11 +162,7 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 				}
 			}
 			res.FinishReason = genai.FinishReason("FINISH_REASON_FUNCTION_CALL")
-		} else {
-			res.Content.Parts = append(res.Content.Parts, &genai.Part{Text: rawContent})
-			res.FinishReason = genai.FinishReasonStop
+			yield(res, nil)
 		}
-
-		yield(res, nil)
 	}
 }

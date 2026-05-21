@@ -39,6 +39,13 @@ func (s *Storage) GetAllTasks() ([]SwarmTask, error) {
 	return tasks, err
 }
 
+func (s *Storage) GetTodayTasks() ([]SwarmTask, error) {
+	var tasks []SwarmTask
+	today := time.Now().Truncate(24 * time.Hour)
+	err := s.DB.Where("updated_at >= ?", today).Order("updated_at desc").Find(&tasks).Error
+	return tasks, err
+}
+
 func (s *Storage) UpdateTaskRepo(id string, repoName string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("repo_name", repoName).Error
 }
@@ -64,6 +71,10 @@ func (s *Storage) UpdateHumanFeedback(id string, feedback string) error {
 
 func (s *Storage) UpdateContextState(id string, state string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("context_state", state).Error
+}
+
+func (s *Storage) UpdateCIEWorkID(id string, cieWorkID string) error {
+	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("cie_work_id", cieWorkID).Error
 }
 
 func (s *Storage) GetContextState(id string) string {

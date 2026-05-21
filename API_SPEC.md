@@ -29,4 +29,4 @@
 - **Data**: `data: { agent: Planner, message: ... }`
 
 ---
-*Last Updated: 2026-05-21 (WorkID Normalization Completed)*
+*Last Updated: 2026-05-21 (WorkID Normalization & Deep Stop Integration Completed)*

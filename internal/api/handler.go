@@ -9,18 +9,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
+	"github.com/connectfit-team/auto-coder-swarm/internal/reporting"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 )
 
 type SwarmHandler struct {
-	store  *storage.Storage
-	worker *worker.Manager
+	store    *storage.Storage
+	worker   *worker.Manager
+	reporter *reporting.Service
+	insight  *insightclient.Client
 }
 
-func NewSwarmHandler(s *storage.Storage, w *worker.Manager) *SwarmHandler {
-	return &SwarmHandler{store: s, worker: w}
+func NewSwarmHandler(s *storage.Storage, w *worker.Manager, rs *reporting.Service, ic *insightclient.Client) *SwarmHandler {
+	return &SwarmHandler{store: s, worker: w, reporter: rs, insight: ic}
 }
 
 // Middleware: Request Logger
@@ -76,10 +80,12 @@ func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	logs, _ := h.store.GetLogs(id)
+	thoughts, _ := h.store.GetThoughts(id)
 	
 	response := map[string]interface{}{
-		"task": task,
-		"logs": logs,
+		"task":     task,
+		"logs":     logs,
+		"thoughts": thoughts,
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -113,12 +119,29 @@ func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.URL.Query().Get("id")
 	
+	// [Deep Stop] Stop remote CIE task if tracked
+	task, err := h.store.GetTaskByID(id)
+	if err == nil && task.CIEWorkID != "" {
+		log.Printf("[API] Stopping remote CIE task: %s", task.CIEWorkID)
+		h.insight.StopTask(r.Context(), task.CIEWorkID)
+	}
+
 	if h.worker.Stop(id) {
 		h.store.UpdateTaskStatus(id, storage.StatusCancelled, "", "Stopped via API")
 		fmt.Fprintf(w, "Task %s stopped", id)
 	} else {
 		http.Error(w, "Task not running or not found", http.StatusNotFound)
 	}
+}
+
+func (h *SwarmHandler) HandleGenerateReport(w http.ResponseWriter, r *http.Request) {
+	report, err := h.reporter.GenerateDailyReport(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown")
+	fmt.Fprint(w, report)
 }
 
 func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +199,7 @@ func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/tasks/stop", h.requestLogger(h.enableCORS(h.HandleStopTask)))
 	mux.HandleFunc("GET /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleGetSettings)))
 	mux.HandleFunc("POST /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleUpdateSettings)))
+	mux.HandleFunc("GET /api/v1/report/daily", h.requestLogger(h.enableCORS(h.HandleGenerateReport)))
 	
 	mux.HandleFunc("POST /api/v1/approve", h.requestLogger(h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")

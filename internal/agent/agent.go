@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -85,6 +86,8 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 		GlobalStorage.AddThought(taskID, agentName, promptLog)
 	}
 
+	log.Printf("[%s] [AGENT:%s] RAW PROMPT: %s", taskID, agentName, enrichedPrompt)
+
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{
 			{
@@ -105,6 +108,7 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 			observability.IncrementAgentOp(agentName, "llm_error")
 			return "", err
 		}
+		if resp == nil || resp.Content == nil { continue }
 		for _, p := range resp.Content.Parts {
 			chunk := p.Text
 			respText += chunk
@@ -119,6 +123,12 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 			if f != nil { fmt.Fprint(f, chunk) }
 		}
 	}
+	
+	if respText == "" {
+		fmt.Printf("[Agent] WARNING: Empty response from LLM for agent %s\n", agentName)
+	}
+	
+	log.Printf("[%s] [AGENT:%s] RAW RESPONSE: %s", taskID, agentName, respText)
 
 	if f != nil { fmt.Fprintf(f, "\n==============================================================\n") }
 	return respText, nil
