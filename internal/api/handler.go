@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -28,11 +27,8 @@ func NewSwarmHandler(s *storage.Storage, w *worker.Manager) *SwarmHandler {
 func (h *SwarmHandler) requestLogger(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		// Capture request details for service.log
 		log.Printf("[API] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		
 		next(w, r)
-		
 		log.Printf("[API] Completed %s %s in %v", r.Method, r.URL.Path, time.Since(start))
 	}
 }
@@ -72,15 +68,14 @@ func (h *SwarmHandler) HandleListTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
-	task, err := h.store.GetTaskByID(uint(id))
+	id := r.URL.Query().Get("id")
+	task, err := h.store.GetTaskByID(id)
 	if err != nil {
 		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 	
-	logs, _ := h.store.GetLogs(uint(id))
+	logs, _ := h.store.GetLogs(id)
 	
 	response := map[string]interface{}{
 		"task": task,
@@ -116,19 +111,17 @@ func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
+	id := r.URL.Query().Get("id")
 	
-	if h.worker.Stop(uint(id)) {
-		h.store.UpdateTaskStatus(uint(id), storage.StatusCancelled, "", "Stopped via API")
-		fmt.Fprintf(w, "Task %d stopped", id)
+	if h.worker.Stop(id) {
+		h.store.UpdateTaskStatus(id, storage.StatusCancelled, "", "Stopped via API")
+		fmt.Fprintf(w, "Task %s stopped", id)
 	} else {
 		http.Error(w, "Task not running or not found", http.StatusNotFound)
 	}
 }
 
 func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
-	// Fetch available models from Ollama
 	resp, err := http.Get("http://localhost:11434/api/tags")
 	var ollamaResp struct {
 		Models []interface{} `json:"models"`
@@ -185,9 +178,8 @@ func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleUpdateSettings)))
 	
 	mux.HandleFunc("POST /api/v1/approve", h.requestLogger(h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
-		idStr := r.URL.Query().Get("id")
-		id, _ := strconv.ParseUint(idStr, 10, 32)
-		h.store.UpdateTaskStatus(uint(id), storage.StatusApproved, "", "")
-		fmt.Fprintf(w, "Task %d approved", id)
+		id := r.URL.Query().Get("id")
+		h.store.UpdateTaskStatus(id, storage.StatusApproved, "", "")
+		fmt.Fprintf(w, "Task %s approved", id)
 	})))
 }

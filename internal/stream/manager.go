@@ -11,21 +11,21 @@ import (
 
 // Thought represents a single step in the agent's reasoning process.
 type Thought struct {
-	TaskID    uint
+	TaskID    string
 	AgentName string
 	Message   string
 }
 
 // Manager handles real-time broadcasting of agent thoughts to web clients.
 type Manager struct {
-	subscribers map[uint][]chan Thought
+	subscribers map[string][]chan Thought
 	store       *storage.Storage
 	mu          sync.RWMutex
 }
 
 func NewManager(s *storage.Storage) *Manager {
 	return &Manager{
-		subscribers: make(map[uint][]chan Thought),
+		subscribers: make(map[string][]chan Thought),
 		store:       s,
 	}
 }
@@ -47,11 +47,9 @@ func (m *Manager) Broadcast(t Thought) {
 
 // ServeHTTP implements the SSE endpoint for task thought streaming.
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	taskIDStr := r.URL.Query().Get("id")
-	var taskID uint
-	fmt.Sscanf(taskIDStr, "%d", &taskID)
+	taskID := r.URL.Query().Get("id")
 
-	if taskID == 0 {
+	if taskID == "" {
 		http.Error(w, "Invalid Task ID", http.StatusBadRequest)
 		return
 	}
@@ -102,7 +100,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		close(ch)
 	}()
 
-	fmt.Fprintf(w, "data: {\"message\": \"Connected to Task #%d stream (History Loaded)\"}\n\n", taskID)
+	fmt.Fprintf(w, "data: {\"message\": \"Connected to Task #%s stream (History Loaded)\"}\n\n", taskID)
 	flusher.Flush()
 
 	for {

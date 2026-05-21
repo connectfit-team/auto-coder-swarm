@@ -13,12 +13,12 @@ import (
 )
 
 type Broadcaster interface {
-	Broadcast(taskID uint, agentName, message string)
+	Broadcast(taskID string, agentName, message string)
 }
 
 type Persister interface {
-	AddThought(taskID uint, agentName, message string) error
-	GetContextState(taskID uint) string
+	AddThought(taskID string, agentName, message string) error
+	GetContextState(taskID string) string
 }
 
 var GlobalStream Broadcaster
@@ -56,11 +56,10 @@ func rotateLogs(logPath string) {
 }
 
 func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string, error) {
-	taskID, _ := ctx.Value("task_id").(uint)
+	taskID, _ := ctx.Value("task_id").(string)
 
-	// Enrich prompt with cumulative technical context state if available
 	enrichedPrompt := prompt
-	if taskID > 0 && GlobalStorage != nil {
+	if taskID != "" && GlobalStorage != nil {
 		if state := GlobalStorage.GetContextState(taskID); state != "" {
 			enrichedPrompt = fmt.Sprintf("[PAST CONTEXT & DECISIONS]\n%s\n\n[CURRENT TASK]\n%s", state, prompt)
 		}
@@ -80,7 +79,7 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 		fmt.Fprint(f, promptLog)
 	}
 
-	if taskID > 0 && GlobalStorage != nil {
+	if taskID != "" && GlobalStorage != nil {
 		GlobalStorage.AddThought(taskID, "SYSTEM", header)
 		GlobalStorage.AddThought(taskID, agentName, promptLog)
 	}
@@ -105,7 +104,7 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 		for _, p := range resp.Content.Parts {
 			chunk := p.Text
 			respText += chunk
-			if taskID > 0 {
+			if taskID != "" {
 				if GlobalStream != nil { GlobalStream.Broadcast(taskID, agentName, chunk) }
 				if GlobalStorage != nil { GlobalStorage.AddThought(taskID, agentName, chunk) }
 			}

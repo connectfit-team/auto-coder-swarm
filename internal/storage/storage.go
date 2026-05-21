@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"time"
+	"math/rand"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -21,7 +22,7 @@ const (
 )
 
 type SwarmTask struct {
-	ID            uint           `gorm:"primaryKey"`
+	ID            string         `gorm:"primaryKey"`
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
@@ -38,22 +39,22 @@ type SwarmTask struct {
 type RepoLock struct {
 	RepoName  string    `gorm:"primaryKey"`
 	LockedAt  time.Time
-	TaskID    uint
+	TaskID    string
 }
 
 type TaskLog struct {
 	ID        uint      `gorm:"primaryKey"`
-	TaskID    uint      `gorm:"index"`
+	TaskID    string    `gorm:"index"`
 	Stage     string
 	Message   string    `gorm:"type:text"`
-	Prompt    string    `gorm:"type:text"` // Captures the exact prompt sent to LLM
-	Summary   string    `gorm:"type:text"` // Captures a detailed technical summary
+	Prompt    string    `gorm:"type:text"` 
+	Summary   string    `gorm:"type:text"` 
 	CreatedAt time.Time
 }
 
 type ThoughtLog struct {
 	ID        uint      `gorm:"primaryKey"`
-	TaskID    uint      `gorm:"index"`
+	TaskID    string    `gorm:"index"`
 	AgentName string
 	Message   string    `gorm:"type:text"`
 	CreatedAt time.Time
@@ -77,17 +78,26 @@ func NewStorage(dbPath string) (*Storage, error) {
 	return &Storage{DB: db}, nil
 }
 
+func (s *Storage) generateWorkID() string {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return fmt.Sprintf("W-%05d", r.Intn(90000)+10000)
+}
+
 func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
-	task := &SwarmTask{UserRequest: request, Status: StatusPending}
+	task := &SwarmTask{
+		ID:          s.generateWorkID(),
+		UserRequest: request, 
+		Status:      StatusPending,
+	}
 	if err := s.DB.Create(task).Error; err != nil {
 		return nil, err
 	}
 	return task, nil
 }
 
-func (s *Storage) GetTaskByID(id uint) (*SwarmTask, error) {
+func (s *Storage) GetTaskByID(id string) (*SwarmTask, error) {
 	var task SwarmTask
-	if err := s.DB.First(&task, id).Error; err != nil {
+	if err := s.DB.First(&task, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &task, nil
@@ -99,11 +109,11 @@ func (s *Storage) GetAllTasks() ([]SwarmTask, error) {
 	return tasks, err
 }
 
-func (s *Storage) UpdateTaskRepo(id uint, repoName string) error {
+func (s *Storage) UpdateTaskRepo(id string, repoName string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("repo_name", repoName).Error
 }
 
-func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog string) error {
+func (s *Storage) UpdateTaskStatus(id string, status TaskStatus, result, errLog string) error {
 	updates := map[string]interface{}{"status": status, "updated_at": time.Now()}
 	if result != "" {
 		updates["result"] = result
@@ -114,21 +124,21 @@ func (s *Storage) UpdateTaskStatus(id uint, status TaskStatus, result, errLog st
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
-func (s *Storage) UpdateTaskProposedDiff(id uint, diff string) error {
+func (s *Storage) UpdateTaskProposedDiff(id string, diff string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("proposed_diff", diff).Error
 }
 
-func (s *Storage) UpdateHumanFeedback(id uint, feedback string) error {
+func (s *Storage) UpdateHumanFeedback(id string, feedback string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("human_feedback", feedback).Error
 }
 
-func (s *Storage) UpdateContextState(id uint, state string) error {
+func (s *Storage) UpdateContextState(id string, state string) error {
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Update("context_state", state).Error
 }
 
-func (s *Storage) GetContextState(id uint) string {
+func (s *Storage) GetContextState(id string) string {
 	var task SwarmTask
-	if err := s.DB.Select("context_state").First(&task, id).Error; err != nil {
+	if err := s.DB.Select("context_state").First(&task, "id = ?", id).Error; err != nil {
 		return ""
 	}
 	return task.ContextState
@@ -160,13 +170,7 @@ func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 	return &task, nil
 }
 
-func (s *Storage) GetNextPendingTask() (*SwarmTask, error) {
-	var task SwarmTask
-	err := s.DB.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending}).Order("created_at asc").First(&task).Error
-	return &task, err
-}
-
-func (s *Storage) TryLockRepo(repoName string, taskID uint) (bool, error) {
+func (s *Storage) TryLockRepo(repoName string, taskID string) (bool, error) {
 	if repoName == "" {
 		return true, nil
 	}
@@ -195,7 +199,7 @@ func (s *Storage) ResetRunningToPending() error {
 	return s.DB.Model(&SwarmTask{}).Where("status = ?", StatusRunning).Update("status", StatusPending).Error
 }
 
-func (s *Storage) AddLog(taskID uint, stage, message string) error {
+func (s *Storage) AddLog(taskID string, stage, message string) error {
 	log := &TaskLog{
 		TaskID:    taskID,
 		Stage:     stage,
@@ -205,7 +209,7 @@ func (s *Storage) AddLog(taskID uint, stage, message string) error {
 	return s.DB.Create(log).Error
 }
 
-func (s *Storage) AddDeepLog(taskID uint, stage, message, prompt, summary string) error {
+func (s *Storage) AddDeepLog(taskID string, stage, message, prompt, summary string) error {
 	log := &TaskLog{
 		TaskID:    taskID,
 		Stage:     stage,
@@ -217,13 +221,13 @@ func (s *Storage) AddDeepLog(taskID uint, stage, message, prompt, summary string
 	return s.DB.Create(log).Error
 }
 
-func (s *Storage) GetLogs(taskID uint) ([]TaskLog, error) {
+func (s *Storage) GetLogs(taskID string) ([]TaskLog, error) {
 	var logs []TaskLog
 	err := s.DB.Where("task_id = ?", taskID).Order("created_at asc").Find(&logs).Error
 	return logs, err
 }
 
-func (s *Storage) AddThought(taskID uint, agentName, message string) error {
+func (s *Storage) AddThought(taskID string, agentName, message string) error {
 	thought := &ThoughtLog{
 		TaskID:    taskID,
 		AgentName: agentName,
@@ -233,7 +237,7 @@ func (s *Storage) AddThought(taskID uint, agentName, message string) error {
 	return s.DB.Create(thought).Error
 }
 
-func (s *Storage) GetThoughts(taskID uint) ([]ThoughtLog, error) {
+func (s *Storage) GetThoughts(taskID string) ([]ThoughtLog, error) {
 	var thoughts []ThoughtLog
 	err := s.DB.Where("task_id = ?", taskID).Order("created_at asc").Find(&thoughts).Error
 	return thoughts, err

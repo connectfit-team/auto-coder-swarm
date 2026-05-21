@@ -20,6 +20,7 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 	"github.com/connectfit-team/auto-coder-swarm/internal/stream"
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/security"
 )
 
 func getEnv(key, fallback string) string {
@@ -34,7 +35,7 @@ type StreamAdapter struct {
 	manager *stream.Manager
 }
 
-func (a *StreamAdapter) Broadcast(taskID uint, agentName, message string) {
+func (a *StreamAdapter) Broadcast(taskID string, agentName, message string) {
 	a.manager.Broadcast(stream.Thought{
 		TaskID:    taskID,
 		AgentName: agentName,
@@ -59,7 +60,7 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			continue
 		}
 
-		log.Printf("[Worker %d] Task #%d (Status: %s)", id, task.ID, task.Status)
+		log.Printf("[Worker %d] Task %s (Status: %s)", id, task.ID, task.Status)
 
 		ctx := context.WithValue(context.Background(), "task_id", task.ID)
 		ctx, cancel := context.WithCancel(ctx)
@@ -90,22 +91,22 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		if err != nil {
 			if ctx.Err() == context.Canceled {
-				log.Printf("🚫 Task #%d was stopped by user.", task.ID)
+				log.Printf("🚫 Task %s was stopped by user.", task.ID)
 			} else {
-				sendToSlack(slackWebhook, fmt.Sprintf("❌ *Task #%d 실패*: %v", task.ID, err))
+				sendToSlack(slackWebhook, fmt.Sprintf("❌ *Task %s 실패*: %v", task.ID, err))
 				store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 			}
 		} else if res.WaitingApproval {
 			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
-			sendToSlack(slackWebhook, fmt.Sprintf("⏳ *Task #%d 검증 완료*: 승인이 필요합니다.", task.ID))
+			sendToSlack(slackWebhook, fmt.Sprintf("⏳ *Task %s 검증 완료*: 승인이 필요합니다.", task.ID))
 		} else {
-			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task #%d 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
+			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task %s 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
 
 			for _, chainReq := range res.ChainTasks {
 				b, _ := json.Marshal(chainReq)
 				newToken, _ := store.CreateTask(string(b))
-				sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (#%d): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
+				sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (%s): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
 			}
 		}
 	}
@@ -139,7 +140,14 @@ func main() {
 	ic := insightclient.NewClient(oracleURL)
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
-	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store)
+
+	// [Security Guard] Initialize modular scanners
+	sg := security.NewGuardrail(
+		&security.SecretScanner{},
+		&security.StaticAnalysisScanner{},
+	)
+
+	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store, sg)
 
 	// 4. Worker Management
 	workerCount := 3

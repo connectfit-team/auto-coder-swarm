@@ -1,31 +1,31 @@
 # 📘 Projects: Auto-Coder Swarm (Master Spec)
 
 ## 1. 프로젝트 목적 (Purpose)
-`code-insight-engine` (CIE)의 분석 결과를 바탕으로 실제 코드를 수정하고, 다중 에이전트 협업을 통해 검증하며, 최종적으로 Pull Request를 자동 생성하는 자율형 코드 수정 플랫폼입니다.
+`code-insight-engine` (CIE, Eyes)의 분석 결과와 Swarm(Hands)의 지능형 실행력을 결합하여, 코드 수정-검증-PR 생성을 자동화하는 엔터프라이즈급 자율형 멀티 에이전트 시스템입니다.
 
 ## 2. 관리 핵심 문서 (Core Documents)
-1. **PROJECTS.md**: 마스터 사양 및 로드맵.
-2. **PROGRESS.md**: 현재 진행 중인 단계 및 성과 추적.
-3. **PROCESSES.md**: 시스템 운영 및 리소스 관리 프로세스.
-4. **API_SPEC.md**: 외부 연동을 위한 Headless REST API 명세.
-5. **GEMINI.md**: 시스템 무결성 보장(Functional Integrity) 원칙 및 통합 지침.
+1. **PROJECTS.md**: 마스터 사양 및 중장기 로드맵.
+2. **PROGRESS.md**: 현재 진행 단계, 성과 추적 및 운영(Systemd) 지침.
+3. **API_SPEC.md**: 외부 연동을 위한 Headless REST API 명세 (W-XXXXXX ID 체계 준수).
+4. **GEMINI.md**: 4단계 워크플로우 및 시스템 무결성(Functional Integrity) 4대 원칙.
 
 ## 3. 핵심 아키텍처 (Key Architecture)
-- **Multi-Agent Governance**: `Planner`(설계), `Coder`(수행), `Critic`(리스크 검토), `Reviewer`(승인)의 4단계 협업 체계를 통해 코드의 무결성을 보장합니다.
-- **Intelligence-First Prompting**: 분석 엔진(CIE)에 원본 요청 대신, 에이전트가 생성한 정교한 '기술 설계서 요청' 프롬프트를 전달하여 고품질 가이드를 확보합니다.
-- **CIE-Async Integration**: CIE의 비동기 분석 API를 준수하며, 결과 폴링 및 고유 세션 ID 격리를 통해 무결성을 확보합니다.
-- **Deep Inspection Timeline**: `ORACLE`(분석), `CRITIC`(리스크), `REVIEW`(검증) 등 모든 의사결정 단계를 투명하게 공개합니다.
-- **Context-Aware Lifecycle**: `exec.CommandContext`를 전면 도입하여 즉각적인 작업 중단 및 자원 회수가 가능합니다.
+- **4-Stage Intelligent Pipeline**: `INSPECTION`(규모 파악) -> `STRATEGY`(전략 수립) -> `ANALYSIS`(CIE 이해) -> `IMPLEMENTATION`(Swarm 구현) 체계.
+- **Multi-Agent Governance**: `Planner`(설계), `Coder`(수행), `Critic`(리스크), `Reviewer`(기능 승인)의 상호 견제 체계.
+- **Normalized WorkID (W-XXXXXX)**: CIE와 정렬된 랜덤 기반 고유 식별자 체계를 통한 작업 추적성 확보.
+- **Context-Aware Lifecycle**: `exec.CommandContext`를 통한 즉각적인 작업 중단 및 안전한 자원 회수.
 
 ## 4. 로드맵 (Roadmap)
 ### Phase 9: 엔터프라이즈 엔지니어링 (Stable)
-- [x] **Step 38: Headless API & SPEC**: REST API 기반 아키텍처 완성.
-- [x] **Step 41: LLM-Autonomous Classification**: 브레인 기반 프로젝트 판별 및 적응형 빌드 구축 완료.
-- [x] **Step 44: Task Termination & CIE Sync**: 즉각적인 작업 중단 및 CIE 비동기 API 완전 동기화 완료.
-- [x] **Step 45: Functional Integrity Mandate**: GEMINI.md에 무결성 보장 4대 원칙 각인 완료.
-- [x] **Step 46: Multi-Agent Governance**: Planner-Coder-Critic-Reviewer 협업 체계 및 리스크 검토 프로세스 구현 완료.
+- [x] **Step 38: Headless API & SPEC**: REST API 기반 아키텍처 및 W-XXXXXX ID 체계 완료.
+- [x] **Step 41: Adaptive Pipeline**: 4단계 지능형 워크플로우(Inspection-Strategy-Analysis-Implementation) 구축 완료.
+- [x] **Step 44: Task Hardening**: 즉각적인 작업 중단 및 CIE 비동기 API 완전 동기화 완료.
+- [x] **Step 45: Functional Integrity Mandate**: GEMINI.md에 무결성 보장 원칙 및 역할 분리(Eyes/Hands) 각인 완료.
+- [x] **Step 46: Multi-Agent Consensus**: 4단계 거버넌스 및 리스크 검토 프로세스 고도화 완료.
+- [x] **Step 47: Security Guardrails**: 코드 내 기밀 정보(Secrets) 및 취약점 자동 감지 엔진 구축 완료.
 - [ ] **Step 42: Prometheus Metrics**: 작업 지연 시간 및 워커 부하 지표 시각화.
 - [ ] **Step 43: Swarm Activity Reporting**: 일일 작업 요약 및 브리핑 자동 생성.
 
 ---
-*최종 감사: 2026-05-21 (다중 에이전트 거버넌스 및 리스크 검토 체계 확립 완료)*
+*최종 감사: 2026-05-21 (4단계 지능형 파이프라인 및 W-ID 체계 확립 완료)*
+ 지능형 파이프라인 및 W-ID 체계 확립 완료)*

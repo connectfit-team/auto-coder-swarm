@@ -11,7 +11,15 @@ Auto-Coder Swarm 시스템의 신뢰성과 안정성을 위해 다음 원칙을 
 ## 🔌 Integrated Architecture: CIE & Swarm
 Swarm은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
 
-### 1. Code-Insight Engine (Eyes) Dependency
+### 1. 4-Stage Workflow (Eyes & Hands Integration)
+효율적인 작업 수행을 위해 모든 작업은 다음 4단계를 거칩니다.
+
+1. **INSPECTION (Lightweight)**: CIE에게 작업 범위 내 파일 목록과 라인 수(LOC)만 라이트하게 요청하여 규모를 파악합니다.
+2. **STRATEGY (Architect)**: 검사 결과를 바탕으로 작업 가능 여부를 판단하고, CIE에게 보낼 '논리 분석용 질의(Precision Query)'를 생성합니다.
+3. **ANALYSIS (Eyes - CIE)**: CIE는 코드의 기능을 논리적으로 이해하고 기술적 요약을 제공합니다. (구현 지시가 아닌 '이해'에 집중)
+4. **IMPLEMENTATION (Hands - Swarm)**: Swarm의 Planner와 Coder가 CIE의 이해를 바탕으로 실제 코드를 수정하고 검증합니다.
+
+### 2. Code-Insight Engine (Eyes) Dependency
 - **Async Spec**: CIE의 비동기 API(POST /analyze -> GET /api/tasks/result)를 준수해야 합니다.
 - **Session Isolation**: 각 작업은 고유한 session_id를 사용하여 컨텍스트 오염을 방지합니다.
 

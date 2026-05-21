@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
@@ -52,10 +51,9 @@ func (h *DashboardHandler) HandleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DashboardHandler) HandleTaskDetail(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	idInt, _ := strconv.Atoi(idStr)
-	task, _ := h.store.GetTaskByID(uint(idInt))
-	rawLogs, _ := h.store.GetLogs(uint(idInt))
+	id := r.URL.Query().Get("id")
+	task, _ := h.store.GetTaskByID(id)
+	rawLogs, _ := h.store.GetLogs(id)
 
 	var uiLogs []UISafeLog
 	for _, l := range rawLogs {
@@ -76,27 +74,24 @@ func (h *DashboardHandler) HandleTaskDetail(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *DashboardHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	idInt, _ := strconv.Atoi(idStr)
-	h.store.UpdateTaskStatus(uint(idInt), storage.StatusCancelled, "", "Stopping...")
-	h.worker.Stop(uint(idInt))
+	id := r.URL.Query().Get("id")
+	h.store.UpdateTaskStatus(id, storage.StatusCancelled, "", "Stopping...")
+	h.worker.Stop(id)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (h *DashboardHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	idInt, _ := strconv.Atoi(idStr)
-	h.store.UpdateTaskStatus(uint(idInt), storage.StatusApproved, "", "")
-	http.Redirect(w, r, "/task?id="+idStr, http.StatusSeeOther)
+	id := r.URL.Query().Get("id")
+	h.store.UpdateTaskStatus(id, storage.StatusApproved, "", "")
+	http.Redirect(w, r, "/task?id="+id, http.StatusSeeOther)
 }
 
 func (h *DashboardHandler) HandleRejectTask(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	idInt, _ := strconv.Atoi(idStr)
+	id := r.URL.Query().Get("id")
 	feedback := r.FormValue("feedback")
-	h.store.UpdateHumanFeedback(uint(idInt), feedback)
-	h.store.UpdateTaskStatus(uint(idInt), storage.StatusPending, "", "Rejected by user")
-	http.Redirect(w, r, "/task?id="+idStr, http.StatusSeeOther)
+	h.store.UpdateHumanFeedback(id, feedback)
+	h.store.UpdateTaskStatus(id, storage.StatusPending, "", "Rejected by user")
+	http.Redirect(w, r, "/task?id="+id, http.StatusSeeOther)
 }
 
 func (h *DashboardHandler) HandleProjects(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +118,6 @@ func (h *DashboardHandler) HandleUpdateProgress(w http.ResponseWriter, r *http.R
 
 func (h *DashboardHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	gitOut, _ := exec.Command("git", "-C", "/home/cnf/projects/auto-coder-swarm", "log", "-n", "20", "--oneline", "--decorate", "--graph").CombinedOutput()
-
 	svcOut, _ := exec.Command("tail", "-n", "100", "/home/cnf/projects/auto-coder-swarm/service.log").CombinedOutput()
 
 	h.render(w, "logs.html", map[string]interface{}{

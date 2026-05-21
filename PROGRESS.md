@@ -1,18 +1,33 @@
-# 🚀 Project Progress: Auto-Coder Swarm (Multi-Agent)
+# 🚀 Project Progress & Operations: Auto-Coder Swarm
 
 ## 📊 Current Status: Phase 9 (Enterprise Readiness) - STABLE
 - Remote Host: 192.168.120.54
 - Primary Language: Go
-- Health: Multi-Agent Consensus Active, Risk Review Verified, Build OK, CIE Async Sync OK
+- Health: 4-Stage Pipeline Active, WorkID (W-XXXXXX) Synced, Build OK
 
 ---
 
-## 🛠️ Recent Achievements (Governance Audit Complete)
-- [x] **Multi-Agent Architecture**: `Planner`, `Coder`, `Critic`, `Reviewer`의 4단계 협업 체계를 구현하여 설계-수행-리스크검토-기능검증의 전 과정을 자동화했습니다.
-- [x] **Architectural Oversight (Critic)**: 비판적 아키텍처 및 리스크 검토 에이전트를 도입하여 변경 사항의 사이드 이펙트와 보안 리스크를 선제적으로 필터링합니다.
-- [x] **Intelligence-First Prompting**: 분석 엔진(CIE)에 정교한 '기술 설계서'를 요청하는 프롬프트 최적화를 통해 작업 품질을 획기적으로 개선했습니다.
-- [x] **CIE Asynchronous Sync**: CIE의 최신 비동기 API 명세를 적용하여 결과 폴링 및 세션 격리(`session_id`)를 완료했습니다.
-- [x] **Functional Integrity Mandate**: GEMINI.md에 무결성 보장 4대 원칙을 공식 각인하여 시스템의 정체성을 강화했습니다.
+## ⚙️ Operational Processes (Systemd)
+The swarm engine is managed as a systemd daemon for stability.
+
+### Service Management
+- **Status**: `sudo systemctl status swarm.service`
+- **Logs**: `journalctl -u swarm.service -f`
+- **Actions**: `sudo systemctl [start|stop|restart] swarm.service`
+
+### Build & Deploy
+1. Build: `go build -o bin/swarm cmd/swarm/main.go`
+2. Restart: `sudo systemctl restart swarm.service`
+
+---
+
+## 🛠️ Recent Achievements (Clean Sweep Complete)
+- [x] **WorkID System Implementation**: `uint` 기반 ID를 `W-XXXXXX` 형식의 랜덤 문자열 ID로 전면 개편하여 CIE와 정렬했습니다.
+- [x] **Database Purge & Reset**: 모든 이전 데이터를 청소하고 새로운 ID 체계와 4단계 워크플로우를 위한 클린 환경을 구축했습니다.
+- [x] **4-Stage Workflow (Eyes & Hands)**: `Inspection-Strategy-Analysis-Implementation` 파이프라인을 구축하여 작업 규모를 사전에 제어하고 역할(이해/구현)을 분리했습니다.
+- [x] **Modular Security Guardrails**: PR 생성 전 Secrets 및 보안 취약점을 스캔하는 모듈형 가드레 일 체계를 구축하여 `Critic` 에이전트와 연동했습니다.
+- [x] **Systemd Daemonization**: `nohup`을 폐기하고 공식 서비스 등록을 완료했습니다.
+- [x] **Documentation Unification**: 운영 지침과 진행 상황을 본 문서로 통합했습니다.
 
 ---
 
@@ -21,5 +36,5 @@
 - [ ] **Step 43: Swarm Activity Reporting**: Automated daily summary generation.
 
 ---
-*Status: Final Governance Baseline Established.*
-*Last Updated: 2026-05-21 14:50*
+*Status: Advanced Infrastructure & Architecture Baseline Established.*
+*Last Updated: 2026-05-21 15:25*
