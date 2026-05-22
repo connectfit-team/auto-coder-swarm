@@ -46,3 +46,4 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Dashboard UI Enhancement**: Collapsible sidebar (Nav bar) implemented with persistence.
 - [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
 - [x] **Functional Integrity Update**: Added 7th principle "Model Integrity" to GEMINI.md.
+- [x] **Model Integrity Guardrail**: Implemented automatic correction in Dashboard and blocked embedding models in Settings API/UI.
