@@ -63,7 +63,13 @@ func (t *taskContext) execute() (RunResult, error) {
 			return RunResult{}, err
 		}
 		observability.RecordStepDuration("review", t.targetRepo, time.Since(startReview).Seconds())
+		
 		if finished {
+			// [Step 52: MSA Chain Reaction] Trigger impact analysis for other repos
+			chainTasks, chainErr := t.triggerChainReaction()
+			if chainErr == nil && len(chainTasks) > 0 {
+				res.ChainTasks = chainTasks
+			}
 			return res, nil
 		}
 	}

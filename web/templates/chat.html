@@ -1,0 +1,104 @@
+{{define "content"}}
+<div class="card">
+    <h3>💬 Swarm 대화형 에이전트</h3>
+    <p style="color: #666; margin-bottom: 20px;">Auto-Coder Swarm에게 직접 지시를 내리고 실시간으로 사고 과정을 확인하세요.</p>
+    
+    <div id="chat-container" style="display: flex; flex-direction: column; gap: 20px;">
+        <!-- Input Area -->
+        <div style="display: flex; gap: 10px;">
+            <textarea id="chat-input" placeholder="예: gig_mobile 레포지토리의 lib/more 폴더 아래에 있는 dart 파일들에 주석을 달아줘." style="height: 100px; flex: 1;"></textarea>
+            <button id="send-btn" class="btn" style="height: 100px; padding: 0 30px;">지시 전송</button>
+        </div>
+        
+        <!-- Status Area -->
+        <div id="status-area" style="display: none; padding: 10px; background: #e8f8f5; border-radius: 8px; color: #1abc9c; font-weight: bold;">
+            작업이 시작되었습니다. Task ID: <span id="current-task-id"></span>
+        </div>
+
+        <!-- Stream Area -->
+        <div id="thought-stream" style="background: #2d3436; color: #00ff00; padding: 20px; border-radius: 8px; height: 500px; overflow-y: auto; font-family: monospace; font-size: 13px; display: none;">
+            <div style="color: #636e72;">실시간 사고 로그 대기 중...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const statusArea = document.getElementById('status-area');
+    const taskIdSpan = document.getElementById('current-task-id');
+    const streamDiv = document.getElementById('thought-stream');
+    
+    let eventSource = null;
+    let lastAgent = "";
+    let lastContentSpan = null;
+
+    sendBtn.addEventListener('click', async () => {
+        const message = input.value.trim();
+        if (!message) return;
+
+        // Disable input while processing
+        input.disabled = true;
+        sendBtn.disabled = true;
+        sendBtn.innerText = "전송 중...";
+
+        try {
+            const response = await fetch('/api/v1/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+            
+            if (!response.ok) throw new Error("API Request Failed");
+            
+            const data = await response.json();
+            const taskID = data.task_id;
+            
+            // Show status and prepare stream area
+            statusArea.style.display = "block";
+            taskIdSpan.innerText = taskID;
+            streamDiv.style.display = "block";
+            streamDiv.innerHTML = '<div style="color: #636e72;">실시간 사고 로그 수신 중...</div>';
+            
+            // Clear input for next time (though we keep it disabled until done)
+            input.value = "";
+            
+            // Start SSE stream
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource(`/task/stream?id=${taskID}`);
+            
+            eventSource.onmessage = (e) => {
+                const streamData = JSON.parse(e.data);
+                if (streamData.agent && streamData.message) {
+                    if (streamData.agent !== lastAgent) {
+                        const block = document.createElement('div');
+                        block.style.marginTop = "8px";
+                        block.innerHTML = `<b style="color: #81ecec;">${streamData.agent}:</b> `;
+                        lastContentSpan = document.createElement('span');
+                        block.appendChild(lastContentSpan);
+                        streamDiv.appendChild(block);
+                        lastAgent = streamData.agent;
+                    }
+                    
+                    if (lastContentSpan) {
+                        lastContentSpan.innerText += streamData.message;
+                    }
+                    streamDiv.scrollTop = streamDiv.scrollHeight;
+                }
+            };
+
+            // Optionally, handle stream closure if there's an end signal, 
+            // for now, we just let it run. The user can navigate away.
+            input.disabled = false;
+            sendBtn.disabled = false;
+            sendBtn.innerText = "새 지시 전송";
+
+        } catch (err) {
+            alert("작업 전송에 실패했습니다: " + err);
+            input.disabled = false;
+            sendBtn.disabled = false;
+            sendBtn.innerText = "지시 전송";
+        }
+    });
+</script>
+{{end}}
