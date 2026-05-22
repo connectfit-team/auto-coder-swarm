@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/ckhclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/security"
@@ -12,15 +13,17 @@ import (
 
 type SwarmOrchestrator struct {
 	insightClient *insightclient.Client
+	ckhClient     *ckhclient.Client
 	wsMgr         workspace.Manager
 	gitMgr        *gitmgr.GitManager
 	store         *storage.Storage
 	securityGuard *security.Guardrail
 }
 
-func NewSwarmOrchestrator(ic *insightclient.Client, ws workspace.Manager, gm *gitmgr.GitManager, s *storage.Storage, sg *security.Guardrail) *SwarmOrchestrator {
+func NewSwarmOrchestrator(ic *insightclient.Client, cc *ckhclient.Client, ws workspace.Manager, gm *gitmgr.GitManager, s *storage.Storage, sg *security.Guardrail) *SwarmOrchestrator {
 	return &SwarmOrchestrator{
 		insightClient: ic,
+		ckhClient:     cc,
 		wsMgr:         ws,
 		gitMgr:        gm,
 		store:         s,

@@ -13,6 +13,7 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
 	"github.com/connectfit-team/auto-coder-swarm/internal/bus"
+	"github.com/connectfit-team/auto-coder-swarm/internal/ckhclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/llm"
@@ -109,13 +110,14 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Hybrid Architecture)")
+	log.Println("🚀 ACS (Auto-Coder Swarm) Starting (Hybrid Architecture)")
 
 	// 1. Environmental Configuration
 	dbPath := getEnv("SWARM_DB_PATH", "./swarm.db")
 	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
 	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
 	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
+	ckhURL := getEnv("CKH_URL", "http://localhost:8007") // Default CKH URL
 	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
 	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
 	workspaceBase := getEnv("WORKSPACE_BASE_PATH", "/tmp")
@@ -141,6 +143,7 @@ func main() {
 
 	// 3. Orchestration Layer
 	ic := insightclient.NewClient(oracleURL, mb)
+	cc := ckhclient.NewClient(ckhURL) // Initialize CKH Client
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 
@@ -150,7 +153,7 @@ func main() {
 	reportingSvc := reporting.NewService(store, primaryModel)
 
 	sg := security.NewGuardrail(&security.SecretScanner{}, &security.StaticAnalysisScanner{})
-	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store, sg)
+	orc := orchestrator.NewSwarmOrchestrator(ic, cc, wsMgr, gitSvc, store, sg)
 
 	// 4. Worker Management
 	workerCount := 3
@@ -167,6 +170,6 @@ func main() {
 
 	mux.Handle("GET /metrics", promhttp.Handler())
 
-	log.Printf("📡 Swarm API & Dashboard listening on %s", listenAddr)
+	log.Printf("📡 ACS API & Dashboard listening on %s", listenAddr)
 	log.Fatal(http.ListenAndServe(listenAddr, mux))
 }

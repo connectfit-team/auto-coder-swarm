@@ -24,6 +24,7 @@ type taskContext struct {
 	critic        *agent.CriticAgent
 	healer        *healing.HealerAgent
 	analysis      string
+	ckhKnowledge  string // Corporate Knowledge from CKH
 	wsPath        string
 	repoPath      string
 	targetRepo    string

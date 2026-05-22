@@ -42,7 +42,7 @@ The swarm engine is managed as a systemd daemon for stability.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established.*
-*Last Updated: 2026-05-22 14:30*
+*Last Updated: 2026-05-22 15:30*
 - [x] **Dashboard UI Enhancement**: Collapsible sidebar (Nav bar) implemented with persistence.
 - [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
 - [x] **Functional Integrity Update**: Added 7th principle "Model Integrity" to GEMINI.md.
@@ -59,3 +59,4 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Step 62: MariaDB Migration**: Established centralized DB with random secure credentials for ACS, CIE, and CKH.
 - [x] **Step 63: NATS/Redis Hybrid**: Implemented durable JetStream messaging and high-speed Redis caching.
 - [x] **Code Audit & Hardening**: Refactored oversized files and improved LLM timeout/error handling.
+- [x] **CKH Integration**: ACS now automatically queries Corporate Knowledge Hub for policies and Slack context before task strategy/planning.
