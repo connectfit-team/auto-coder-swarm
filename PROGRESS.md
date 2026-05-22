@@ -56,6 +56,6 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Hybrid Infrastructure**: Introduced NATS JetStream for durable messaging and Redis for shared caching.
 - [x] **Enterprise Scalability**: Removed volatile Pub/Sub, ensuring zero message loss at scale.
 - [x] **Step 61: Zero-Polling Pipeline**: Preparing to migrate from HTTP Polling to NATS Event-Driven notifications for CIE analysis completion.
-- [x] **Step 62: MariaDB Migration**: Established centralized DB with random secure credentials for Swarm, CIE, and CKH.
+- [x] **Step 62: MariaDB Migration**: Established centralized DB with random secure credentials for ACS, CIE, and CKH.
 - [x] **Step 63: NATS/Redis Hybrid**: Implemented durable JetStream messaging and high-speed Redis caching.
 - [x] **Code Audit & Hardening**: Refactored oversized files and improved LLM timeout/error handling.

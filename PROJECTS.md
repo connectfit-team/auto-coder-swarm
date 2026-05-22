@@ -1,7 +1,7 @@
 # 📘 Projects: Auto-Coder Swarm (Master Spec)
 
 ## 1. 프로젝트 목적 (Purpose)
-`code-insight-engine` (CIE, Eyes)의 분석 결과와 Swarm(Hands)의 지능형 실행력을 결합하여, 코드 수정-검증-PR 생성을 자동화하는 엔터프라이즈급 자율형 멀티 에이전트 시스템입니다.
+`code-insight-engine` (CIE, Eyes)의 분석 결과와 ACS(Hands)의 지능형 실행력을 결합하여, 코드 수정-검증-PR 생성을 자동화하는 엔터프라이즈급 자율형 멀티 에이전트 시스템입니다.
 
 ## 2. 관리 핵심 문서 (Core Documents)
 1. **PROJECTS.md**: 마스터 사양 및 중장기 로드맵.
@@ -10,7 +10,7 @@
 4. **GEMINI.md**: 4단계 워크플로우 및 시스템 무결성(Functional Integrity) 4대 원칙.
 
 ## 3. 핵심 아키텍처 (Key Architecture)
-- **4-Stage Intelligent Pipeline**: `INSPECTION`(규모 파악) -> `STRATEGY`(전략 수립) -> `ANALYSIS`(CIE 이해) -> `IMPLEMENTATION`(Swarm 구현) 체계.
+- **4-Stage Intelligent Pipeline**: `INSPECTION`(규모 파악) -> `STRATEGY`(전략 수립) -> `ANALYSIS`(CIE 이해) -> `IMPLEMENTATION`(ACS 구현) 체계.
 - **Multi-Agent Governance**: `Planner`(설계), `Coder`(수행), `Critic`(리스크), `Reviewer`(기능 승인)의 상호 견제 체계.
 - **Deep Observability (Prometheus)**: 에이전트별 소요 시간, 토큰 소모량, 성공률을 실시간 수집하여 `/metrics` 엔드포인트로 노출하는 모니터링 계층.
 - **Advanced Self-Healing v2**: 빌드/테스트 실패 시 `Healer` 에이전트가 오류 로그를 분석하여 지능적 수정(의존성 설치, 코드 보정)을 수행하는 자가 치유 루프.
@@ -27,7 +27,7 @@
 - [x] **Step 47: Security Guardrails**: 코드 내 기밀 정보(Secrets) 및 취약점 자동 감지 엔진 구축 완료.
 - [x] **Step 48: Advanced Self-Healing v2**: LLM 기반 오류 진단 및 자동 코드 보정 엔진 구축 완료.
 - [x] **Step 42: Prometheus Metrics**: 작업 지연 시간, 에이전트 성공률 및 토큰 사용량 시각화 완료.
-- [x] **Step 43: Swarm Activity Reporting**: 일일 작업 요약 및 브리핑 자동 생성 엔진 구축 완료.
+- [x] **Step 43: ACS Activity Reporting**: 일일 작업 요약 및 브리핑 자동 생성 엔진 구축 완료.
 - [x] **Step 49: Deep Observability & Raw Traceability**: RAW LLM Prompt 및 Response 로깅 체계 추가 완료.
 - [x] **Step 50: Codebase Modularization**: Orchestrator 패키지 내 장문 파일 기능별 분리 완료 (`flow_analysis.go`, `flow_planning.go`, 등).
 - [x] **Step 51: API/Web Modularization & Conversational UI**: `handler.go` 및 `dashboard.go` 분할 완료 및 대시보드 내 실시간 채팅 지시 기능(Chat API) 연동 완료.
@@ -37,7 +37,7 @@
 - [x] **Step 52: MSA Chain Reaction** (Cycle Prevention - [x] **Step 52: MSA Chain Reaction** Parent Tracking Added): CIE 임팩트 분석 연동 및 연쇄 작업 자동 트리거 완료.
 
 ### Phase 10: Advanced Autonomy (In Progress)
-- [x] **Step 61: Zero-Polling Pipeline**: NATS JetStream 기반 하이브리드 이벤트 통신 (CIE-Swarm) 구축.
+- [x] **Step 61: Zero-Polling Pipeline**: NATS JetStream 기반 하이브리드 이벤트 통신 (CIE-ACS) 구축.
 - [ ] **Step 53: Multi-Repo Reasoning**: 여러 레포지토리의 분석 결과를 종합하는 Cross-Repo Planner.
 - [ ] **Step 54: Self-Evolving Prompts**: 프롬프트 자가 진화 루프.
 - [x] **Step 62: Enterprise Storage (MariaDB)**: SQLite에서 MariaDB로 전환 및 프로젝트별 보안 격리 완료.

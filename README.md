@@ -6,12 +6,12 @@
 
 ## 🛠️ 핵심 아키텍처 (4-Stage Pipeline)
 
-Swarm은 CIE와 상호작용하며 다음 4단계 워크플로우를 통해 작업을 완수합니다.
+ACS은 CIE와 상호작용하며 다음 4단계 워크플로우를 통해 작업을 완수합니다.
 
 1.  **INSPECTION (Intelligence-First)**: 대상 범위의 파일 목록과 규모를 지능적으로 파악합니다.
 2.  **STRATEGY (Architect)**: 분석 결과를 바탕으로 최적의 작업 전략과 정밀 질의문을 생성합니다.
 3.  **ANALYSIS (Eyes - CIE)**: CIE를 통해 코드의 논리적 구조를 완벽히 이해합니다.
-4.  **IMPLEMENTATION (Hands - Swarm)**: Planner와 Coder 에이전트가 실제 코드를 수정하고 실증 검증을 수행합니다.
+4.  **IMPLEMENTATION (Hands - ACS)**: Planner와 Coder 에이전트가 실제 코드를 수정하고 실증 검증을 수행합니다.
 
 ---
 

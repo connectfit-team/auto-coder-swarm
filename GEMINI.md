@@ -11,15 +11,15 @@ Auto-Coder Swarm 시스템의 신뢰성과 안정성을 위해 다음 원칙을 
 6. **원격 전용 실행 원칙(Remote-Only Execution)**: 모든 빌드, 테스트, 데이터베이스(SQLite) 저장, 그리고 실제 에이전트 작업은 100% 원격 서버(`192.168.120.54`)에서만 수행됩니다.
 7. **모델 무결성(Model Integrity)**: 시스템의 '두뇌' 역할을 하는 Primary Model은 반드시 **사고 및 추론이 가능한 모델(gemma4 등)**로 유지되어야 합니다. 임베딩 전용 모델(bge-m3 등)로의 오설정을 엄격히 금지하며, 세션 시작 시 항상 이를 확인해야 합니다.
 
-## 🔌 Integrated Architecture: CIE & Swarm
-Swarm은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
+## 🔌 Integrated Architecture: CIE & ACS
+ACS은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
 
 ### 1. 4-Stage Workflow (Eyes & Hands Integration)
 효율적인 작업 수행을 위해 모든 작업은 다음 4단계를 거칠니다.
 1. **INSPECTION (Lightweight)**: CIE에게 작업 범위 내 파일 목록과 라인 수(LOC)만 요청하여 규모 파악.
 2. **STRATEGY (Architect)**: 검사 결과 기반 작업 가능 여부 판단 및 '논리 분석용 질의' 생성.
 3. **ANALYSIS (Eyes - CIE)**: CIE의 코드 기능 논리 이해 및 기술적 요약 제공.
-4. **IMPLEMENTATION (Hands - Swarm)**: Swarm의 Planner/Coder가 실질적 코드 수정 및 검증 수행.
+4. **IMPLEMENTATION (Hands - ACS)**: ACS의 Planner/Coder가 실질적 코드 수정 및 검증 수행.
 
 ## 📋 Operational Standards
 - **Documentation-First**: API 명세 변경 시 API_SPEC.md를 먼저 업데이트합니다.

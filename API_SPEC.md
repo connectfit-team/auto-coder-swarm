@@ -9,7 +9,7 @@
 
 ### 2.1 List Tasks
 - **URL**: `GET /api/v1/tasks`
-- **Response**: `JSON Array of SwarmTask` (ID: string)
+- **Response**: `JSON Array of ACSTask` (ID: string)
 
 ### 2.2 Get Task Detail
 - **URL**: `GET /api/v1/tasks/detail?id={work_id}`
@@ -45,7 +45,7 @@ Zero-Latency 연동을 위한 이벤트 통신 명세입니다.
 - **Storage**: `FileStorage` (Durable)
 
 ### 4.2 Published Subjects
-- `swarm.analysis.done.<work_id>`: CIE가 분석 완료 시 발행. Swarm은 이를 수신하여 Polling 없이 즉시 결과를 조회(GET /api/tasks/result)합니다.
+- `swarm.analysis.done.<work_id>`: CIE가 분석 완료 시 발행. ACS은 이를 수신하여 Polling 없이 즉시 결과를 조회(GET /api/tasks/result)합니다.
   - Payload Schema (JSON):
     ```json
     {
