@@ -28,3 +28,12 @@ ACS은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
 
 ---
 *최종 갱신: 2026-05-22 (기본 모델 gemma4:31b 업그레이드 및 무결성 강화)*
+
+## 🔑 GitHub Authentication Identity
+원격 서버(cnf-office)에서 GitHub와 통신하기 위해 다음 인증 정보를 사용합니다.
+
+*   **사용자 계정**: `cnf-swbae`
+*   **GitHub 등록 이름**: `cnf-office-server` (Owner: Sunwoo Bae)
+*   **서버 내 키 경로**: `/home/cnf/.ssh/id_ed25519_cnf_office`
+*   **인증 유형**: SSH (git@github.com)
+*   **권한**: Full Write Access (Continuous Sync 보장)
