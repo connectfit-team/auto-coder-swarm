@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
@@ -17,12 +19,16 @@ import (
 type ollamaModel struct {
 	name    string
 	baseURL string
+	hc      *http.Client
 }
 
 func NewOllamaModel(name, baseURL string) model.LLM {
 	return &ollamaModel{
 		name:    name,
 		baseURL: baseURL,
+		hc: &http.Client{
+			Timeout: 30 * time.Minute, // LLMs can take time for large responses
+		},
 	}
 }
 
@@ -101,10 +107,15 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 		}
 
 		body, _ := json.Marshal(apiReq)
-		httpReq, _ := http.NewRequestWithContext(ctx, "POST", m.baseURL+"/api/chat", bytes.NewReader(body))
-
-		resp, err := http.DefaultClient.Do(httpReq)
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", m.baseURL+"/api/chat", bytes.NewReader(body))
 		if err != nil {
+			yield(nil, err)
+			return
+		}
+
+		resp, err := m.hc.Do(httpReq)
+		if err != nil {
+			log.Printf("⚠️ [Ollama] HTTP request failed: %v", err)
 			yield(nil, fmt.Errorf("ollama http request failed: %w", err))
 			return
 		}
@@ -113,6 +124,7 @@ func (m *ollamaModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 		if resp.StatusCode != http.StatusOK {
 			var errBody bytes.Buffer
 			errBody.ReadFrom(resp.Body)
+			log.Printf("⚠️ [Ollama] Error status %d: %s", resp.StatusCode, errBody.String())
 			yield(nil, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, errBody.String()))
 			return
 		}

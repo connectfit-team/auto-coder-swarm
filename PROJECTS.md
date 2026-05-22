@@ -40,3 +40,5 @@
 - [x] **Step 61: Zero-Polling Pipeline**: NATS JetStream 기반 하이브리드 이벤트 통신 (CIE-Swarm) 구축.
 - [ ] **Step 53: Multi-Repo Reasoning**: 여러 레포지토리의 분석 결과를 종합하는 Cross-Repo Planner.
 - [ ] **Step 54: Self-Evolving Prompts**: 프롬프트 자가 진화 루프.
+- [x] **Step 62: Enterprise Storage (MariaDB)**: SQLite에서 MariaDB로 전환 및 프로젝트별 보안 격리 완료.
+- [x] **Step 63: Hybrid Event Bus**: NATS JetStream(Durable) + Redis(Cache) 하이브리드 메시징 체계 구축.
