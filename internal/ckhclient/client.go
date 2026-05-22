@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -20,7 +21,7 @@ func NewClient(baseURL string) *Client {
 		baseURL: baseURL,
 		apiKey:  "ckh_team_secret_2026",
 		hc: &http.Client{
-			Timeout: 1 * time.Minute,
+			Timeout: 30 * time.Second, // Reduced for interactive responsiveness
 		},
 	}
 }
@@ -38,6 +39,7 @@ type ContextResponse struct {
 }
 
 func (c *Client) GetContextReport(ctx context.Context, workID, taskDesc, repo string) (*ContextResponse, error) {
+	log.Printf("[CKH] Requesting policy report for %s", workID)
 	reqBody := ContextRequest{
 		WorkID:          workID,
 		TaskDescription: taskDesc,
@@ -52,14 +54,19 @@ func (c *Client) GetContextReport(ctx context.Context, workID, taskDesc, repo st
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.hc.Do(req)
-	if err != nil { return nil, err }
+	if err != nil { 
+		log.Printf("⚠️ [CKH] Request failed: %v", err)
+		return nil, err 
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ckh request failed with status: %d", resp.StatusCode)
+		log.Printf("⚠️ [CKH] Error status %d", resp.StatusCode)
+		return nil, fmt.Errorf("ckh error: %d", resp.StatusCode)
 	}
 
 	var result ContextResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, err }
+	log.Printf("[CKH] Knowledge retrieved for %s", workID)
 	return &result, nil
 }

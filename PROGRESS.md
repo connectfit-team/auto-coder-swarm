@@ -42,7 +42,7 @@ The swarm engine is managed as a systemd daemon for stability.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established.*
-*Last Updated: 2026-05-22 15:30*
+*Last Updated: 2026-05-22 16:30*
 - [x] **Dashboard UI Enhancement**: Collapsible sidebar (Nav bar) implemented with persistence.
 - [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
 - [x] **Functional Integrity Update**: Added 7th principle "Model Integrity" to GEMINI.md.
@@ -60,3 +60,8 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Step 63: NATS/Redis Hybrid**: Implemented durable JetStream messaging and high-speed Redis caching.
 - [x] **Code Audit & Hardening**: Refactored oversized files and improved LLM timeout/error handling.
 - [x] **CKH Integration**: ACS now automatically queries Corporate Knowledge Hub for policies and Slack context before task strategy/planning.
+- [x] **Final Structural Hardening**: 
+    - LLM: Modularized into `ollama.go` and `types.go` with dedicated http.Client and 30m timeout.
+    - Web: Refactored `dashboard.go` by extracting helper methods to `utils.go`.
+    - Orchestrator: Enhanced `flow.go` with granular attempt-level lifecycle logging.
+    - CKH: Hardened policy retrieval client with improved timeouts and error tracing.
