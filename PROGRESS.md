@@ -45,4 +45,11 @@ The swarm engine is managed as a systemd daemon for stability.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established. (System Purge & Reset Performed)*
-*Last Updated: 2026-05-21 16:55*
+*Last Updated: 2026-05-22 10:55*
+
+## [2026-05-22] System Hardening & Optimization Pass
+- [x] **Insight Client**: Impact analysis modularized (`impact.go`) and exponential backoff added.
+- [x] **Analysis Flow**: Robust scope extraction with intelligent language detection and fallback logic.
+- [x] **Storage Layer**: Optimized Task Claiming (SQL subqueries) and WorkID collision mitigation logic.
+- [x] **MSA Safety**: Cyclic dependency detection implemented for Chain Reactions.
+- [x] **Logging**: Deep technical traceability reinforced across all core packages.

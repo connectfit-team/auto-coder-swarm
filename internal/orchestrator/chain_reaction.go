@@ -27,15 +27,31 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 	}
 
 	var triggeredTasks []StatelessRequest
-	seenRepos := make(map[string]bool)
-	seenRepos[t.targetRepo] = true
+	
+	// Create a new parent list for children
+	newParents := append(t.req.ParentRepos, t.targetRepo)
 
 	for _, impacted := range impact.ImpactAnalysis {
-		if seenRepos[impacted.RepoName] {
+		// 1. Skip if it's the current repo (already handled by seenRepos logic implicitly, but let's be explicit)
+		if impacted.RepoName == t.targetRepo {
 			continue
 		}
-		seenRepos[impacted.RepoName] = true
 
+		// 2. Cycle Prevention: Check if the repo was already touched in this chain
+		isCycle := false
+		for _, p := range t.req.ParentRepos {
+			if p == impacted.RepoName {
+				isCycle = true
+				break
+			}
+		}
+		if isCycle {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CYCLE_DETECTED", 
+				fmt.Sprintf("순환 참조 감지 및 차단: %s", impacted.RepoName), "", "")
+			continue
+		}
+
+		// 3. Confidence Threshold
 		if impacted.ConfidenceScore < 0.7 {
 			continue
 		}
@@ -44,6 +60,7 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 			UserRequest: fmt.Sprintf("[%s] 레포지토리의 변경으로 인해 영향이 예상됩니다: %s", t.targetRepo, impacted.Reason),
 			TargetRepo:  impacted.RepoName,
 			Depth:       t.req.Depth - 1,
+			ParentRepos: newParents,
 		}
 		triggeredTasks = append(triggeredTasks, newReq)
 

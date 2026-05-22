@@ -26,6 +26,7 @@ type StatelessRequest struct {
 	TargetFiles     []string `json:"target_files,omitempty"`
 	Constraints     []string `json:"constraints,omitempty"`
 	Depth           int      `json:"depth"`
+	ParentRepos     []string `json:"parent_repos,omitempty"` // To prevent cycles in chain reactions
 }
 
 type TaskStrategy struct {

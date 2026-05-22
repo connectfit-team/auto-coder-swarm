@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+	"log"
 
 	"gorm.io/gorm"
 )
@@ -14,15 +15,20 @@ func (s *Storage) generateWorkID() string {
 }
 
 func (s *Storage) CreateTask(request string) (*SwarmTask, error) {
-	task := &SwarmTask{
-		ID:          s.generateWorkID(),
-		UserRequest: request,
-		Status:      StatusPending,
+	var task *SwarmTask
+	// Retry loop for unique ID collision mitigation
+	for i := 0; i < 5; i++ {
+		task = &SwarmTask{
+			ID:          s.generateWorkID(),
+			UserRequest: request,
+			Status:      StatusPending,
+		}
+		if err := s.DB.Create(task).Error; err == nil {
+			log.Printf("[Storage] Task created: %s", task.ID)
+			return task, nil
+		}
 	}
-	if err := s.DB.Create(task).Error; err != nil {
-		return nil, err
-	}
-	return task, nil
+	return nil, fmt.Errorf("failed to generate unique WorkID after 5 attempts")
 }
 
 func (s *Storage) GetTaskByID(id string) (*SwarmTask, error) {
@@ -58,6 +64,7 @@ func (s *Storage) UpdateTaskStatus(id string, status TaskStatus, result, errLog 
 	if errLog != "" {
 		updates["error_log"] = errLog
 	}
+	log.Printf("[Storage] Task %s status updated to %s", id, status)
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
@@ -88,13 +95,9 @@ func (s *Storage) GetContextState(id string) string {
 func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 	var task SwarmTask
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		var lockedRepos []string
-		tx.Model(&RepoLock{}).Pluck("repo_name", &lockedRepos)
-
-		query := tx.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending})
-		if len(lockedRepos) > 0 {
-			query = query.Where("repo_name NOT IN (?)", lockedRepos)
-		}
+		// Optimization: Single query with NOT IN (Subquery)
+		query := tx.Where("status IN (?)", []TaskStatus{StatusApproved, StatusPending}).
+			Where("repo_name IS NULL OR repo_name NOT IN (SELECT repo_name FROM repo_locks)")
 
 		if err := query.Order("created_at asc").First(&task).Error; err != nil {
 			return err
@@ -108,6 +111,7 @@ func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[Storage] Task %s claimed by worker", task.ID)
 	return &task, nil
 }
 
@@ -121,21 +125,27 @@ func (s *Storage) TryLockRepo(repoName string, taskID string) (bool, error) {
 			if lock.TaskID == taskID {
 				return nil
 			}
-			return fmt.Errorf("locked")
+			return fmt.Errorf("locked by task %s", lock.TaskID)
 		}
+		log.Printf("[Storage] Locking repo %s for task %s", repoName, taskID)
 		return tx.Create(&RepoLock{RepoName: repoName, LockedAt: time.Now(), TaskID: taskID}).Error
 	})
-	return err == nil, nil
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Storage) UnlockRepo(repoName string) error {
 	if repoName == "" {
 		return nil
 	}
+	log.Printf("[Storage] Unlocking repo %s", repoName)
 	return s.DB.Where("repo_name = ?", repoName).Delete(&RepoLock{}).Error
 }
 
 func (s *Storage) ResetRunningToPending() error {
+	log.Println("[Storage] Resetting all running tasks to pending and clearing locks")
 	s.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&RepoLock{})
 	return s.DB.Model(&SwarmTask{}).Where("status = ?", StatusRunning).Update("status", StatusPending).Error
 }
