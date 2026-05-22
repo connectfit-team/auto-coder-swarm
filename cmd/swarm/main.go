@@ -12,6 +12,7 @@ import (
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
+	"github.com/connectfit-team/auto-coder-swarm/internal/bus"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/llm"
@@ -24,16 +25,14 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/worker"
 	"github.com/connectfit-team/auto-coder-swarm/internal/workspace"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 )
 
 func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
+	if value, ok := os.LookupEnv(key); ok { return value }
 	return fallback
 }
 
-// StreamAdapter connects the stream manager to the agent layer
 type StreamAdapter struct {
 	manager *stream.Manager
 }
@@ -47,9 +46,7 @@ func (a *StreamAdapter) Broadcast(taskID string, agentName, message string) {
 }
 
 func sendToSlack(webhookURL, message string) {
-	if webhookURL == "" {
-		return
-	}
+	if webhookURL == "" { return }
 	payload := map[string]string{"text": message}
 	b, _ := json.Marshal(payload)
 	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
@@ -71,9 +68,7 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		lockFunc := func(repoName string) (bool, error) {
 			ok, err := store.TryLockRepo(repoName, task.ID)
-			if ok {
-				store.UpdateTaskRepo(task.ID, repoName)
-			}
+			if ok { store.UpdateTaskRepo(task.ID, repoName) }
 			return ok, err
 		}
 
@@ -84,13 +79,11 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		isApproved := task.Status == storage.StatusApproved
 		res, err := orc.RunStatelessTask(ctx, task.ID, statelessReq, isApproved, lockFunc)
-		
+
 		wm.Unregister(task.ID)
 		cancel()
 
-		if res.RepoName != "" {
-			store.UnlockRepo(res.RepoName)
-		}
+		if res.RepoName != "" { store.UnlockRepo(res.RepoName) }
 
 		if err != nil {
 			if ctx.Err() == context.Canceled {
@@ -116,10 +109,12 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 }
 
 func main() {
-	log.Println("🚀 Auto-Coder Swarm Starting (Portable Mode)")
+	log.Println("🚀 Auto-Coder Swarm Starting (Hybrid Architecture)")
 
 	// 1. Environmental Configuration
 	dbPath := getEnv("SWARM_DB_PATH", "./swarm.db")
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
 	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
 	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
 	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
@@ -128,11 +123,15 @@ func main() {
 	slackWebhook := getEnv("SLACK_WEBHOOK_URL", "")
 	listenAddr := getEnv("LISTEN_ADDR", ":8006")
 
-	// 2. Storage & Stream Initialization
-	store, err := storage.NewStorage(dbPath)
-	if err != nil {
-		log.Fatalf("❌ DB init failed: %v", err)
-	}
+	// 2. Messaging (NATS JetStream) & Cache (Redis)
+	mb, err := bus.NewMessageBus(natsURL)
+	if err != nil { log.Fatalf("❌ Message Bus init failed: %v", err) }
+	defer mb.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+
+	store, err := storage.NewStorage(dbPath, rdb)
+	if err != nil { log.Fatalf("❌ DB init failed: %v", err) }
 	store.ResetRunningToPending()
 
 	wm := worker.NewManager()
@@ -145,18 +144,12 @@ func main() {
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 
-	// [Reporting Service] Initialize reporting service
 	primaryModelName := store.GetSetting("primary_model")
 	if primaryModelName == "" { primaryModelName = "gemma4:31b" }
 	primaryModel := llm.NewOllamaModel(primaryModelName, ollamaURL)
 	reportingSvc := reporting.NewService(store, primaryModel)
 
-	// [Security Guard] Initialize modular scanners
-	sg := security.NewGuardrail(
-		&security.SecretScanner{},
-		&security.StaticAnalysisScanner{},
-	)
-
+	sg := security.NewGuardrail(&security.SecretScanner{}, &security.StaticAnalysisScanner{})
 	orc := orchestrator.NewSwarmOrchestrator(ic, wsMgr, gitSvc, store, sg)
 
 	// 4. Worker Management
