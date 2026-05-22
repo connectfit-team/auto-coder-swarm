@@ -42,9 +42,14 @@ The swarm engine is managed as a systemd daemon for stability.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established.*
-*Last Updated: 2026-05-22 11:35*
+*Last Updated: 2026-05-22 12:15*
 - [x] **Dashboard UI Enhancement**: Collapsible sidebar (Nav bar) implemented with persistence.
 - [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
 - [x] **Functional Integrity Update**: Added 7th principle "Model Integrity" to GEMINI.md.
 - [x] **Model Integrity Guardrail**: Implemented automatic correction in Dashboard and blocked embedding models in Settings API/UI.
 - [x] **Primary Model Upgrade**: Set default model to `gemma4:31b` across codebase, database, and guardrails.
+- [x] **Structural Audit & Hardening**: 
+    - Orchestrator: Extracted prompts to `prompts.go` and modularized flow analysis.
+    - Storage: Split into `tasks_crud.go` and `tasks_flow.go`, added row-level locking for MariaDB.
+    - Agent: Modularized into `types.go` and `llm.go`, reinforced error handling for empty LLM responses.
+    - Insight Client: Split into `client.go` and `oracle.go`, improving separation of config and logic.
