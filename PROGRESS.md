@@ -47,3 +47,4 @@ The swarm engine is managed as a systemd daemon for stability.
 - [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
 - [x] **Functional Integrity Update**: Added 7th principle "Model Integrity" to GEMINI.md.
 - [x] **Model Integrity Guardrail**: Implemented automatic correction in Dashboard and blocked embedding models in Settings API/UI.
+- [x] **Primary Model Upgrade**: Set default model to `gemma4:31b` across codebase, database, and guardrails.

@@ -29,8 +29,8 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 	// [Step 52: Model Integrity Force Fix] 
 	// If the model is an embedding model or empty, force it back to gemma4
 	if primary == "" || strings.Contains(primary, "bge-m3") {
-		log.Printf("[Dashboard] WARNING: Inappropriate model detected ('%s'). Forcing gemma4:latest", primary)
-		primary = "gemma4:latest"
+		log.Printf("[Dashboard] WARNING: Inappropriate model detected ('%s'). Forcing gemma4:31b", primary)
+		primary = "gemma4:31b"
 		h.store.SaveSetting("primary_model", primary)
 	}
 

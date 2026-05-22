@@ -27,4 +27,4 @@ Swarm은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
 - **Isolation**: Workspaces는 /tmp/swarm_ws_*에서 수행되며 자동 정리됩니다.
 
 ---
-*최종 갱신: 2026-05-22 (모델 무결성 자동 보정 및 가드레일 구현)*
+*최종 갱신: 2026-05-22 (기본 모델 gemma4:31b 업그레이드 및 무결성 강화)*

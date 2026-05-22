@@ -147,7 +147,7 @@ func main() {
 
 	// [Reporting Service] Initialize reporting service
 	primaryModelName := store.GetSetting("primary_model")
-	if primaryModelName == "" { primaryModelName = "gemma4:latest" }
+	if primaryModelName == "" { primaryModelName = "gemma4:31b" }
 	primaryModel := llm.NewOllamaModel(primaryModelName, ollamaURL)
 	reportingSvc := reporting.NewService(store, primaryModel)
 
