@@ -29,6 +29,11 @@ ACS은 code-insight-engine (CIE, Eyes)과 상호작용하며 동작합니다.
 ---
 *최종 갱신: 2026-05-22 (기본 모델 gemma4:31b 업그레이드 및 무결성 강화)*
 
+## 🚫 Git Synchronization Mandate
+GitHub와의 모든 통신은 **SSH Key(cnf-office-server)**만을 사용합니다.
+- **gh(GitHub CLI) 사용 금지**: 시스템에서 gh 도구를 통한 인증 및 연동을 철저히 배제하며, 오직 SSH 프로토콜(`git@github.com`)을 통해서만 동기화합니다.
+- **Continuous Sync**: 모든 변경 사항은 SSH 키를 통해 실시간으로 원격 저장소에 푸쉬되어야 합니다.
+
 ## 🔑 GitHub Authentication Identity
 원격 서버(cnf-office)에서 GitHub와 통신하기 위해 다음 인증 정보를 사용합니다.
 
