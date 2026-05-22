@@ -42,4 +42,6 @@ The swarm engine is managed as a systemd daemon for stability.
 
 ---
 *Status: Advanced Infrastructure & High-Modularity Baseline Established.*
-*Last Updated: 2026-05-22 11:15*
+*Last Updated: 2026-05-22 11:25*
+- [x] **Dashboard UI Enhancement**: Collapsible sidebar (Nav bar) implemented with persistence.
+- [x] **Model Config Fix**: Restored primary model to `gemma4:latest` (Accidental change to embedding model corrected).
