@@ -35,3 +35,25 @@
 
 ---
 *Last Updated: 2026-05-21 (Chat API Integration & Handler Modularization)*
+
+## 4. Event Architecture (NATS JetStream)
+Zero-Latency 연동을 위한 이벤트 통신 명세입니다.
+
+### 4.1 NATS Configuration
+- **Server**: `nats://localhost:4222`
+- **Stream**: `SWARM_EVENTS`
+- **Storage**: `FileStorage` (Durable)
+
+### 4.2 Published Subjects
+- `swarm.analysis.done.<work_id>`: CIE가 분석 완료 시 발행. Swarm은 이를 수신하여 Polling 없이 즉시 결과를 조회(GET /api/tasks/result)합니다.
+  - Payload Schema (JSON):
+    ```json
+    {
+      "work_id": "W-XXXXXX",
+      "status": "completed",
+      "completed_at": "2026-05-22T15:00:00Z"
+    }
+    ```
+
+---
+*Last Updated: 2026-05-22 (Hybrid API + NATS JetStream Integration)*

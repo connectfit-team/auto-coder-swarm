@@ -35,3 +35,8 @@
 ---
 *최종 감사: 2026-05-21 (대화형 인터페이스 구축 및 3차 코드베이스 모듈화 완료)*
 - [x] **Step 52: MSA Chain Reaction** (Cycle Prevention - [x] **Step 52: MSA Chain Reaction** Parent Tracking Added): CIE 임팩트 분석 연동 및 연쇄 작업 자동 트리거 완료.
+
+### Phase 10: Advanced Autonomy (In Progress)
+- [ ] **Step 61: Zero-Polling Pipeline**: NATS JetStream 기반 하이브리드 이벤트 통신 (CIE-Swarm) 구축.
+- [ ] **Step 53: Multi-Repo Reasoning**: 여러 레포지토리의 분석 결과를 종합하는 Cross-Repo Planner.
+- [ ] **Step 54: Self-Evolving Prompts**: 프롬프트 자가 진화 루프.
