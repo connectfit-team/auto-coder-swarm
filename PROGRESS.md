@@ -55,4 +55,4 @@ The swarm engine is managed as a systemd daemon for stability.
     - Insight Client: Split into `client.go` and `oracle.go`, improving separation of config and logic.
 - [x] **Hybrid Infrastructure**: Introduced NATS JetStream for durable messaging and Redis for shared caching.
 - [x] **Enterprise Scalability**: Removed volatile Pub/Sub, ensuring zero message loss at scale.
-- [ ] **Step 61: Zero-Polling Pipeline**: Preparing to migrate from HTTP Polling to NATS Event-Driven notifications for CIE analysis completion.
+- [x] **Step 61: Zero-Polling Pipeline**: Preparing to migrate from HTTP Polling to NATS Event-Driven notifications for CIE analysis completion.

@@ -6,21 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/bus"
 )
 
 type Client struct {
 	baseURL string
 	apiKey  string
 	hc      *http.Client
+	bus     *bus.MessageBus
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, mb *bus.MessageBus) *Client {
 	return &Client{
 		baseURL: baseURL,
 		apiKey:  "gig_team_secret_2026",
 		hc: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
+		bus: mb,
 	}
 }
 

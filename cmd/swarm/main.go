@@ -140,7 +140,7 @@ func main() {
 	agent.GlobalStorage = store
 
 	// 3. Orchestration Layer
-	ic := insightclient.NewClient(oracleURL)
+	ic := insightclient.NewClient(oracleURL, mb)
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 
