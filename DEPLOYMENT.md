@@ -29,13 +29,24 @@ cp .env.example .env
 export $(grep -v '^#' .env | xargs)
 ```
 
-### 4) Build & Run
+### 4) Systemd Service Setup
+`scripts/auto-coder-swarm.service` 파일을 `/etc/systemd/system/`으로 복사하여 데몬으로 등록합니다.
 ```bash
-# 바이너리 빌드
-go build -o bin/swarm cmd/swarm/main.go
+sudo cp scripts/auto-coder-swarm.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable auto-coder-swarm
+```
 
-# 서비스 실행 (백그라운드)
-nohup ./bin/swarm > service.log 2>&1 &
+### 5) Build & Run
+이후부터는 `deploy.sh`를 활용하거나 직접 systemctl 명령으로 관리합니다.
+```bash
+# 바이너리 빌드 및 서비스 재시작
+./deploy.sh
+
+# 상태 확인
+sudo systemctl status auto-coder-swarm
+# 로그 모니터링
+sudo journalctl -u auto-coder-swarm -f
 ```
 
 ## 3. Configuration Details (설정값 설명)

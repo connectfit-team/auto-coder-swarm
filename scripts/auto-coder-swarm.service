@@ -1,0 +1,23 @@
+[Unit]
+Description=Auto-Coder Swarm Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=cnf
+Group=cnf
+WorkingDirectory=/home/cnf/projects/auto-coder-swarm
+Environment="SWARM_DB_PATH=./swarm.db"
+Environment="NATS_URL=nats://127.0.0.1:4222"
+Environment="REDIS_ADDR=127.0.0.1:6379"
+Environment="LISTEN_ADDR=:8006"
+Environment="AMQP_URL=amqp://guest:guest@127.0.0.1:5672/"
+ExecStart=/home/cnf/projects/auto-coder-swarm/bin/swarm
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+StandardOutput=append:/home/cnf/projects/auto-coder-swarm/service.log
+StandardError=append:/home/cnf/projects/auto-coder-swarm/service.log
+
+[Install]
+WantedBy=multi-user.target
