@@ -8,18 +8,18 @@ import (
 )
 
 func (o *SwarmOrchestrator) loadModels() (model.LLM, []model.LLM) {
-	baseURL := "http://localhost:11434"
+	baseURL := "amqp://guest:guest@192.168.120.54:5672/"
 	primaryName := o.store.GetSetting("primary_model")
 	if primaryName == "" {
 		primaryName = "gemma4:latest"
 	}
-	primary := llm.NewOllamaModel(primaryName, baseURL)
+	primary := llm.NewRabbitMQModel(primaryName, baseURL)
 
 	voterNames := strings.Split(o.store.GetSetting("voter_models"), ",")
 	var voterLLMs []model.LLM
 	for _, name := range voterNames {
 		if n := strings.TrimSpace(name); n != "" {
-			voterLLMs = append(voterLLMs, llm.NewOllamaModel(n, baseURL))
+			voterLLMs = append(voterLLMs, llm.NewRabbitMQModel(n, baseURL))
 		}
 	}
 	if len(voterLLMs) == 0 {
