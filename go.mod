@@ -6,6 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.52.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/rabbitmq/amqp091-go v1.12.0
 	github.com/redis/go-redis/v9 v9.19.0
 	google.golang.org/adk v1.2.0
 	google.golang.org/genai v1.57.0

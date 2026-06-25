@@ -9,13 +9,24 @@ import (
 )
 
 func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get("http://localhost:11434/api/tags")
-	var ollamaResp struct {
-		Models []interface{} `json:"models"`
+	req, err := http.NewRequest("GET", "http://127.0.0.1:8000/v1/models", nil)
+	if err == nil {
+		req.Header.Set("Authorization", "Bearer gemma4-secret-key-9988")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	
+	var models []map[string]interface{}
+	var vllmResp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
 	}
 	if err == nil {
-		json.NewDecoder(resp.Body).Decode(&ollamaResp)
+		json.NewDecoder(resp.Body).Decode(&vllmResp)
 		resp.Body.Close()
+		for _, m := range vllmResp.Data {
+			models = append(models, map[string]interface{}{"name": m.ID})
+		}
 	}
 
 	primary := h.store.GetSetting("primary_model")
@@ -24,7 +35,7 @@ func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"available_models": ollamaResp.Models,
+		"available_models": models,
 		"primary_model":    primary,
 		"voter_models":      strings.Split(voters, ","),
 		"api_key_set":      apiKey != "",

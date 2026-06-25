@@ -118,7 +118,7 @@ func main() {
 	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
 	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
 	ckhURL := getEnv("CKH_URL", "http://localhost:8007") // Default CKH URL
-	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
+	amqpURL := getEnv("AMQP_URL", "amqp://guest:guest@192.168.120.54:5672/")
 	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
 	workspaceBase := getEnv("WORKSPACE_BASE_PATH", "/tmp")
 	templatesPath := getEnv("TEMPLATES_PATH", "./web/templates")
@@ -149,7 +149,7 @@ func main() {
 
 	primaryModelName := store.GetSetting("primary_model")
 	if primaryModelName == "" { primaryModelName = "gemma4:31b" }
-	primaryModel := llm.NewOllamaModel(primaryModelName, ollamaURL)
+	primaryModel := llm.NewRabbitMQModel(primaryModelName, amqpURL)
 	reportingSvc := reporting.NewService(store, primaryModel)
 
 	sg := security.NewGuardrail(&security.SecretScanner{}, &security.StaticAnalysisScanner{})
