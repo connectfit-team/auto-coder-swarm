@@ -47,15 +47,16 @@ func (b *MessageBus) Publish(ctx context.Context, subject string, payload interf
 func (b *MessageBus) SubscribeOnce(ctx context.Context, subject string) (chan []byte, error) {
 	ch := make(chan []byte, 1)
 	sub, err := b.nc.Subscribe(subject, func(m *nats.Msg) {
-		ch <- m.Data
+		select {
+		case ch <- m.Data:
+		default:
+		}
+		m.Sub.Unsubscribe() // Auto-unsubscribe after first message
 	})
 	if err != nil { return nil, err }
 
 	go func() {
-		select {
-		case <-ctx.Done():
-		case <-ch: // Signal received
-		}
+		<-ctx.Done()
 		sub.Unsubscribe()
 	}()
 

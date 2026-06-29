@@ -26,9 +26,15 @@ type ImpactAnalysisResponse struct {
 }
 
 func (c *Client) AnalyzeImpact(ctx context.Context, repo, diff string) (*ImpactAnalysisResponse, error) {
+	safeDiff := diff
+	diffRunes := []rune(safeDiff)
+	if len(diffRunes) > 20000 {
+		safeDiff = string(diffRunes[:20000]) + "\n... (Diff truncated for safety) ..."
+	}
+
 	reqBody := ImpactAnalysisRequest{
 		SourceRepo: repo,
-		CodeDiff:   diff,
+		CodeDiff:   safeDiff,
 	}
 	b, _ := json.Marshal(reqBody)
 

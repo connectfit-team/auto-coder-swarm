@@ -46,7 +46,17 @@ func (a *HealerAgent) Name() string { return "Healer" }
 func (a *HealerAgent) BuildPrompt(errorLog, projectType string, fileContents map[string]string) string {
 	var files strings.Builder
 	for path, content := range fileContents {
+		contentRunes := []rune(content)
+		if len(contentRunes) > 6000 {
+			content = string(contentRunes[:6000]) + "\n... (File too large, truncated) ..."
+		}
 		files.WriteString(fmt.Sprintf("\n--- FILE: %s ---\n%s\n", path, content))
+	}
+
+	// Build logs are often huge. The actual error is usually at the end.
+	logRunes := []rune(errorLog)
+	if len(logRunes) > 4000 {
+		errorLog = "... (Log too large, showing tail) ...\n" + string(logRunes[len(logRunes)-4000:])
 	}
 
 	return fmt.Sprintf(`You are the Swarm Healer. 

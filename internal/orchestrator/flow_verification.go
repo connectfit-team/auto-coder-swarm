@@ -12,16 +12,28 @@ import (
 )
 
 func (t *taskContext) stepVerification() (bool, error) {
-	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD", fmt.Sprintf("[%s] 검증 (%s)", t.meta.Type, t.meta.BuildCommand), t.meta.BuildCommand, "")
-	bCmd := exec.CommandContext(t.ctx, "bash", "-c", t.meta.BuildCommand)
-	bCmd.Dir = t.repoPath
-	buildOut, err := bCmd.CombinedOutput()
+	for healAttempt := 1; healAttempt <= 3; healAttempt++ {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD", fmt.Sprintf("[%s] 검증 (%s) - 시도 %d", t.meta.Type, t.meta.BuildCommand, healAttempt), t.meta.BuildCommand, "")
+		bCmd := exec.CommandContext(t.ctx, "bash", "-c", t.meta.BuildCommand)
+		bCmd.Dir = t.repoPath
+		buildOut, err := bCmd.CombinedOutput()
 
-	if err != nil {
+		if err == nil {
+			// Build succeeded
+			if t.meta.BenchCommand != "" {
+				cmd := exec.CommandContext(t.ctx, "bash", "-c", t.meta.BenchCommand)
+				cmd.Dir = t.repoPath
+				bOut, _ := cmd.CombinedOutput()
+				t.postBench = string(bOut)
+			}
+			return true, nil
+		}
+
 		if t.ctx.Err() != nil {
 			return false, t.ctx.Err()
 		}
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS", "빌드 실패, 자가 치유 가동", string(buildOut), "")
+
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS", fmt.Sprintf("빌드 실패, 자가 치유 가동 (%d/3)", healAttempt), string(buildOut), "")
 
 		relevantFiles := make(map[string]string)
 		plan := t.ctx.Value("current_plan").(agent.Plan)
@@ -32,7 +44,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 
 		healingPlan, hErr := t.healer.ProposeHealing(t.ctx, string(buildOut), t.meta.Type, relevantFiles)
 		if hErr != nil {
-			t.lastFeedback = fmt.Sprintf("BUILD FAILED: %v", err)
+			t.lastFeedback = fmt.Sprintf("HEALER LLM CRASHED: %v\nBUILD ERROR:\n%s", hErr, string(buildOut))
 			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 			return false, nil
 		}
@@ -48,20 +60,18 @@ func (t *taskContext) stepVerification() (bool, error) {
 				abort = true
 			}
 		}
+		
 		if abort {
-			return false, fmt.Errorf("Healer aborted: %s", healingPlan.Diagnosis)
+			t.lastFeedback = fmt.Sprintf("HEALER ABORTED: %s\nBUILD ERROR:\n%s", healingPlan.Diagnosis, string(buildOut))
+			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+			return false, nil
 		}
-		t.lastFeedback = "HEALING ATTEMPTED"
-		return false, nil
 	}
 
-	if t.meta.BenchCommand != "" {
-		cmd := exec.CommandContext(t.ctx, "bash", "-c", t.meta.BenchCommand)
-		cmd.Dir = t.repoPath
-		bOut, _ := cmd.CombinedOutput()
-		t.postBench = string(bOut)
-	}
-	return true, nil
+	// Exhausted all heal attempts
+	t.lastFeedback = "HEALER FAILED TO FIX BUILD AFTER 3 ATTEMPTS"
+	exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+	return false, nil
 }
 
 func (t *taskContext) stepReview() (bool, RunResult, error) {

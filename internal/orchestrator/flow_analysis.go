@@ -70,11 +70,21 @@ func (t *taskContext) prepareAnalysis() error {
 	ext := t.detectExtension()
 	files, _ := t.orchestrator.insightClient.GetRepoFiles(t.ctx, scope.Repo, ext, 3)
 	
-	inventoryJSON, _ := json.MarshalIndent(inventory, "", "  ")
+	inventoryJSON, _ := json.Marshal(inventory)
+	inventoryJSONStr := string(inventoryJSON)
+	inventoryRunes := []rune(inventoryJSONStr)
+	if len(inventoryRunes) > 5000 {
+		inventoryJSONStr = string(inventoryRunes[:5000]) + "\n... (생략됨: 인벤토리가 너무 큽니다) ..."
+	}
+	
 	filesList := strings.Join(files, "\n")
+	filesRunes := []rune(filesList)
+	if len(filesRunes) > 3000 {
+		filesList = string(filesRunes[:3000]) + "\n... (생략됨: 파일 목록이 너무 큽니다) ..."
+	}
 
 	// [Step 0-2: Inspection Query Generation]
-	inspectionGeneratorPrompt := getInspectionQueryPrompt(t.req.UserRequest, scope.Repo, scope.Path, string(inventoryJSON), filesList)
+	inspectionGeneratorPrompt := getInspectionQueryPrompt(t.req.UserRequest, scope.Repo, scope.Path, inventoryJSONStr, filesList)
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "DETECTION_RAW", "고정밀 사전 검사 질의 생성 중", inspectionGeneratorPrompt, "")
 	
 	inspectQueryRaw, err := agent.CallLLM(t.ctx, t.primaryLLM, "QueryArchitect", inspectionGeneratorPrompt)

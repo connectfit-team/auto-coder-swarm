@@ -49,9 +49,16 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 		return "", fmt.Errorf("git add failed: %v, output: %s", err, string(out))
 	}
 
+	statusCmd := exec.Command("git", "-C", path, "status", "--porcelain")
+	statusOut, _ := statusCmd.CombinedOutput()
+	if len(strings.TrimSpace(string(statusOut))) == 0 {
+		log.Printf("[GitMgr] [%s] No changes detected. Skipping commit and PR.", path)
+		return "No changes made", nil
+	}
+
 	commitCmd := exec.Command("git", "-C", path, "commit", "-m", message)
 	if out, err := commitCmd.CombinedOutput(); err != nil {
-		log.Printf("[GitMgr] [ERROR] Commit failed (possibly no changes): %v", err)
+		log.Printf("[GitMgr] [ERROR] Commit failed: %v", err)
 		return "", fmt.Errorf("git commit failed: %v, output: %s", err, string(out))
 	}
 	

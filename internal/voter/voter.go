@@ -82,12 +82,17 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 	}
 
 	if winner == "" {
-		for _, res := range results {
-			if res != "" {
-				winner = res
-				break
+		// Collect errors if all models failed
+		var errMsgs []string
+		for _, err := range errors {
+			if err != nil {
+				errMsgs = append(errMsgs, err.Error())
 			}
 		}
+		if len(errMsgs) > 0 {
+			return VoteResult{}, fmt.Errorf("all voter models failed: %s", strings.Join(errMsgs, "; "))
+		}
+		return VoteResult{}, fmt.Errorf("all voter models returned empty responses")
 	}
 
 	res := VoteResult{
