@@ -12,6 +12,10 @@ swarm
 *.log.*
 swarm.db
 swarm.db-journal
+# WAL 모드가 만드는 짝이다. 이것만 추적되고 있었는데, deploy.sh 가 원격을
+# 강제 리셋할 때마다 **돌고 있는 DB 를 남의 상태로 덮어쓴다.**
+swarm.db-shm
+swarm.db-wal
 *.sqlite
 *.sqlite-journal
 data/*.json
