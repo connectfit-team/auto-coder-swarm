@@ -6,11 +6,11 @@ type ollamaMessage struct {
 }
 
 type ollamaRequest struct {
-	Model    string          `json:"model"`
-	Messages []ollamaMessage `json:"messages"`
-	Stream   bool            `json:"stream"`
-	Options  map[string]any  `json:"options,omitempty"`
-	KeepAlive string         `json:"keep_alive,omitempty"`
+	Model     string          `json:"model"`
+	Messages  []ollamaMessage `json:"messages"`
+	Stream    bool            `json:"stream"`
+	Options   map[string]any  `json:"options,omitempty"`
+	KeepAlive string          `json:"keep_alive,omitempty"`
 }
 
 type ollamaResponse struct {

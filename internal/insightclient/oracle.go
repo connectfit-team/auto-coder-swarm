@@ -17,7 +17,9 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 	b, _ := json.Marshal(reqBody)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/analyze", bytes.NewBuffer(b))
-	if err != nil { return "", "", fmt.Errorf("failed to create request: %w", err) }
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", c.apiKey)
 
@@ -34,19 +36,25 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 	}
 
 	var ar AnalysisResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ar); err != nil { return "", "", fmt.Errorf("failed to decode oracle response: %w", err) }
+	if err := json.NewDecoder(resp.Body).Decode(&ar); err != nil {
+		return "", "", fmt.Errorf("failed to decode oracle response: %w", err)
+	}
 
 	workID := ar.WorkID
-	if workID == "" { return "", "", fmt.Errorf("oracle did not return a work_id") }
+	if workID == "" {
+		return "", "", fmt.Errorf("oracle did not return a work_id")
+	}
 
 	log.Printf("[CIE] Task accepted. WorkID: %s", workID)
-	if onWorkID != nil { onWorkID(workID) }
+	if onWorkID != nil {
+		onWorkID(workID)
+	}
 
 	// [Step 61: Zero-Polling Logic]
 	if c.bus != nil {
 		log.Printf("[CIE] Waiting for event signal for %s...", workID)
 		subject := fmt.Sprintf("swarm.analysis.done.%s", workID)
-		
+
 		sigChan, err := c.bus.SubscribeOnce(ctx, subject)
 		if err == nil {
 			select {
@@ -67,12 +75,17 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 	delay := 3 * time.Second
 	for i := 0; i < 60; i++ {
 		select {
-		case <-ctx.Done(): return "", workID, ctx.Err()
+		case <-ctx.Done():
+			return "", workID, ctx.Err()
 		case <-time.After(delay):
 			log.Printf("[CIE] Polling result for %s (Attempt %d)", workID, i+1)
 			res, _, err := c.fetchResult(ctx, workID)
-			if err == nil { return res, workID, nil }
-			if delay < 15*time.Second { delay += 1 * time.Second }
+			if err == nil {
+				return res, workID, nil
+			}
+			if delay < 15*time.Second {
+				delay += 1 * time.Second
+			}
 		}
 	}
 	return "", workID, fmt.Errorf("oracle timeout for %s", workID)
@@ -84,7 +97,9 @@ func (c *Client) fetchResult(ctx context.Context, workID string) (string, string
 	rReq.Header.Set("X-API-Key", c.apiKey)
 
 	rResp, err := c.hc.Do(rReq)
-	if err != nil { return "", "", err }
+	if err != nil {
+		return "", "", err
+	}
 	defer rResp.Body.Close()
 
 	if rResp.StatusCode == http.StatusOK {
@@ -97,30 +112,40 @@ func (c *Client) fetchResult(ctx context.Context, workID string) (string, string
 }
 
 func (c *Client) StopTask(ctx context.Context, workID string) error {
-	if workID == "" { return nil }
+	if workID == "" {
+		return nil
+	}
 	log.Printf("[CIE] Cancelling remote task: %s", workID)
 	if c.bus != nil {
 		c.bus.Publish(ctx, fmt.Sprintf("swarm.analysis.cancel.%s", workID), map[string]string{"work_id": workID})
 	}
 	url := fmt.Sprintf("%s/api/v1/tasks/cancel?id=%s", c.baseURL, workID)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	req.Header.Set("X-API-Key", c.apiKey)
 	resp, err := c.hc.Do(req)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer resp.Body.Close()
 	return nil
 }
 
 func (c *Client) UpdateKnowledge(ctx context.Context, repoName, summary, keywords string) error {
-	reqBody := map[string]string{ "repo_name": repoName, "summary": summary, "keywords": keywords }
+	reqBody := map[string]string{"repo_name": repoName, "summary": summary, "keywords": keywords}
 	b, _ := json.Marshal(reqBody)
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/update_knowledge", bytes.NewBuffer(b))
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", c.apiKey)
 	resp, err := c.hc.Do(req)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer resp.Body.Close()
 	return nil
 }

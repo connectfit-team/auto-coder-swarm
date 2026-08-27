@@ -77,7 +77,7 @@ func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/settings", h.requestLogger(h.enableCORS(h.HandleUpdateSettings)))
 	mux.HandleFunc("GET /api/v1/report/daily", h.requestLogger(h.enableCORS(h.HandleGenerateReport)))
 	mux.HandleFunc("POST /api/v1/chat", h.requestLogger(h.enableCORS(h.HandleChatSubmission)))
-	
+
 	mux.HandleFunc("POST /api/v1/approve", h.requestLogger(h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
 		h.store.UpdateTaskStatus(id, storage.StatusApproved, "", "")

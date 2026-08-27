@@ -14,7 +14,7 @@ func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 		req.Header.Set("Authorization", "Bearer gemma4-secret-key-9988")
 	}
 	resp, err := http.DefaultClient.Do(req)
-	
+
 	var models []map[string]interface{}
 	var vllmResp struct {
 		Data []struct {
@@ -37,7 +37,7 @@ func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"available_models": models,
 		"primary_model":    primary,
-		"voter_models":      strings.Split(voters, ","),
+		"voter_models":     strings.Split(voters, ","),
 		"api_key_set":      apiKey != "",
 	})
 }
@@ -55,7 +55,9 @@ func (h *SwarmHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Reque
 	}
 	if v, ok := settings["voter_models"].([]interface{}); ok {
 		var names []string
-		for _, m := range v { names = append(names, m.(string)) }
+		for _, m := range v {
+			names = append(names, m.(string))
+		}
 		h.store.SaveSetting("voter_models", strings.Join(names, ","))
 	}
 	if v, ok := settings["swarm_api_key"].(string); ok {

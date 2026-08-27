@@ -21,13 +21,17 @@ func (t *taskContext) execute() (RunResult, error) {
 	observability.RecordStepDuration("analysis", t.targetRepo, time.Since(start).Seconds())
 
 	wsPath, err := t.orchestrator.wsMgr.CreateWorkspace()
-	if err != nil { return RunResult{}, err }
+	if err != nil {
+		return RunResult{}, err
+	}
 	t.wsPath = wsPath
 	defer t.orchestrator.wsMgr.Cleanup(wsPath)
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		log.Printf("🔄 [ACS] Task %s: Execution Attempt %d/3", t.taskID, attempt)
-		if t.ctx.Err() != nil { return RunResult{}, t.ctx.Err() }
+		if t.ctx.Err() != nil {
+			return RunResult{}, t.ctx.Err()
+		}
 
 		startPlan := time.Now()
 		if err := t.stepPlanning(attempt); err != nil {
@@ -64,7 +68,7 @@ func (t *taskContext) execute() (RunResult, error) {
 			return RunResult{}, err
 		}
 		observability.RecordStepDuration("review", t.targetRepo, time.Since(startReview).Seconds())
-		
+
 		if finished {
 			log.Printf("✅ [ACS] Task %s successfully completed and reviewed.", t.taskID)
 			// [Step 52: MSA Chain Reaction] Trigger impact analysis for other repos

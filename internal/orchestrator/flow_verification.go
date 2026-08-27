@@ -60,7 +60,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 				abort = true
 			}
 		}
-		
+
 		if abort {
 			t.lastFeedback = fmt.Sprintf("HEALER ABORTED: %s\nBUILD ERROR:\n%s", healingPlan.Diagnosis, string(buildOut))
 			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
@@ -79,6 +79,15 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	diffOut, _ := diffCmd.CombinedOutput()
 	t.finalDiff = string(diffOut)
 	t.orchestrator.store.UpdateTaskProposedDiff(t.taskID, t.finalDiff)
+
+	// 프롬프트에 절차를 넣어도 지키지 않는 일이 있다. 검사할 수 있는 것은
+	// 모델의 판단에 맡기지 않고 기계로 본다.
+	if v := checkProcedureViolations(t.finalDiff); len(v) > 0 {
+		t.lastFeedback = "PROCEDURE VIOLATION: " + strings.Join(v, " / ")
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SKILL_VIOLATION", "작업 절차 위반", t.lastFeedback, "")
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return false, RunResult{}, nil
+	}
 
 	securityFindings, _ := t.orchestrator.securityGuard.ExecuteAll(t.ctx, t.repoPath, t.finalDiff)
 	var securityFeedback strings.Builder

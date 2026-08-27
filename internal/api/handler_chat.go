@@ -27,7 +27,7 @@ func (h *SwarmHandler) HandleChatSubmission(w http.ResponseWriter, r *http.Reque
 	statelessReq := orchestrator.StatelessRequest{
 		UserRequest: req.Message,
 	}
-	
+
 	b, _ := json.Marshal(statelessReq)
 	task, err := h.store.CreateTask(string(b))
 	if err != nil {
@@ -37,8 +37,8 @@ func (h *SwarmHandler) HandleChatSubmission(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"task_id": task.ID, 
-		"status": "PENDING",
+		"task_id": task.ID,
+		"status":  "PENDING",
 		"message": "Task created from chat",
 	})
 }

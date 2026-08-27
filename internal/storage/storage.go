@@ -54,7 +54,9 @@ func NewStorage(dbPath string, rdb *redis.Client) (*Storage, error) {
 func (s *Storage) GetSetting(key string) string {
 	if s.rdb != nil {
 		val, err := s.rdb.Get(context.Background(), "setting:"+key).Result()
-		if err == nil { return val }
+		if err == nil {
+			return val
+		}
 	}
 
 	var setting Setting

@@ -20,7 +20,9 @@ func (s *StaticAnalysisScanner) Scan(ctx context.Context, repoPath string, diff 
 		// For now, let's just check if it's applicable
 		isGo := false
 		matches, _ := filepath.Glob(filepath.Join(repoPath, "go.mod"))
-		if len(matches) > 0 { isGo = true }
+		if len(matches) > 0 {
+			isGo = true
+		}
 
 		if isGo {
 			// Implementation logic for gosec could go here

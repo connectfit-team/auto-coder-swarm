@@ -24,7 +24,8 @@ type taskContext struct {
 	critic        *agent.CriticAgent
 	healer        *healing.HealerAgent
 	analysis      string
-	ckhKnowledge  string // Corporate Knowledge from CKH
+	ckhKnowledge  string     // Corporate Knowledge from CKH
+	skills        []SkillDoc // CIE 가 준 팀의 작업 절차
 	wsPath        string
 	repoPath      string
 	targetRepo    string

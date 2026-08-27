@@ -103,21 +103,5 @@ func (a *HealerAgent) ProposeHealing(ctx context.Context, errorLog, projectType 
 }
 
 func extractJSON(raw string) string {
-	// Strip markdown formatting if present
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "```json") {
-		raw = strings.TrimPrefix(raw, "```json")
-	} else if strings.HasPrefix(raw, "```") {
-		raw = strings.TrimPrefix(raw, "```")
-	}
-	if strings.HasSuffix(raw, "```") {
-		raw = strings.TrimSuffix(raw, "```")
-	}
-
-	start := strings.Index(raw, "{")
-	end := strings.LastIndex(raw, "}")
-	if start != -1 && end != -1 && end > start {
-		return raw[start : end+1]
-	}
-	return raw
+	return agent.ExtractJSON(raw)
 }

@@ -61,7 +61,7 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 		log.Printf("[GitMgr] [ERROR] Commit failed: %v", err)
 		return "", fmt.Errorf("git commit failed: %v, output: %s", err, string(out))
 	}
-	
+
 	log.Printf("[GitMgr] [%s] Pushing branch to GitHub", path)
 	pushCmd := exec.Command("git", "-C", path, "push", "origin", branchName)
 	if out, err := pushCmd.CombinedOutput(); err != nil {
@@ -70,8 +70,8 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 	}
 
 	log.Printf("[GitMgr] [%s] Creating Pull Request via gh CLI", path)
-	prCmd := exec.Command("gh", "pr", "create", 
-		"--title", message, 
+	prCmd := exec.Command("gh", "pr", "create",
+		"--title", message,
 		"--body", "This Pull Request was automatically generated and verified by the Auto-Coder Swarm.",
 		"--head", branchName,
 		"--repo", fmt.Sprintf("connectfit-team/%s", repoName))

@@ -2,9 +2,9 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
-	"log"
 )
 
 func (s *Storage) generateWorkID() string {
@@ -55,8 +55,12 @@ func (s *Storage) UpdateTaskRepo(id string, repoName string) error {
 
 func (s *Storage) UpdateTaskStatus(id string, status TaskStatus, result, errLog string) error {
 	updates := map[string]interface{}{"status": status, "updated_at": time.Now()}
-	if result != "" { updates["result"] = result }
-	if errLog != "" { updates["error_log"] = errLog }
+	if result != "" {
+		updates["result"] = result
+	}
+	if errLog != "" {
+		updates["error_log"] = errLog
+	}
 	log.Printf("[Storage] Task %s status updated to %s", id, status)
 	return s.DB.Model(&SwarmTask{}).Where("id = ?", id).Updates(updates).Error
 }
