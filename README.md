@@ -31,7 +31,7 @@ ACS은 CIE와 상호작용하며 다음 4단계 워크플로우를 통해 작업
 
 *   [**PROJECTS.md**](./PROJECTS.md): 마스터 사양 및 중장기 로드맵.
 *   [**PROGRESS.md**](./PROGRESS.md): 현재 진행 단계 및 운영(Systemd) 지침.
-*   [**GEMINI.md**](./GEMINI.md): 에이전트 행동 강령 및 무결성 보장 원칙.
+*   [**CLAUDE.md**](./CLAUDE.md): 에이전트 행동 강령 및 무결성 보장 원칙.
 *   [**API_SPEC.md**](./API_SPEC.md): 외부 연동을 위한 REST API 명세.
 *   [**SESSION_LOG.md**](./SESSION_LOG.md): 최신 작업 이력 및 의사결정 기록.
 

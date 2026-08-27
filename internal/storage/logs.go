@@ -39,7 +39,7 @@ func (s *Storage) AddThought(taskID string, agentName, message string) error {
 		Message:   message,
 		CreatedAt: time.Now(),
 	}
-	
+
 	// Non-blocking send to async queue
 	select {
 	case s.thoughtQueue <- thought:

@@ -11,16 +11,20 @@ import (
 )
 
 type MessageBus struct {
-	nc  *nats.Conn
-	js  jetstream.JetStream
+	nc *nats.Conn
+	js jetstream.JetStream
 }
 
 func NewMessageBus(url string) (*MessageBus, error) {
 	nc, err := nats.Connect(url, nats.Name("Swarm Engine"), nats.Timeout(10*time.Second))
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	js, err := jetstream.New(nc)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -30,14 +34,18 @@ func NewMessageBus(url string) (*MessageBus, error) {
 		Subjects: []string{"swarm.>"},
 		Storage:  jetstream.FileStorage,
 	})
-	if err != nil { log.Printf("⚠️ [Bus] Stream creation warning: %v", err) }
+	if err != nil {
+		log.Printf("⚠️ [Bus] Stream creation warning: %v", err)
+	}
 
 	return &MessageBus{nc: nc, js: js}, nil
 }
 
 func (b *MessageBus) Publish(ctx context.Context, subject string, payload interface{}) error {
 	data, err := json.Marshal(payload)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	log.Printf("📢 [Bus] Publishing to %s", subject)
 	_, err = b.js.Publish(ctx, subject, data)
 	return err
@@ -53,7 +61,9 @@ func (b *MessageBus) SubscribeOnce(ctx context.Context, subject string) (chan []
 		}
 		m.Sub.Unsubscribe() // Auto-unsubscribe after first message
 	})
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -64,5 +74,7 @@ func (b *MessageBus) SubscribeOnce(ctx context.Context, subject string) (chan []
 }
 
 func (b *MessageBus) Close() {
-	if b.nc != nil { b.nc.Close() }
+	if b.nc != nil {
+		b.nc.Close()
+	}
 }

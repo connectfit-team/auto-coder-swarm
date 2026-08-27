@@ -20,7 +20,7 @@ func TestDashboardHandler_HandleHome(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "home.html"), []byte("{{define \"content\"}}Swarm Home{{end}}"), 0644)
 
 	dbPath := filepath.Join(tmpDir, "test.db")
-	store, _ := storage.NewStorage(dbPath)
+	store, _ := storage.NewStorage(dbPath, nil)
 	wm := worker.NewManager()
 	sm := stream.NewManager(store)
 

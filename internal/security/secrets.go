@@ -15,10 +15,10 @@ func (s *SecretScanner) Scan(ctx context.Context, repoPath string, diff string) 
 
 	// Standard patterns for common secrets
 	patterns := map[string]*regexp.Regexp{
-		"AWS Access Key":    regexp.MustCompile(`(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}`),
-		"Generic Secret":    regexp.MustCompile(`(?i)(secret|password|passwd|api_key|token|auth|key)[\s:=]+['"][A-Za-z0-9/\+=]{16,}['"]`),
-		"Private Key":       regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),
-		"Google API Key":    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
+		"AWS Access Key": regexp.MustCompile(`(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}`),
+		"Generic Secret": regexp.MustCompile(`(?i)(secret|password|passwd|api_key|token|auth|key)[\s:=]+['"][A-Za-z0-9/\+=]{16,}['"]`),
+		"Private Key":    regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),
+		"Google API Key": regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	}
 
 	lines := strings.Split(diff, "\n")

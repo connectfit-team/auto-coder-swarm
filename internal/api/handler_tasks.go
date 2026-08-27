@@ -27,16 +27,16 @@ func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
-	
+
 	logs, _ := h.store.GetLogs(id)
 	thoughts, _ := h.store.GetThoughts(id)
-	
+
 	response := map[string]interface{}{
 		"task":     task,
 		"logs":     logs,
 		"thoughts": thoughts,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
@@ -67,7 +67,7 @@ func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.URL.Query().Get("id")
-	
+
 	// [Deep Stop] Stop remote CIE task if tracked
 	task, err := h.store.GetTaskByID(id)
 	if err == nil && task.CIEWorkID != "" {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"google.golang.org/adk/model"
-	"strings"
 )
 
 type PlannerAgent struct {
@@ -73,12 +72,7 @@ func (a *PlannerAgent) Refine(ctx context.Context, oracleAnalysis, originalPlan,
 }
 
 func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {
-	jsonStr := raw
-	if start := strings.Index(raw, "{"); start != -1 {
-		if end := strings.LastIndex(raw, "}"); end != -1 {
-			jsonStr = raw[start : end+1]
-		}
-	}
+	jsonStr := ExtractJSON(raw)
 
 	var plan Plan
 	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {

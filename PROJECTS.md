@@ -7,7 +7,7 @@
 1. **PROJECTS.md**: 마스터 사양 및 중장기 로드맵.
 2. **PROGRESS.md**: 현재 진행 단계, 성과 추적 및 운영(Systemd) 지침.
 3. **API_SPEC.md**: 외부 연동을 위한 Headless REST API 명세 (W-XXXXXX ID 체계 준수).
-4. **GEMINI.md**: 4단계 워크플로우 및 시스템 무결성(Functional Integrity) 4대 원칙.
+4. **CLAUDE.md**: 4단계 워크플로우 및 시스템 무결성(Functional Integrity) 4대 원칙.
 
 ## 3. 핵심 아키텍처 (Key Architecture)
 - **4-Stage Intelligent Pipeline**: `INSPECTION`(규모 파악) -> `STRATEGY`(전략 수립) -> `ANALYSIS`(CIE 이해) -> `IMPLEMENTATION`(ACS 구현) 체계.
@@ -22,7 +22,7 @@
 - [x] **Step 38: Headless API & SPEC**: REST API 기반 아키텍처 및 W-XXXXXX ID 체계 완료.
 - [x] **Step 41: Adaptive Pipeline**: 4단계 지능형 워크플로우(Inspection-Strategy-Analysis-Implementation) 구축 완료.
 - [x] **Step 44: Task Hardening**: 즉각적인 작업 중단 및 CIE 비동기 API 완전 동기화 완료.
-- [x] **Step 45: Functional Integrity Mandate**: GEMINI.md에 무결성 보장 원칙 및 역할 분리(Eyes/Hands) 각인 완료.
+- [x] **Step 45: Functional Integrity Mandate**: CLAUDE.md에 무결성 보장 원칙 및 역할 분리(Eyes/Hands) 각인 완료.
 - [x] **Step 46: Multi-Agent Consensus**: 4단계 거버넌스 및 리스크 검토 프로세스 고도화 완료.
 - [x] **Step 47: Security Guardrails**: 코드 내 기밀 정보(Secrets) 및 취약점 자동 감지 엔진 구축 완료.
 - [x] **Step 48: Advanced Self-Healing v2**: LLM 기반 오류 진단 및 자동 코드 보정 엔진 구축 완료.

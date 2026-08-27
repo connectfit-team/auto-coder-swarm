@@ -27,7 +27,7 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 	}
 
 	var triggeredTasks []StatelessRequest
-	
+
 	// Create a new parent list for children
 	newParents := append(t.req.ParentRepos, t.targetRepo)
 
@@ -46,7 +46,7 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 			}
 		}
 		if isCycle {
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CYCLE_DETECTED", 
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CYCLE_DETECTED",
 				fmt.Sprintf("순환 참조 감지 및 차단: %s", impacted.RepoName), "", "")
 			continue
 		}
@@ -64,8 +64,8 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 		}
 		triggeredTasks = append(triggeredTasks, newReq)
 
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_TRIGGERED", 
-			fmt.Sprintf("연쇄 작업 트리거: %s", impacted.RepoName), 
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_TRIGGERED",
+			fmt.Sprintf("연쇄 작업 트리거: %s", impacted.RepoName),
 			fmt.Sprintf("사유: %s (Confidence: %.2f)", impacted.Reason, impacted.ConfidenceScore), "")
 	}
 

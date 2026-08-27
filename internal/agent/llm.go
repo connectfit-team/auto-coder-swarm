@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/observability"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
-	"github.com/connectfit-team/auto-coder-swarm/internal/observability"
 )
 
 func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string, error) {
@@ -42,39 +42,57 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 
 	it := m.GenerateContent(ctx, req, false)
 	var respText string
-	if f != nil { fmt.Fprint(f, "[RESPONSE]\n") }
+	if f != nil {
+		fmt.Fprint(f, "[RESPONSE]\n")
+	}
 
 	for resp, err := range it {
 		if err != nil {
 			observability.IncrementAgentOp(agentName, "llm_error")
 			return "", err
 		}
-		if resp == nil || resp.Content == nil { continue }
+		if resp == nil || resp.Content == nil {
+			continue
+		}
 		for _, p := range resp.Content.Parts {
 			chunk := p.Text
 			respText += chunk
 			observability.AddTokenUsage(agentName, m.Name(), len(chunk)/4+1)
 			if taskID != "" {
-				if GlobalStream != nil { GlobalStream.Broadcast(taskID, agentName, chunk) }
-				if GlobalStorage != nil { GlobalStorage.AddThought(taskID, agentName, chunk) }
+				if GlobalStream != nil {
+					GlobalStream.Broadcast(taskID, agentName, chunk)
+				}
+				if GlobalStorage != nil {
+					GlobalStorage.AddThought(taskID, agentName, chunk)
+				}
 			}
-			if f != nil { fmt.Fprint(f, chunk) }
+			if f != nil {
+				fmt.Fprint(f, chunk)
+			}
 		}
 	}
 
-	if respText == "" { return "", fmt.Errorf("empty response from LLM for agent %s", agentName) }
-	if f != nil { fmt.Fprint(f, "\n==============================================================\n") }
+	if respText == "" {
+		return "", fmt.Errorf("empty response from LLM for agent %s", agentName)
+	}
+	if f != nil {
+		fmt.Fprint(f, "\n==============================================================\n")
+	}
 	return respText, nil
 }
 
 func rotateLogs(logPath string) {
 	maxSize := int64(100 * 1024 * 1024)
 	info, err := os.Stat(logPath)
-	if err != nil || info.Size() < maxSize { return }
+	if err != nil || info.Size() < maxSize {
+		return
+	}
 	os.Rename(logPath, logPath+"."+time.Now().Format("20060102150405"))
-	matches, _ := filepath.Glob(logPath+".*")
+	matches, _ := filepath.Glob(logPath + ".*")
 	if len(matches) > 10 {
 		sort.Strings(matches)
-		for i := 0; i < len(matches)-10; i++ { os.Remove(matches[i]) }
+		for i := 0; i < len(matches)-10; i++ {
+			os.Remove(matches[i])
+		}
 	}
 }

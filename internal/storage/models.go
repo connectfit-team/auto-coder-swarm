@@ -9,17 +9,17 @@ import (
 type TaskStatus string
 
 const (
-	StatusPending          TaskStatus = "PENDING"
-	StatusRunning          TaskStatus = "RUNNING"
+	StatusPending         TaskStatus = "PENDING"
+	StatusRunning         TaskStatus = "RUNNING"
 	StatusWaitingApproval TaskStatus = "WAITING_APPROVAL"
-	StatusApproved         TaskStatus = "APPROVED"
-	StatusCompleted        TaskStatus = "COMPLETED"
-	StatusFailed           TaskStatus = "FAILED"
-	StatusCancelled        TaskStatus = "CANCELLED"
+	StatusApproved        TaskStatus = "APPROVED"
+	StatusCompleted       TaskStatus = "COMPLETED"
+	StatusFailed          TaskStatus = "FAILED"
+	StatusCancelled       TaskStatus = "CANCELLED"
 )
 
 type SwarmTask struct {
-	ID            string         `gorm:"primaryKey"`
+	ID            string `gorm:"primaryKey"`
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
@@ -35,26 +35,26 @@ type SwarmTask struct {
 }
 
 type RepoLock struct {
-	RepoName string    `gorm:"primaryKey"`
+	RepoName string `gorm:"primaryKey"`
 	LockedAt time.Time
 	TaskID   string
 }
 
 type TaskLog struct {
-	ID        uint      `gorm:"primaryKey"`
-	TaskID    string    `gorm:"index"`
+	ID        uint   `gorm:"primaryKey"`
+	TaskID    string `gorm:"index"`
 	Stage     string
-	Message   string    `gorm:"type:text"`
-	Prompt    string    `gorm:"type:text"`
-	Summary   string    `gorm:"type:text"`
+	Message   string `gorm:"type:text"`
+	Prompt    string `gorm:"type:text"`
+	Summary   string `gorm:"type:text"`
 	CreatedAt time.Time
 }
 
 type ThoughtLog struct {
-	ID        uint      `gorm:"primaryKey"`
-	TaskID    string    `gorm:"index"`
+	ID        uint   `gorm:"primaryKey"`
+	TaskID    string `gorm:"index"`
 	AgentName string
-	Message   string    `gorm:"type:text"`
+	Message   string `gorm:"type:text"`
 	CreatedAt time.Time
 }
 

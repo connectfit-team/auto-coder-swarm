@@ -45,33 +45,49 @@ type ResultResponse struct {
 func (c *Client) GetRepoInventory(ctx context.Context, repoName string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/api/v1/repos/inventory/%s", c.baseURL, repoName)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.hc.Do(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK { return nil, fmt.Errorf("inventory request failed: %d", resp.StatusCode) }
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("inventory request failed: %d", resp.StatusCode)
+	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, err }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
 func (c *Client) GetRepoFiles(ctx context.Context, repoName string, extension string, depth int) ([]string, error) {
 	url := fmt.Sprintf("%s/api/v1/repos/inventory/%s/files?extension=%s&depth=%d", c.baseURL, repoName, extension, depth)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.hc.Do(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK { return nil, fmt.Errorf("files request failed: %d", resp.StatusCode) }
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("files request failed: %d", resp.StatusCode)
+	}
 
 	var result []string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, err }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }

@@ -26,7 +26,7 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 	primary := h.store.GetSetting("primary_model")
 	log.Printf("[Dashboard] Loading settings. Primary model from DB: '%s'", primary)
 
-	// [Step 52: Model Integrity Force Fix] 
+	// [Step 52: Model Integrity Force Fix]
 	// If the model is an embedding model or empty, force it back to gemma4
 	if primary == "" || strings.Contains(primary, "bge-m3") {
 		log.Printf("[Dashboard] WARNING: Inappropriate model detected ('%s'). Forcing gemma4:31b", primary)
@@ -54,7 +54,7 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 func (h *DashboardHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	newModel := r.FormValue("primary_model")
-	
+
 	// [Safety Guard] Prevent setting embedding models as primary
 	if strings.Contains(newModel, "bge-m3") {
 		log.Printf("[Dashboard] Blocked attempt to set embedding model as primary: %s", newModel)

@@ -49,14 +49,16 @@ func (c *Client) GetContextReport(ctx context.Context, workID, taskDesc, repo st
 
 	url := c.baseURL + "/api/v1/context/report"
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(b))
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.hc.Do(req)
-	if err != nil { 
+	if err != nil {
 		log.Printf("⚠️ [CKH] Request failed: %v", err)
-		return nil, err 
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -66,7 +68,9 @@ func (c *Client) GetContextReport(ctx context.Context, workID, taskDesc, repo st
 	}
 
 	var result ContextResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, err }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
 	log.Printf("[CKH] Knowledge retrieved for %s", workID)
 	return &result, nil
 }

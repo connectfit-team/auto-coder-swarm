@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
@@ -50,22 +49,9 @@ MANDATORY JSON FORMAT:
 	return meta
 }
 
+// 모델 출력에서 JSON 을 꺼내는 규칙은 agent 에 한 벌만 둔다.
+// 예전에는 orchestrator·healing·voter·planner 에 같은 코드가 네 벌 있었고,
+// 그래서 한 곳을 고쳐도 다른 경로에서 같은 증상이 계속 났다.
 func extractJSON(raw string) string {
-	// Strip markdown formatting if present
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "```json") {
-		raw = strings.TrimPrefix(raw, "```json")
-	} else if strings.HasPrefix(raw, "```") {
-		raw = strings.TrimPrefix(raw, "```")
-	}
-	if strings.HasSuffix(raw, "```") {
-		raw = strings.TrimSuffix(raw, "```")
-	}
-
-	start := strings.Index(raw, "{")
-	end := strings.LastIndex(raw, "}")
-	if start != -1 && end != -1 && end > start {
-		return raw[start : end+1]
-	}
-	return raw
+	return agent.ExtractJSON(raw)
 }

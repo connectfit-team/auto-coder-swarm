@@ -30,12 +30,7 @@ type NamedLLM interface {
 }
 
 func extractJSON(raw string) string {
-	start := strings.Index(raw, "{")
-	end := strings.LastIndex(raw, "}")
-	if start != -1 && end != -1 && end > start {
-		return raw[start : end+1]
-	}
-	return strings.TrimSpace(raw)
+	return agent.ExtractJSON(raw)
 }
 
 func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (VoteResult, error) {
@@ -47,12 +42,12 @@ func (v *MultiModelVoter) Vote(ctx context.Context, agentName, prompt string) (V
 		wg.Add(1)
 		go func(idx int, llm model.LLM) {
 			defer wg.Done()
-			
+
 			modelName := "Unknown"
 			if n, ok := llm.(NamedLLM); ok {
 				modelName = n.Name()
 			}
-			
+
 			specificAgentName := fmt.Sprintf("%s (%s)", agentName, modelName)
 			text, err := agent.CallLLM(ctx, llm, specificAgentName, prompt)
 			if err != nil {
