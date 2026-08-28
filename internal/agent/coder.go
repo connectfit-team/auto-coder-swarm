@@ -47,13 +47,16 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 	}
 
 	prompt := a.BuildRepairPrompt(filePath, string(content), instructions, buildError)
-	newContent, err := CallLLM(ctx, a.llm, "Debugger", prompt)
+	raw, err := CallLLM(ctx, a.llm, "Debugger", prompt)
 	if err != nil {
 		return "", err
 	}
 
-	err = os.WriteFile(filePath, []byte(newContent), 0644)
-	return fmt.Sprintf("Repaired %s", filePath), err
+	if err := os.WriteFile(filePath, []byte(CleanCodeOutput(raw)), 0644); err != nil {
+		return "", err
+	}
+	TidyFile(ctx, filePath)
+	return fmt.Sprintf("Repaired %s", filePath), nil
 }
 
 func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
@@ -71,15 +74,16 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 		"[Technical Instructions]\n%s\n\n"+
 		"[Original Code: %s]\n%s", instructions, filePath, string(content))
 
-	newContent, err := CallLLM(ctx, a.llm, a.Name(), prompt)
+	raw, err := CallLLM(ctx, a.llm, a.Name(), prompt)
 	if err != nil {
 		return "", err
 	}
 
-	err = os.WriteFile(filePath, []byte(newContent), 0644)
-	if err != nil {
+	if err := os.WriteFile(filePath, []byte(CleanCodeOutput(raw)), 0644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
+	// import 는 기계가 고친다. 모델에게 세 번 더 물어볼 일이 아니다.
+	TidyFile(ctx, filePath)
 
 	return fmt.Sprintf("Modified %s", filePath), nil
 }
@@ -116,10 +120,10 @@ func (a *CoderAgent) GenerateTestFile(ctx context.Context, sourcePath string) (s
 		return "", err
 	}
 
-	err = os.WriteFile(testPath, []byte(testCode), 0644)
-	if err != nil {
+	if err := os.WriteFile(testPath, []byte(CleanCodeOutput(testCode)), 0644); err != nil {
 		return "", err
 	}
+	TidyFile(ctx, testPath)
 
 	return testPath, nil
 }

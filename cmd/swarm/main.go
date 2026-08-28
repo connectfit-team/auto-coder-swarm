@@ -30,7 +30,9 @@ import (
 )
 
 func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok { return value }
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
 	return fallback
 }
 
@@ -47,7 +49,9 @@ func (a *StreamAdapter) Broadcast(taskID string, agentName, message string) {
 }
 
 func sendToSlack(webhookURL, message string) {
-	if webhookURL == "" { return }
+	if webhookURL == "" {
+		return
+	}
 	payload := map[string]string{"text": message}
 	b, _ := json.Marshal(payload)
 	http.Post(webhookURL, "application/json", bytes.NewBuffer(b))
@@ -69,7 +73,9 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 
 		lockFunc := func(repoName string) (bool, error) {
 			ok, err := store.TryLockRepo(repoName, task.ID)
-			if ok { store.UpdateTaskRepo(task.ID, repoName) }
+			if ok {
+				store.UpdateTaskRepo(task.ID, repoName)
+			}
 			return ok, err
 		}
 
@@ -81,15 +87,27 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 		isApproved := task.Status == storage.StatusApproved
 		res, err := orc.RunStatelessTask(ctx, task.ID, statelessReq, isApproved, lockFunc)
 
+		// **취소 여부를 cancel() 보다 먼저 본다.**
+		//
+		// 전에는 cancel() 을 부른 뒤에 ctx.Err() 를 봤다. 방금 우리가 취소했으니
+		// 그 검사는 **항상 참**이었고, 모든 실패가 "사용자가 중단함" 으로 보고됐다.
+		// 그래서 실제 오류가 Slack 에도 안 가고, 작업이 실패로 기록되지도 않고,
+		// 메시지가 아무 데도 안 남았다 — 왜 죽었는지 알 방법이 없었다.
+		stoppedByUser := ctx.Err() != nil
+
 		wm.Unregister(task.ID)
 		cancel()
 
-		if res.RepoName != "" { store.UnlockRepo(res.RepoName) }
+		if res.RepoName != "" {
+			store.UnlockRepo(res.RepoName)
+		}
 
 		if err != nil {
-			if ctx.Err() == context.Canceled {
+			if stoppedByUser {
 				log.Printf("🚫 Task %s was stopped by user.", task.ID)
+				store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", "사용자 중단")
 			} else {
+				log.Printf("❌ Task %s failed: %v", task.ID, err)
 				sendToSlack(slackWebhook, fmt.Sprintf("❌ *Task %s 실패*: %v", task.ID, err))
 				store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 			}
@@ -127,13 +145,17 @@ func main() {
 
 	// 2. Messaging (NATS JetStream) & Cache (Redis)
 	mb, err := bus.NewMessageBus(natsURL)
-	if err != nil { log.Fatalf("❌ Message Bus init failed: %v", err) }
+	if err != nil {
+		log.Fatalf("❌ Message Bus init failed: %v", err)
+	}
 	defer mb.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
 
 	store, err := storage.NewStorage(dbPath, rdb)
-	if err != nil { log.Fatalf("❌ DB init failed: %v", err) }
+	if err != nil {
+		log.Fatalf("❌ DB init failed: %v", err)
+	}
 	store.ResetRunningToPending()
 
 	wm := worker.NewManager()
@@ -148,7 +170,9 @@ func main() {
 	gitSvc := gitmgr.NewGitManager()
 
 	primaryModelName := store.GetSetting("primary_model")
-	if primaryModelName == "" { primaryModelName = "gemma4:31b" }
+	if primaryModelName == "" {
+		primaryModelName = "gemma4:31b"
+	}
 	primaryModel := llm.NewRabbitMQModel(primaryModelName, amqpURL)
 	reportingSvc := reporting.NewService(store, primaryModel)
 

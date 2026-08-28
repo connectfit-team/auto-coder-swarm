@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -26,7 +25,7 @@ func (t *taskContext) stepPlanning(attempt int) error {
 	}
 
 	voteRes, _ := t.voter.Vote(t.ctx, "Planner", t.planner.BuildPrompt(input))
-	plan, err := t.planner.ParsePlan(voteRes.Winner)
+	plan, err := t.planner.ParsePlanWithRepo(voteRes.Winner, t.req.TargetRepo)
 	if err != nil {
 		return err
 	}
@@ -45,9 +44,24 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		t.orchestrator.wsMgr.CreateWorktree(t.targetRepo, t.repoPath, t.currentBranch)
 		t.meta = t.orchestrator.detectProjectTypeLLM(t.ctx, t.taskID, t.repoPath)
 
+		// **표식 파일이 있으면 그쪽을 믿는다.**
+		//
+		// 모델은 빈 명령을 내기도 하고(`bash -c ""` 는 exit 0 이라 아무것도
+		// 검증하지 않고 "성공" 으로 지나간다), 없는 경로를 지어내기도 한다
+		// (blog-api 에 없는 `go build ./main.go`). go.mod 가 있으면 Go 라는 건
+		// 모델의 판단이 아니라 사실이다.
+		if kind, build := detectProjectFallback(t.repoPath); build != "" {
+			if t.meta.BuildCommand != build {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD_COMMAND",
+					fmt.Sprintf("파일로 정함: %s (%s) — 모델 제안: %q", build, kind, t.meta.BuildCommand), "", "")
+			}
+			t.meta.Type, t.meta.BuildCommand = kind, build
+		} else if t.meta.BuildCommand == "" {
+			return fmt.Errorf("빌드 명령을 정할 수 없다 — 표식 파일(go.mod 등)도 모델 제안도 없다")
+		}
+
 		if t.meta.BenchCommand != "" {
-			cmd := exec.CommandContext(t.ctx, "bash", "-c", t.meta.BenchCommand)
-			cmd.Dir = t.repoPath
+			cmd := shellCmd(t.ctx, t.repoPath, t.meta.BenchCommand)
 			bOut, _ := cmd.CombinedOutput()
 			t.preBench = string(bOut)
 		}
