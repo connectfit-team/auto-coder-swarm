@@ -79,9 +79,26 @@ func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {
 		return Plan{}, fmt.Errorf("failed to parse plan JSON: %w", err)
 	}
 
-	if plan.RepoName == "" || plan.RepoName == "not_specified" {
-		return plan, fmt.Errorf("planner failed to identify target repository")
+	return plan, nil
+}
+
+// ParsePlanWithRepo 는 요청이 이미 저장소를 밝힌 경우를 함께 본다.
+//
+// 계획에 repo_name 이 빠졌다고 작업을 죽이면 안 된다 — 부르는 쪽이 이미
+// target_repo 를 줬는데 모델이 그걸 다시 안 적었을 뿐이다. 실제로 그 이유로
+// 마지막 시도가 통째로 버려졌다.
+func (a *PlannerAgent) ParsePlanWithRepo(raw, fallbackRepo string) (Plan, error) {
+	plan, err := a.ParsePlan(raw)
+	if err != nil {
+		return plan, err
 	}
+	if plan.RepoName == "" || plan.RepoName == "not_specified" {
+		plan.RepoName = fallbackRepo
+	}
+	if plan.RepoName == "" {
+		return plan, fmt.Errorf("대상 저장소를 알 수 없다 (계획에도 요청에도 없다)")
+	}
+	return plan, nil
 
 	return plan, nil
 }
