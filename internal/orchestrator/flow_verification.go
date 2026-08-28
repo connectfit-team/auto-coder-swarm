@@ -18,6 +18,17 @@ func (t *taskContext) stepVerification() (bool, error) {
 		bCmd := shellCmd(t.ctx, t.repoPath, t.meta.BuildCommand)
 		buildOut, err := bCmd.CombinedOutput()
 
+		// 빌드가 통과했으면 **바뀐 패키지의 테스트를 실제로 돌린다.**
+		// 컴파일만 보면 틀린 테스트가 통과한다 — 테스트를 쓰는 것이 일의
+		// 절반인데 그게 도는지 확인하지 않으면 절반은 검증되지 않은 셈이다.
+		if err == nil {
+			if out, ok := t.runChangedTests(t.ctx.Value("current_plan").(agent.Plan)); !ok {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "TEST_FAIL", "바뀐 패키지의 테스트가 실패했다", "", clip(out, 1500))
+				buildOut = []byte(out)
+				err = errChangedTestsFailed
+			}
+		}
+
 		if err == nil {
 			// Build succeeded
 			if t.meta.BenchCommand != "" {
@@ -88,6 +99,15 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		return false, RunResult{}, nil
 	}
 
+	// **바뀐 것이 없으면 승인할 것도 없다.**
+	//
+	// 빈 diff 는 검토 두 관문을 그냥 통과한다(지적할 자리가 없으니까).
+	// 그래서 아무것도 안 한 작업이 "성공" 으로 기록됐다.
+	if strings.TrimSpace(t.finalDiff) == "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "EMPTY_DIFF", "바뀐 것이 없다", "", "")
+		return false, RunResult{}, fmt.Errorf("코드가 하나도 바뀌지 않았다 — 승인할 것이 없다")
+	}
+
 	securityFindings, _ := t.orchestrator.securityGuard.ExecuteAll(t.ctx, t.repoPath, t.finalDiff)
 	var securityFeedback strings.Builder
 	if len(securityFindings) > 0 {
@@ -116,10 +136,15 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEW_ERROR", "비평가가 빈 응답을 냈다", reviewInput[:min(len(reviewInput), 400)], "")
 		return false, RunResult{}, fmt.Errorf("비평가가 빈 응답을 냈다 (입력 %d자 — 컨텍스트를 넘겼을 수 있다)", len(reviewInput))
 	}
-	if !t.critic.IsApproved(criticResp) {
-		// 거절 이유를 남긴다. 안 남기면 왜 다시 도는지 밖에서 알 수 없다 —
-		// 로그에는 계획→코딩→계획 만 반복해 찍힌다.
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CRITIC_REJECT", "비평가가 거절했다", "", criticResp)
+	// **막연한 걱정으로 막지 않는다.**
+	//
+	// "위험을 찾아라" 라고만 시키면 9B 는 늘 찾아낸다. 실측으로 enum 에
+	// String() 을 더한 변경이 "Unknown 을 돌려주면 민감정보가 샐 수 있다" 로
+	// 거절됐다. 그것이 세 번 반복되면 작업은 통째로 버려진다.
+	// 파일·줄을 못 대면 위험이 아니다.
+	cv := agent.ParseCriticVerdict(criticResp, t.finalDiff)
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CRITIC", cv.Why, "", criticResp)
+	if cv.Blocking {
 		t.lastFeedback = "CRITIC REJECTION: " + criticResp
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
@@ -133,8 +158,9 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	if strings.TrimSpace(reviewResp) == "" {
 		return false, RunResult{}, fmt.Errorf("리뷰어가 빈 응답을 냈다 (입력 %d자)", len(reviewInput))
 	}
-	if !t.reviewer.IsApproved(reviewResp) {
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEWER_REJECT", "리뷰어가 거절했다", "", reviewResp)
+	rv := agent.ParseReviewerVerdict(reviewResp, t.finalDiff)
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEWER", rv.Why, "", reviewResp)
+	if rv.Blocking {
 		t.lastFeedback = "REVIEWER REJECTION: " + reviewResp
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
@@ -167,3 +193,10 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// 테스트 실패를 빌드 실패와 같은 길로 보낸다 — 자가치유가 고칠 대상이다.
+var errChangedTestsFailed = &changedTestsError{}
+
+type changedTestsError struct{}
+
+func (*changedTestsError) Error() string { return "바뀐 패키지의 테스트가 실패했다" }

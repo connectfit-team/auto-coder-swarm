@@ -30,6 +30,14 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		return err
 	}
 
+	// **변경이 하나도 없는 계획은 계획이 아니다.**
+	//
+	// 빈 계획이 오면 아무 파일도 안 쓰고, 빈 diff 가 만들어지고, 검토 두 관문이
+	// 그걸 통과시켜 **아무것도 안 한 작업이 "성공" 으로 기록됐다.**
+	if len(plan.Changes) == 0 {
+		return fmt.Errorf("계획에 고칠 파일이 하나도 없다")
+	}
+
 	if attempt == 1 {
 		t.targetRepo = plan.RepoName
 		if t.req.TargetRepo != "" {
