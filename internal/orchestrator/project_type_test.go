@@ -11,7 +11,7 @@ import (
 // 모델에게 물을 이유가 없다.
 func TestDetectProjectFallback(t *testing.T) {
 	cases := []struct{ marker, kind, build string }{
-		{"go.mod", "Go", "go build ./..."},
+		{"go.mod", "Go", "go build ./... && go test -run '^$' -count=1 -vet=off ./..."},
 		{"pubspec.yaml", "Flutter", "flutter analyze"},
 		{"package.json", "NodeJS", "npm run build --if-present"},
 		{"Cargo.toml", "Rust", "cargo check"},

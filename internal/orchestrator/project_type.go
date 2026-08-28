@@ -23,7 +23,11 @@ type projectDefault struct {
 // (예: Flutter 저장소 안의 node 도구).
 var projectDefaults = []projectDefault{
 	{"pubspec.yaml", "Flutter", "flutter analyze"},
-	{"go.mod", "Go", "go build ./..."},
+	// **`go build` 는 _test.go 를 통째로 건너뛴다.** ACS 가 쓴 테스트 파일이
+	// 컴파일조차 안 되는데 "빌드 성공" 으로 지나갔다(실증). `go test` 로
+	// 컴파일까지 시키되 테스트는 돌리지 않는다(`-run ^$`) — 실행은 아래
+	// 단계에서 바뀐 패키지만 한다.
+	{"go.mod", "Go", "go build ./... && go test -run '^$' -count=1 -vet=off ./..."},
 	{"Cargo.toml", "Rust", "cargo check"},
 	{"pom.xml", "Java", "mvn -q -DskipTests compile"},
 	{"build.gradle", "Java", "./gradlew assemble"},
