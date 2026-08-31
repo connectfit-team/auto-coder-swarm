@@ -137,7 +137,7 @@ func main() {
 	oracleURL := getEnv("ORACLE_URL", "http://localhost:8005")
 	ckhURL := getEnv("CKH_URL", "http://localhost:8007") // Default CKH URL
 	amqpURL := getEnv("AMQP_URL", "amqp://guest:guest@192.168.120.54:5672/")
-	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/projects/code-insight-engine/repos")
+	masterRepos := getEnv("MASTER_REPOS_PATH", "/home/cnf/cie-repos")
 	workspaceBase := getEnv("WORKSPACE_BASE_PATH", "/tmp")
 	templatesPath := getEnv("TEMPLATES_PATH", "./web/templates")
 	slackWebhook := getEnv("SLACK_WEBHOOK_URL", "")

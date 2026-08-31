@@ -3,8 +3,12 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
 
 func (t *taskContext) stepPlanning(attempt int) error {
@@ -25,9 +29,29 @@ func (t *taskContext) stepPlanning(attempt int) error {
 	}
 
 	voteRes, _ := t.voter.Vote(t.ctx, "Planner", t.planner.BuildPrompt(input))
+
+	// **이긴 답이 JSON 이 아니면 나머지 후보를 써 본다.**
+	//
+	// 투표는 같은 답이 몇 번 나왔는지로만 이긴다 — 그 답이 읽히는지는 보지
+	// 않는다. 실제로 이긴 답에 따옴표가 하나 잘못 들어가(`"점검 및"));`)
+	// 파싱이 깨졌고, 멀쩡한 다른 후보가 있는데도 작업이 통째로 실패했다.
 	plan, err := t.planner.ParsePlanWithRepo(voteRes.Winner, t.req.TargetRepo)
 	if err != nil {
-		return err
+		firstErr := err
+		for _, alt := range voteRes.Details {
+			if alt == "" || alt == voteRes.Winner {
+				continue
+			}
+			if p2, e2 := t.planner.ParsePlanWithRepo(alt, t.req.TargetRepo); e2 == nil {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_ALT_USED",
+					"이긴 답이 JSON 으로 안 읽혀 다른 후보를 썼습니다", "", firstErr.Error())
+				plan, err = p2, nil
+				break
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("어느 후보도 계획으로 읽히지 않는다: %w", firstErr)
+		}
 	}
 
 	// **변경이 하나도 없는 계획은 계획이 아니다.**
@@ -90,6 +114,26 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		}
 	}
 
+	// **이 저장소에 없는 파일은 계획에서 뺀다.**
+	//
+	// cms 작업 계획에 statistics/internal/event-synchronizer/workplace.go 가
+	// 들어왔다 — 다른 저장소 파일이다. 그대로 두면 코더가 그 자리에 새 파일을
+	// 만들어 저장소에 없던 코드를 심는다. 폴더까지 없으면 지어낸 것으로 본다.
+	// 폴더가 있으면 새 파일을 만들려는 것일 수 있으므로 살린다.
+	if t.repoPath != "" {
+		kept, dropped := splitByRepoReality(t.repoPath, plan.Changes)
+		if len(dropped) > 0 {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_TRIMMED",
+				fmt.Sprintf("%s 에 없는 경로 %d개를 계획에서 뺐습니다", t.targetRepo, len(dropped)),
+				"", strings.Join(dropped, "\n"))
+		}
+		if len(kept) == 0 {
+			return fmt.Errorf("계획이 가리킨 파일이 %s 에 하나도 없다: %s",
+				t.targetRepo, strings.Join(dropped, ", "))
+		}
+		plan.Changes = kept
+	}
+
 	// 계획이 나와야 **실제로 건드릴 파일**의 확장자를 안다. 요청문에 "go" 라고
 	// 안 적혀 있어도 Go 규약이 붙어야 하므로 여기서 다시 받는다.
 	var paths []string
@@ -104,4 +148,30 @@ func (t *taskContext) stepPlanning(attempt int) error {
 	t.orchestrator.store.AddLog(t.taskID, "PLAN", fmt.Sprintf("파일 %d개 수정 계획 수립", len(plan.Changes)))
 	t.ctx = context.WithValue(t.ctx, "current_plan", plan)
 	return nil
+}
+
+// splitByRepoReality 는 계획의 변경을 실재하는 것과 지어낸 것으로 가른다.
+//
+// 파일이 이미 있으면 그대로 둔다. 없더라도 담길 **폴더가 있으면** 새로 만들려는
+// 것으로 보고 살린다. 폴더까지 없으면 이 저장소 이야기가 아니다.
+func splitByRepoReality(repoPath string, changes []agent.FileChange) (kept []agent.FileChange, dropped []string) {
+	for _, c := range changes {
+		rel := strings.TrimSpace(c.FilePath)
+		// 저장소 밖으로 나가는 경로는 무조건 뺀다.
+		if rel == "" || strings.HasPrefix(rel, "/") || strings.Contains(rel, "..") {
+			dropped = append(dropped, c.FilePath)
+			continue
+		}
+		full := filepath.Join(repoPath, rel)
+		if _, err := os.Stat(full); err == nil {
+			kept = append(kept, c)
+			continue
+		}
+		if fi, err := os.Stat(filepath.Dir(full)); err == nil && fi.IsDir() {
+			kept = append(kept, c)
+			continue
+		}
+		dropped = append(dropped, c.FilePath)
+	}
+	return kept, dropped
 }

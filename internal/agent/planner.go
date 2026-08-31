@@ -2,9 +2,9 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"google.golang.org/adk/model"
+	"strings"
 )
 
 type PlannerAgent struct {
@@ -74,9 +74,18 @@ func (a *PlannerAgent) Refine(ctx context.Context, oracleAnalysis, originalPlan,
 func (a *PlannerAgent) ParsePlan(raw string) (Plan, error) {
 	jsonStr := ExtractJSON(raw)
 
+	// 봉투에 싸여 오는 일이 있다 — {"response":{"repo_name":…,"changes":[…]}}.
+	// 그냥 Unmarshal 하면 **오류 없이** 빈 Plan 이 되고, 그게 "계획에 고칠
+	// 파일이 하나도 없다" 로 보고돼 진짜 원인이 가려진다.
 	var plan Plan
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+	if err := unmarshalMaybeWrapped([]byte(jsonStr), &plan); err != nil {
 		return Plan{}, fmt.Errorf("failed to parse plan JSON: %w", err)
+	}
+
+	// 모델이 경로 앞에 저장소 이름을 붙여 준다 — cms/src/lib/… 처럼.
+	// 작업공간 안에는 그런 폴더가 없어서 없는 파일로 걸러진다.
+	for i, c := range plan.Changes {
+		plan.Changes[i].FilePath = trimRepoPrefix(c.FilePath, plan.RepoName)
 	}
 
 	return plan, nil
@@ -98,7 +107,24 @@ func (a *PlannerAgent) ParsePlanWithRepo(raw, fallbackRepo string) (Plan, error)
 	if plan.RepoName == "" {
 		return plan, fmt.Errorf("대상 저장소를 알 수 없다 (계획에도 요청에도 없다)")
 	}
+	// repo_name 이 뒤늦게 정해졌으면 경로도 다시 다듬는다.
+	for i, c := range plan.Changes {
+		plan.Changes[i].FilePath = trimRepoPrefix(c.FilePath, plan.RepoName)
+	}
 	return plan, nil
+}
 
-	return plan, nil
+// trimRepoPrefix 는 경로 앞에 붙은 저장소 이름을 뗀다.
+//
+// 모델이 "cms/src/lib/utils/workstamp.ts" 처럼 적어 준다. 작업공간은 이미 그
+// 저장소 안이라 cms/ 라는 폴더가 없고, 그대로 두면 없는 파일로 걸러진다.
+func trimRepoPrefix(path, repo string) string {
+	path = strings.TrimSpace(path)
+	if repo == "" {
+		return path
+	}
+	if after, ok := strings.CutPrefix(path, repo+"/"); ok {
+		return after
+	}
+	return path
 }

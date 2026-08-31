@@ -43,7 +43,13 @@ func (t *taskContext) stepVerification() (bool, error) {
 			return false, t.ctx.Err()
 		}
 
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS", fmt.Sprintf("빌드 실패, 자가 치유 가동 (%d/3)", healAttempt), string(buildOut), "")
+		// **경고를 걷어내고 오류만 넘긴다.**
+		//
+		// vite 는 손대지도 않은 파일의 A11y 경고를 앞에 잔뜩 찍는다. 그 앞부분이
+		// 그대로 치유기에 들어가서, 8,192 토큰이 경고로 차고 진짜 오류는 잘려
+		// 나갔다. 기준 빌드는 같은 경고를 달고도 통과했으니 그건 원인이 아니다.
+		failure := distillBuildError(string(buildOut))
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS", fmt.Sprintf("빌드 실패, 자가 치유 가동 (%d/3)", healAttempt), failure, "")
 
 		relevantFiles := make(map[string]string)
 		plan := t.ctx.Value("current_plan").(agent.Plan)
@@ -52,9 +58,9 @@ func (t *taskContext) stepVerification() (bool, error) {
 			relevantFiles[change.FilePath] = string(content)
 		}
 
-		healingPlan, hErr := t.healer.ProposeHealing(t.ctx, string(buildOut), t.meta.Type, relevantFiles)
+		healingPlan, hErr := t.healer.ProposeHealing(t.ctx, failure, t.meta.Type, relevantFiles)
 		if hErr != nil {
-			t.lastFeedback = fmt.Sprintf("HEALER LLM CRASHED: %v\nBUILD ERROR:\n%s", hErr, string(buildOut))
+			t.lastFeedback = fmt.Sprintf("HEALER LLM CRASHED: %v\nBUILD ERROR:\n%s", hErr, failure)
 			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 			return false, nil
 		}
@@ -200,3 +206,65 @@ var errChangedTestsFailed = &changedTestsError{}
 type changedTestsError struct{}
 
 func (*changedTestsError) Error() string { return "바뀐 패키지의 테스트가 실패했다" }
+
+// 빌드 출력에서 오류로 보이는 줄.
+var buildErrorMarkers = []string{
+	"error", "err!", "failed", "failure", "cannot find", "not found",
+	"unexpected", "is not assignable", "does not exist", "syntaxerror",
+	"typeerror", "referenceerror", "missing", "expected",
+}
+
+// 경고일 뿐인 줄. 기준 빌드도 이것을 달고 통과한다.
+var buildNoiseMarkers = []string{
+	"a11y:", "warning", "warn ", "deprecated", "npm notice",
+	"browserslist", "vite v", "building ", "transforming",
+}
+
+// distillBuildError 는 빌드 출력에서 고칠 거리가 되는 줄만 남긴다.
+//
+// 앞에서 자르면 안 된다 — 빌드 도구는 경고를 먼저, 오류를 나중에 찍는다.
+// 아무것도 못 고르면 앞이 아니라 **뒤**를 준다.
+func distillBuildError(out string) string {
+	const maxLines = 40
+	lines := strings.Split(out, "\n")
+
+	var kept []string
+	for i, ln := range lines {
+		low := strings.ToLower(ln)
+		noisy := false
+		for _, m := range buildNoiseMarkers {
+			if strings.Contains(low, m) {
+				noisy = true
+				break
+			}
+		}
+		if noisy {
+			continue
+		}
+		for _, m := range buildErrorMarkers {
+			if strings.Contains(low, m) {
+				kept = append(kept, ln)
+				// 오류 줄 바로 다음 두 줄에 파일·위치가 붙는다.
+				for j := i + 1; j < len(lines) && j <= i+2; j++ {
+					if strings.TrimSpace(lines[j]) != "" {
+						kept = append(kept, lines[j])
+					}
+				}
+				break
+			}
+		}
+		if len(kept) >= maxLines {
+			break
+		}
+	}
+
+	if len(kept) == 0 {
+		// 고를 것이 없으면 끝부분을 준다. 오류는 대개 마지막에 있다.
+		tail := lines
+		if len(tail) > maxLines {
+			tail = tail[len(tail)-maxLines:]
+		}
+		return strings.TrimSpace(strings.Join(tail, "\n"))
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
+}

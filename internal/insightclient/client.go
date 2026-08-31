@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/bus"
@@ -21,7 +23,7 @@ type Client struct {
 func NewClient(baseURL string, mb *bus.MessageBus) *Client {
 	return &Client{
 		baseURL: baseURL,
-		apiKey:  "gig_team_secret_2026",
+		apiKey:  os.Getenv("CIE_API_KEY"),
 		hc: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
@@ -86,11 +88,28 @@ func (c *Client) GetRepoFiles(ctx context.Context, repoName string, extension st
 		return nil, fmt.Errorf("files request failed: %d", resp.StatusCode)
 	}
 
-	var result []string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	// **서버는 봉투에 담아 준다.** {"repo":…,"files":[…],"count":N}
+	//
+	// 여기서 []string 으로 받고 있었다. 디코드가 늘 실패했고 그 오류를
+	// 호출부가 _ 로 버려서, 파일 목록은 **한 번도 온 적이 없다.** 그런데도
+	// 아무 데서도 티가 안 났다 — 목록이 빈 채로 프롬프트에 들어가고,
+	// 없는 경로를 걸러 내려던 검사도 조용히 건너뛰었다.
+	var env struct {
+		Files []string `json:"files"`
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	if err := json.Unmarshal(body, &env); err == nil && env.Files != nil {
+		return env.Files, nil
+	}
+	// 옛 모양(배열 그대로)도 받는다.
+	var plain []string
+	if err := json.Unmarshal(body, &plain); err != nil {
+		return nil, fmt.Errorf("files 응답을 읽지 못했다: %w", err)
+	}
+	return plain, nil
 }
 
 // CandidateFile 은 작업 요청과 관련된 파일이다. Hits 는 걸린 **낱말 수**다.
