@@ -143,6 +143,7 @@ func (t *taskContext) prepareAnalysis() error {
 		}
 		b.WriteString("**actionable_path 는 되도록 이 목록에서 고를 것.**\n\n")
 		candidates = b.String()
+		t.candidateHint = candidates
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CANDIDATES",
 			fmt.Sprintf("관련 파일 %d개 확보", len(cands)), "", candidates)
 	}

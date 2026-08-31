@@ -1,10 +1,12 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -96,6 +98,21 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	t.finalDiff = string(diffOut)
 	t.orchestrator.store.UpdateTaskProposedDiff(t.taskID, t.finalDiff)
 
+	// **파일을 통째로 지우는 것은 고침이 아니다.**
+	//
+	// "말일 데이터가 빠진다" 를 고치라고 했더니 prisma/logout.schema.prisma
+	// 1,065줄을 지운 diff 가 승인 대기까지 왔다. 코더가 "수정" 을 "다시 씀"
+	// 으로 읽으면 원본을 날린다. 지운 줄이 압도적으로 많으면 사람 손에
+	// 넘기기 전에 여기서 막는다.
+	if wiped := findWipedFiles(t.ctx, t.repoPath); len(wiped) > 0 {
+		t.lastFeedback = "DESTRUCTIVE DIFF: 파일을 거의 통째로 지웠다 — " + strings.Join(wiped, " / ") +
+			"\n고칠 줄만 바꿔라. 파일을 새로 쓰지 마라."
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "DESTRUCTIVE_DIFF",
+			"파일을 거의 통째로 지우는 변경이라 되돌렸습니다", "", strings.Join(wiped, "\n"))
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return false, RunResult{}, nil
+	}
+
 	// 프롬프트에 절차를 넣어도 지키지 않는 일이 있다. 검사할 수 있는 것은
 	// 모델의 판단에 맡기지 않고 기계로 본다.
 	if v := checkProcedureViolations(t.finalDiff); len(v) > 0 {
@@ -112,6 +129,18 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	if strings.TrimSpace(t.finalDiff) == "" {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "EMPTY_DIFF", "바뀐 것이 없다", "", "")
 		return false, RunResult{}, fmt.Errorf("코드가 하나도 바뀌지 않았다 — 승인할 것이 없다")
+	}
+
+	// **줄 끝 공백만 바뀐 것도 안 바뀐 것이다.**
+	//
+	// 실측으로 diff 11줄이 올라왔는데 내용은 파일 끝 개행 하나였다
+	// ("\ No newline at end of file"). 빈 diff 검사는 통과하고, 검토 관문은
+	// 지적할 자리가 없어 통과시킨다 — 아무것도 안 한 작업이 승인 대기까지 갔다.
+	if isCosmeticDiff(t.finalDiff) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COSMETIC_DIFF",
+			"공백만 바뀌었다 — 실제로 고친 것이 없다", "", clip(t.finalDiff, 800))
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return false, RunResult{}, fmt.Errorf("공백만 바뀌었다 — 승인할 것이 없다")
 	}
 
 	securityFindings, _ := t.orchestrator.securityGuard.ExecuteAll(t.ctx, t.repoPath, t.finalDiff)
@@ -267,4 +296,70 @@ func distillBuildError(out string) string {
 		return strings.TrimSpace(strings.Join(tail, "\n"))
 	}
 	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+// 이만큼 지워지면 "고친" 것이 아니라 "날린" 것으로 본다.
+const (
+	wipeMinDeleted = 50 // 이보다 적게 지웠으면 정상적인 정리일 수 있다
+	wipeRatio      = 5  // 지운 줄이 더한 줄의 이 배를 넘으면 의심한다
+)
+
+// findWipedFiles 는 거의 통째로 지워진 파일을 찾는다.
+//
+// git diff --numstat 이 파일마다 "더한 줄\t지운 줄\t경로" 를 준다. 파일을
+// 통째로 지우는 것이 목적인 작업도 있으므로, 지운 양이 크고 더한 양이
+// 하찮을 때만 막는다. 이진 파일은 숫자 대신 "-" 가 와서 저절로 걸러진다.
+func findWipedFiles(ctx context.Context, repoPath string) []string {
+	out, err := exec.CommandContext(ctx, "git", "-C", repoPath, "diff", "--numstat", "HEAD").Output()
+	if err != nil {
+		return nil
+	}
+	var wiped []string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Split(strings.TrimSpace(line), "\t")
+		if len(f) < 3 {
+			continue
+		}
+		added, err1 := strconv.Atoi(f[0])
+		deleted, err2 := strconv.Atoi(f[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		if deleted >= wipeMinDeleted && deleted >= added*wipeRatio {
+			wiped = append(wiped, fmt.Sprintf("%s (+%d/-%d)", f[2], added, deleted))
+		}
+	}
+	return wiped
+}
+
+// isCosmeticDiff 는 내용이 실제로 바뀌었는지 본다.
+//
+// 더한 줄과 뺀 줄에서 공백을 지운 것이 서로 같으면 바뀐 것이 없다. 줄 끝
+// 개행, 들여쓰기, 줄바꿈만 바뀐 diff 가 여기에 걸린다.
+func isCosmeticDiff(diff string) bool {
+	added := map[string]int{}
+	removed := map[string]int{}
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+			continue
+		case strings.HasPrefix(line, "+"):
+			if t := strings.Join(strings.Fields(line[1:]), " "); t != "" {
+				added[t]++
+			}
+		case strings.HasPrefix(line, "-"):
+			if t := strings.Join(strings.Fields(line[1:]), " "); t != "" {
+				removed[t]++
+			}
+		}
+	}
+	if len(added) != len(removed) {
+		return false
+	}
+	for k, n := range added {
+		if removed[k] != n {
+			return false
+		}
+	}
+	return true
 }

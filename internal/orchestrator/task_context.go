@@ -10,11 +10,13 @@ import (
 )
 
 type taskContext struct {
-	ctx           context.Context
-	taskID        string
-	req           StatelessRequest
-	isApproved    bool
-	repoLockFunc  func(string) (bool, error)
+	ctx          context.Context
+	taskID       string
+	req          StatelessRequest
+	isApproved   bool
+	repoLockFunc func(string) (bool, error)
+	// 계획이 없는 파일을 가리켰을 때 되돌려 줄 "실제로 있는 파일" 목록.
+	candidateHint string
 	orchestrator  *SwarmOrchestrator
 	primaryLLM    model.LLM
 	voter         *voter.MultiModelVoter
