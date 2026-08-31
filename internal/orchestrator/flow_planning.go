@@ -33,6 +33,19 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		input += "\n\nFEEDBACK:\n" + t.lastFeedback
 	}
 
+	// **분석이 이미 짚었으면 다시 묻지 않는다.**
+	//
+	// 고장 질문에는 CIE 가 파일과 문제의 줄을 짚어 준다. 그걸 다시 모델에게
+	// 넘겨 "어느 파일을 고칠까" 를 물으면, 그 되물음에서 엉뚱한 화면 파일로
+	// 새는 일이 잦다. 아는 것은 그대로 쓴다.
+	if direct := agent.PlanFromDefectReport(t.analysis); len(direct) > 0 && t.lastFeedback == "" {
+		plan := agent.Plan{RepoName: t.req.TargetRepo, Changes: direct}
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_FROM_ANALYSIS",
+			fmt.Sprintf("분석이 짚은 파일 %d개를 그대로 계획으로 씁니다", len(direct)),
+			"", planSummary(direct))
+		return t.finishPlanning(plan, attempt)
+	}
+
 	voteRes, _ := t.voter.Vote(t.ctx, "Planner", t.planner.BuildPrompt(input))
 
 	// **이긴 답이 JSON 이 아니면 나머지 후보를 써 본다.**
@@ -59,6 +72,14 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		}
 	}
 
+	return t.finishPlanning(plan, attempt)
+}
+
+// finishPlanning 은 계획이 정해진 뒤의 검사와 준비를 한다.
+//
+// 계획이 어디서 왔든(모델이 세웠든, 분석에서 그대로 왔든) 거쳐야 하는 길이
+// 같아서 한 곳에 모았다.
+func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 	// **변경이 하나도 없는 계획은 계획이 아니다.**
 	//
 	// 빈 계획이 오면 아무 파일도 안 쓰고, 빈 diff 가 만들어지고, 검토 두 관문이
@@ -192,4 +213,13 @@ func splitByRepoReality(repoPath string, changes []agent.FileChange) (kept []age
 		dropped = append(dropped, c.FilePath)
 	}
 	return kept, dropped
+}
+
+// planSummary 는 계획을 한눈에 보이게 적는다.
+func planSummary(changes []agent.FileChange) string {
+	var b strings.Builder
+	for _, c := range changes {
+		b.WriteString("- " + c.FilePath + "\n")
+	}
+	return b.String()
 }

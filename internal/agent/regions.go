@@ -48,8 +48,16 @@ func relevantRegions(original, instructions string) string {
 			}
 		}
 	}
-	if len(keep) == 0 || len(keep) > regionMaxLines {
+	if len(keep) == 0 {
 		return ""
+	}
+	// 너무 많이 걸리면 창을 좁혀 다시 고른다. 포기하고 통째로 넘기면
+	// 프롬프트가 창을 넘어 400 이 난다(실측 13,997/8,192 토큰).
+	if len(keep) > regionMaxLines {
+		keep = narrowTo(lines, wanted, regionMaxLines)
+		if len(keep) == 0 {
+			return ""
+		}
 	}
 
 	idx := make([]int, 0, len(keep))
@@ -69,4 +77,28 @@ func relevantRegions(original, instructions string) string {
 		prev = i
 	}
 	return b.String()
+}
+
+// narrowTo 는 앞뒤 여유를 줄여 가며 보여 줄 줄 수를 맞춘다.
+func narrowTo(lines []string, wanted map[string]bool, max int) map[int]bool {
+	for ctx := regionContext - 3; ctx >= 1; ctx -= 3 {
+		keep := map[int]bool{}
+		for i, ln := range lines {
+			low := strings.ToLower(ln)
+			for w := range wanted {
+				if strings.Contains(low, w) {
+					for j := i - ctx; j <= i+ctx; j++ {
+						if j >= 0 && j < len(lines) {
+							keep[j] = true
+						}
+					}
+					break
+				}
+			}
+		}
+		if len(keep) > 0 && len(keep) <= max {
+			return keep
+		}
+	}
+	return nil
 }

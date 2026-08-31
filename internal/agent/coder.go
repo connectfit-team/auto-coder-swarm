@@ -59,6 +59,10 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 	return fmt.Sprintf("Repaired %s", filePath), nil
 }
 
+// 코더에게 한 번에 보여 줄 코드의 상한. 창이 8,192 토큰이라 이보다 크면
+// 지시문·형식 설명과 합쳐 창을 넘긴다.
+const maxShownChars = 4500
+
 func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
@@ -133,6 +137,12 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 	if r := relevantRegions(original, instructions); r != "" {
 		shown = r
 		note = "[관련 부분만 보여 준다. 앞의 숫자는 줄 번호이니 SEARCH 에는 빼고 적어라: " + filePath + "]"
+	}
+	// **창을 넘기면 아예 답이 안 온다.** 실측으로 13,997 토큰을 보내 400 이
+	// 났다. 관련 부분을 못 좁힌 경우가 그렇다. 글자 수로 마지막 빗장을 건다.
+	if r := []rune(shown); len(r) > maxShownChars {
+		shown = string(r[:maxShownChars]) + "\n... (이 뒤는 생략됨)"
+		note = "[파일 앞부분만 보여 준다: " + filePath + "]"
 	}
 
 	// **형식 요구를 맨 끝에 둔다.**

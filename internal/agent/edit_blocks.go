@@ -42,15 +42,24 @@ func applyEditBlocks(original, raw string) (string, error) {
 	}
 	out := original
 	for _, m := range ms {
-		search, replace := m[1], m[2]
+		search, replace := stripLineNumbers(m[1]), stripLineNumbers(m[2])
 		if strings.TrimSpace(search) == "" {
 			return "", fmt.Errorf("찾을 내용이 비었다")
 		}
 		switch strings.Count(out, search) {
 		case 1:
 			out = strings.Replace(out, search, replace, 1)
+			continue
 		case 0:
-			return "", fmt.Errorf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
+			// **들여쓰기까지 똑같이 옮겨 적기를 바랄 수는 없다.**
+			//
+			// 모델이 자리는 정확히 짚고도 앞 공백이 달라 못 찾는 일이 잦다.
+			// 줄 끝 공백을 털고 줄 단위로 견줘 한 군데만 맞으면 그 자리를 쓴다.
+			replaced, err := replaceLoosely(out, search, replace)
+			if err != nil {
+				return "", err
+			}
+			out = replaced
 		default:
 			return "", fmt.Errorf("원문에 여러 번 나오는 내용이라 어디인지 알 수 없다:\n%s", clipRunes(search, 200))
 		}
@@ -114,4 +123,136 @@ func clipRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + " …"
+}
+
+// replaceLoosely 는 공백 차이를 무시하고 한 군데를 바꾼다.
+//
+// 줄마다 앞뒤 공백을 턴 것으로 견준다. 딱 한 군데만 맞을 때만 바꾼다 —
+// 여러 군데면 어디인지 모르는 것이고, 그때는 바꾸지 않는 편이 낫다.
+func replaceLoosely(src, search, replace string) (string, error) {
+	srcLines := strings.Split(src, "\n")
+	wantLines := trimEach(strings.Split(strings.TrimRight(search, "\n"), "\n"))
+	if len(wantLines) == 0 {
+		return "", fmt.Errorf("찾을 내용이 비었다")
+	}
+
+	var at []int
+	for i := 0; i+len(wantLines) <= len(srcLines); i++ {
+		ok := true
+		for j, w := range wantLines {
+			if strings.TrimSpace(srcLines[i+j]) != w {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			at = append(at, i)
+		}
+	}
+	switch len(at) {
+	case 1:
+		i := at[0]
+		out := append([]string{}, srcLines[:i]...)
+		out = append(out, strings.Split(strings.TrimRight(replace, "\n"), "\n")...)
+		out = append(out, srcLines[i+len(wantLines):]...)
+		return strings.Join(out, "\n"), nil
+	case 0:
+		// 줄바꿈까지 다를 수 있다. 분석이 코드를 한 줄로 펴서 적어 주면
+		// 원문의 네 줄과 줄 단위로는 영영 안 맞는다.
+		return replaceFlattened(srcLines, search, replace)
+	default:
+		return "", fmt.Errorf("공백을 무시해도 %d군데가 맞아 어디인지 알 수 없다:\n%s", len(at), clipRunes(search, 200))
+	}
+}
+
+// replaceFlattened 는 줄바꿈까지 무시하고 한 군데를 바꾼다.
+//
+// 이어지는 몇 줄을 붙여 공백을 접은 것이 찾는 내용과 같으면 그 줄들을
+// 통째로 바꾼다. 여기서도 한 군데일 때만 바꾼다.
+func replaceFlattened(srcLines []string, search, replace string) (string, error) {
+	want := flattenCode(search)
+	if want == "" {
+		return "", fmt.Errorf("찾을 내용이 비었다")
+	}
+
+	type span struct{ start, end int }
+	var found []span
+	for i := range srcLines {
+		var acc strings.Builder
+		for j := i; j < len(srcLines) && j < i+40; j++ {
+			acc.WriteString(srcLines[j])
+			acc.WriteString(" ")
+			got := flattenCode(acc.String())
+			if len(got) > len(want) {
+				break
+			}
+			if got == want {
+				found = append(found, span{i, j})
+				break
+			}
+		}
+	}
+	switch len(found) {
+	case 1:
+		sp := found[0]
+		out := append([]string{}, srcLines[:sp.start]...)
+		// 원문의 들여쓰기를 그대로 물려준다.
+		indent := srcLines[sp.start][:len(srcLines[sp.start])-len(strings.TrimLeft(srcLines[sp.start], " \t"))]
+		for _, l := range strings.Split(strings.TrimRight(replace, "\n"), "\n") {
+			out = append(out, indent+strings.TrimSpace(l))
+		}
+		out = append(out, srcLines[sp.end+1:]...)
+		return strings.Join(out, "\n"), nil
+	case 0:
+		return "", fmt.Errorf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
+	default:
+		return "", fmt.Errorf("줄바꿈을 무시해도 %d군데가 맞아 어디인지 알 수 없다:\n%s", len(found), clipRunes(search, 200))
+	}
+}
+
+// flattenCode 는 공백과 줄바꿈을 하나로 접는다. 코드의 뜻은 그대로 둔다.
+func flattenCode(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func trimEach(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if t := strings.TrimSpace(l); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+var lineNumberRe = regexp.MustCompile(`^\s*\d+:\s?`)
+
+// stripLineNumbers 는 줄 앞에 붙은 번호를 뗀다.
+//
+// 관련 부분을 보여 줄 때 "30: " 처럼 번호를 붙인다. 빼고 적으라고 일러도
+// 모델은 그대로 옮겨 적는다 — 실제로 정확한 줄을 짚고도 번호 때문에
+// "원문에 없는 내용" 으로 버려졌다. 사람이 시키는 대신 기계가 뗀다.
+//
+// **모든 줄에 번호가 붙어 있을 때만** 뗀다. 코드 안의 "case 1:" 같은 것을
+// 번호로 오인하면 안 된다.
+func stripLineNumbers(s string) string {
+	lines := strings.Split(s, "\n")
+	n := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if !lineNumberRe.MatchString(l) {
+			return s
+		}
+		n++
+	}
+	if n == 0 {
+		return s
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = lineNumberRe.ReplaceAllString(l, "")
+	}
+	return strings.Join(out, "\n")
 }
