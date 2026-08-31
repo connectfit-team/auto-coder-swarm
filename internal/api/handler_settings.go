@@ -11,7 +11,10 @@ import (
 func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest("GET", "http://127.0.0.1:8000/v1/models", nil)
 	if err == nil {
-		req.Header.Set("Authorization", "Bearer gemma4-secret-key-9988")
+		// vLLM 은 키를 요구하지 않는다(실측: 키 없이 200). 필요해지면 env 로 준다.
+		if k := os.Getenv("LLM_API_KEY"); k != "" {
+			req.Header.Set("Authorization", "Bearer "+k)
+		}
 	}
 	resp, err := http.DefaultClient.Do(req)
 

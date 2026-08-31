@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -19,7 +20,8 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
-		apiKey:  "ckh_team_secret_2026",
+		// CKH 는 키를 검사하지 않는다. 상수를 두면 공개 저장소에 비밀처럼 보이는 값만 남는다.
+		apiKey: os.Getenv("CKH_API_KEY"),
 		hc: &http.Client{
 			Timeout: 30 * time.Second, // Reduced for interactive responsiveness
 		},

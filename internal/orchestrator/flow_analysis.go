@@ -74,7 +74,27 @@ func (t *taskContext) prepareAnalysis() error {
 	inventory, _ := t.orchestrator.insightClient.GetRepoInventory(t.ctx, scope.Repo)
 
 	ext := t.detectExtension()
-	files, _ := t.orchestrator.insightClient.GetRepoFiles(t.ctx, scope.Repo, ext, 3)
+	files, err := t.orchestrator.insightClient.GetRepoFiles(t.ctx, scope.Repo, ext, 3)
+	if err != nil {
+		// 목록이 없으면 프롬프트가 빈 채로 나가고 경로 검사도 건너뛴다.
+		// 조용히 넘기면 그 사실이 어디에도 안 남는다.
+		log.Printf("[Orchestrator] %s 파일 목록을 받지 못했다: %v", scope.Repo, err)
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "FILES_UNAVAILABLE",
+			fmt.Sprintf("%s 파일 목록을 받지 못했습니다 — 범위 검사를 건너뜁니다", scope.Repo), "", err.Error())
+	}
+
+	// **없는 경로를 범위로 삼지 않는다.**
+	//
+	// 추출기가 경로 자리에 우리말 설명을 넣는다 — "월별 근무 조회" 가 그대로
+	// 경로로 잡혀서 탐색이 비었고, 계획에 고칠 파일이 하나도 없어 작업이
+	// 통째로 실패했다(W-29946). 실패 이유가 "계획이 비었다" 로만 남아
+	// 진짜 원인이 안 보였다. 있는 경로인지 여기서 확인한다.
+	if scope.Path != "전체" && len(files) > 0 && !pathExistsInRepo(scope.Path, files) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_WIDENED",
+			fmt.Sprintf("경로 %q 는 저장소에 없어 전체로 넓혔습니다", scope.Path), "", "")
+		log.Printf("[Orchestrator] 추출된 경로 %q 가 %s 에 없다 — 전체로 물러섬", scope.Path, scope.Repo)
+		scope.Path = "전체"
+	}
 
 	inventoryJSON, _ := json.Marshal(inventory)
 	inventoryJSONStr := string(inventoryJSON)
@@ -197,4 +217,22 @@ func detectExtension(req string) string {
 		}
 	}
 	return ""
+}
+
+// pathExistsInRepo 는 추출된 경로가 실제 파일 목록에 있는지 본다.
+//
+// 앞뒤 슬래시와 대소문자는 무시한다. 목록은 잘려 올 수 있으므로 못 찾았다고
+// 단정하지 않고, 호출하는 쪽에서 목록이 비면 아예 묻지 않는다.
+func pathExistsInRepo(path string, files []string) bool {
+	want := strings.ToLower(strings.Trim(strings.TrimSpace(path), "/"))
+	if want == "" {
+		return false
+	}
+	for _, f := range files {
+		lf := strings.ToLower(strings.Trim(strings.TrimSpace(f), "/"))
+		if lf == want || strings.HasPrefix(lf, want+"/") {
+			return true
+		}
+	}
+	return false
 }
