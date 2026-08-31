@@ -68,6 +68,21 @@ func (t *taskContext) stepPlanning(attempt int) error {
 			return fmt.Errorf("빌드 명령을 정할 수 없다 — 표식 파일(go.mod 등)도 모델 제안도 없다")
 		}
 
+		// **처음부터 안 되는 빌드를 모델 탓으로 보고하지 않는다.**
+		//
+		// 새 worktree 에는 의존성도 생성물도 없어서, 무슨 코드를 쓰든 검증이
+		// 실패한다(실측: `vite build` → `sh: 1: vite: not found`). 그대로 두면
+		// 자가치유 세 번을 태우고 "빌드 실패" 로 끝나, 원인이 코드인지 환경인지
+		// 구별되지 않는다. 손대기 전에 한 번 돌려 본다.
+		if t.meta.BuildCommand != "" {
+			if out, err := shellCmd(t.ctx, t.repoPath, t.meta.BuildCommand).CombinedOutput(); err != nil {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BASELINE_BUILD",
+					"손대기 전부터 빌드가 안 된다", t.meta.BuildCommand, string(out))
+				return fmt.Errorf("이 저장소는 작업공간에서 빌드되지 않는다 — 코드가 아니라 환경 문제다: %s", t.meta.BuildCommand)
+			}
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BASELINE_BUILD", "기준 빌드 통과", t.meta.BuildCommand, "")
+		}
+
 		if t.meta.BenchCommand != "" {
 			cmd := shellCmd(t.ctx, t.repoPath, t.meta.BenchCommand)
 			bOut, _ := cmd.CombinedOutput()

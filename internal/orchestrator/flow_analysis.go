@@ -111,7 +111,23 @@ func (t *taskContext) prepareAnalysis() error {
 	}
 
 	// [Step 1: Task Strategy]
-	strategyPrompt := getStrategyPrompt(t.req.UserRequest, inspectRes, string(inventoryJSON))
+	// **찾아서 준다.** 잘린 목록을 보여 주고 고르게 하면 큰 저장소에서는
+	// 제비뽑기가 된다 — cms 1130개 중 일부만 보여 주고 있었고, "월별 근무
+	// 조회 말일 누락" 에 이름이 비슷한 workstamp.ts 를 골랐다.
+	candidates := ""
+	if cands, err := t.orchestrator.insightClient.FindCandidates(t.ctx, scope.Repo, t.req.UserRequest, 20); err == nil && len(cands) > 0 {
+		var b strings.Builder
+		b.WriteString("[요청과 관련된 파일 — 요청의 낱말이 몇 개 걸렸는지 순]\n")
+		for _, c := range cands {
+			fmt.Fprintf(&b, "%s (낱말 %d개)\n", c.Path, c.Hits)
+		}
+		b.WriteString("**actionable_path 는 되도록 이 목록에서 고를 것.**\n\n")
+		candidates = b.String()
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CANDIDATES",
+			fmt.Sprintf("관련 파일 %d개 확보", len(cands)), "", candidates)
+	}
+
+	strategyPrompt := getStrategyPrompt(t.req.UserRequest, inspectRes, string(inventoryJSON), candidates)
 	// Inject CKH Knowledge into Strategy
 	if t.ckhKnowledge != "" {
 		strategyPrompt = fmt.Sprintf("[CORPORATE POLICIES & CONTEXT]\n%s\n\n%s", t.ckhKnowledge, strategyPrompt)
@@ -132,6 +148,14 @@ func (t *taskContext) prepareAnalysis() error {
 	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STRATEGY_PARSED",
 		fmt.Sprintf("파일 %d개 · 가능=%v", strategy.TotalFiles, strategy.IsFeasible), "", stratRaw)
+	// **비어 있는 전략과 "못 하겠다" 는 다르다.**
+	//
+	// 봉투에 싸여 온 응답이 오류 없이 빈 구조체로 읽히면 IsFeasible 이 false 가
+	// 되어, 모델이 제대로 답했는데도 규모 과다로 죽었다. 무엇이 비었는지
+	// 그대로 말해야 다음 사람이 헤매지 않는다.
+	if len(strategy.ActionablePath) == 0 && strategy.TotalFiles == 0 {
+		return fmt.Errorf("전략이 비어 있다 — 고칠 파일을 하나도 지목하지 못했다")
+	}
 	if !strategy.IsFeasible {
 		return fmt.Errorf("모델이 작업 규모 과다로 판단했다: %s", strategy.ComplexityRisk)
 	}
