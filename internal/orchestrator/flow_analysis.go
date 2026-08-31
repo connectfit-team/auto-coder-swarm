@@ -189,8 +189,23 @@ func (t *taskContext) prepareAnalysis() error {
 	}
 
 	// [Step 2: Precision Logic Analysis (Eyes)]
-	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ORACLE", "CIE 고정밀 논리 분석 요청", strategy.AnalysisQuery, "")
-	res, _, err := t.orchestrator.insightClient.QueryOracle(t.ctx, strategy.AnalysisQuery, sessionID, onWorkID)
+	// **고장 작업이면 사용자 말을 그대로 묻는다.**
+	//
+	// 모델이 다듬은 질문은 곧잘 다른 데로 샌다. 실측으로 "월별 근무 조회에서
+	// 말일이 빠진다" 가 표 질문으로 바뀌어 스키마 정의를 답으로 받았고, 그
+	// 답을 본 계획은 prisma 스키마를 고치려 들었다. CIE 는 고장 이야기를
+	// 그대로 주면 파일과 문제의 줄을 짚어 준다 — 다듬을 이유가 없다.
+	oracleQuery := strategy.AnalysisQuery
+	if looksLikeDefectRequest(t.req.UserRequest) {
+		oracleQuery = fmt.Sprintf("%s 저장소에서 %s 원인이 되는 코드를 찾아라.",
+			scope.Repo, strings.TrimSpace(t.req.UserRequest))
+	}
+	if strings.TrimSpace(oracleQuery) == "" {
+		oracleQuery = t.req.UserRequest
+	}
+
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ORACLE", "CIE 고정밀 논리 분석 요청", oracleQuery, "")
+	res, _, err := t.orchestrator.insightClient.QueryOracle(t.ctx, oracleQuery, sessionID, onWorkID)
 	if err != nil {
 		return err
 	}
@@ -239,6 +254,26 @@ func pathExistsInRepo(path string, files []string) bool {
 	for _, f := range files {
 		lf := strings.ToLower(strings.Trim(strings.TrimSpace(f), "/"))
 		if lf == want || strings.HasPrefix(lf, want+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// 고장을 고쳐 달라는 요청인지 본다. CIE 의 판정과 같은 말들을 쓴다.
+var defectWords = []string{
+	"빠진", "빠져", "누락", "틀리", "잘못", "오류", "에러", "버그",
+	"고쳐", "고치", "실패", "이상해", "원인", "깨진", "먹통",
+	// 부정 표현은 활용이 갈린다 — "안 나오다/안 나온다/안 나옴" 이 다 온다.
+	"안 나오", "안나오", "안 나온", "안나온", "안 나옴", "안나옴",
+	"안 되", "안되", "안 뜨", "안뜨", "안 보", "안보",
+	"지 않", "못 한", "못한",
+}
+
+func looksLikeDefectRequest(req string) bool {
+	low := strings.ToLower(req)
+	for _, w := range defectWords {
+		if strings.Contains(low, w) {
 			return true
 		}
 	}

@@ -42,15 +42,26 @@ func applyEditBlocks(original, raw string) (string, error) {
 	}
 	out := original
 	for _, m := range ms {
-		search, replace := stripLineNumbers(m[1]), stripLineNumbers(m[2])
+		search := stripLineNumbers(stripCodeFence(m[1]))
+		replace := stripLineNumbers(stripCodeFence(m[2]))
 		if strings.TrimSpace(search) == "" {
 			return "", fmt.Errorf("찾을 내용이 비었다")
 		}
-		switch strings.Count(out, search) {
-		case 1:
+		switch n := strings.Count(out, search); {
+		case n == 1:
 			out = strings.Replace(out, search, replace, 1)
 			continue
-		case 0:
+		case n > 1 && isSubstantial(search):
+			// **같은 코드가 여러 곳에 복사돼 있으면 전부 고친다.**
+			//
+			// 찾는 내용이 글자 그대로 같은 자리들이라 한 곳만 고치면 나머지는
+			// 그대로 남는다. 실제로 workplace.ts 의 말일 경계 버그가 29행과
+			// 133행 두 곳에 복사돼 있었고, 한 곳만 고치면 반만 고친 것이다.
+			out = strings.ReplaceAll(out, search, replace)
+			continue
+		case n > 1:
+			return "", fmt.Errorf("원문에 여러 번 나오지만 너무 짧아 어디인지 알 수 없다:\n%s", clipRunes(search, 200))
+		default:
 			// **들여쓰기까지 똑같이 옮겨 적기를 바랄 수는 없다.**
 			//
 			// 모델이 자리는 정확히 짚고도 앞 공백이 달라 못 찾는 일이 잦다.
@@ -60,8 +71,6 @@ func applyEditBlocks(original, raw string) (string, error) {
 				return "", err
 			}
 			out = replaced
-		default:
-			return "", fmt.Errorf("원문에 여러 번 나오는 내용이라 어디인지 알 수 없다:\n%s", clipRunes(search, 200))
 		}
 	}
 	if out == original {
@@ -125,10 +134,11 @@ func clipRunes(s string, n int) string {
 	return string(r[:n]) + " …"
 }
 
-// replaceLoosely 는 공백 차이를 무시하고 한 군데를 바꾼다.
+// replaceLoosely 는 공백 차이를 무시하고 바꾼다.
 //
-// 줄마다 앞뒤 공백을 턴 것으로 견준다. 딱 한 군데만 맞을 때만 바꾼다 —
-// 여러 군데면 어디인지 모르는 것이고, 그때는 바꾸지 않는 편이 낫다.
+// 줄마다 앞뒤 공백을 턴 것으로 견준다. 여러 군데가 맞으면 — 같은 코드가
+// 복사돼 있다는 뜻이므로 — 전부 바꾼다. 다만 찾는 내용이 너무 짧으면
+// 어디인지 모르는 것이라 바꾸지 않는다.
 func replaceLoosely(src, search, replace string) (string, error) {
 	srcLines := strings.Split(src, "\n")
 	wantLines := trimEach(strings.Split(strings.TrimRight(search, "\n"), "\n"))
@@ -149,35 +159,36 @@ func replaceLoosely(src, search, replace string) (string, error) {
 			at = append(at, i)
 		}
 	}
-	switch len(at) {
-	case 1:
-		i := at[0]
-		out := append([]string{}, srcLines[:i]...)
-		out = append(out, strings.Split(strings.TrimRight(replace, "\n"), "\n")...)
-		out = append(out, srcLines[i+len(wantLines):]...)
-		return strings.Join(out, "\n"), nil
-	case 0:
+
+	switch {
+	case len(at) == 0:
 		// 줄바꿈까지 다를 수 있다. 분석이 코드를 한 줄로 펴서 적어 주면
 		// 원문의 네 줄과 줄 단위로는 영영 안 맞는다.
 		return replaceFlattened(srcLines, search, replace)
-	default:
-		return "", fmt.Errorf("공백을 무시해도 %d군데가 맞아 어디인지 알 수 없다:\n%s", len(at), clipRunes(search, 200))
+	case len(at) > 1 && !isSubstantial(search):
+		return "", fmt.Errorf("공백을 무시하면 %d군데가 맞는데 너무 짧아 어디인지 알 수 없다:\n%s",
+			len(at), clipRunes(search, 200))
 	}
+
+	spans := make([]int, len(at))
+	for i := range spans {
+		spans[i] = len(wantLines)
+	}
+	return spliceAll(srcLines, at, spans, replace), nil
 }
 
-// replaceFlattened 는 줄바꿈까지 무시하고 한 군데를 바꾼다.
+// replaceFlattened 는 줄바꿈까지 무시하고 바꾼다.
 //
 // 이어지는 몇 줄을 붙여 공백을 접은 것이 찾는 내용과 같으면 그 줄들을
-// 통째로 바꾼다. 여기서도 한 군데일 때만 바꾼다.
+// 통째로 바꾼다. 여러 군데면 — 복사된 코드라는 뜻이므로 — 전부 바꾼다.
 func replaceFlattened(srcLines []string, search, replace string) (string, error) {
 	want := flattenCode(search)
 	if want == "" {
 		return "", fmt.Errorf("찾을 내용이 비었다")
 	}
 
-	type span struct{ start, end int }
-	var found []span
-	for i := range srcLines {
+	var at, spans []int
+	for i := 0; i < len(srcLines); i++ {
 		var acc strings.Builder
 		for j := i; j < len(srcLines) && j < i+40; j++ {
 			acc.WriteString(srcLines[j])
@@ -187,27 +198,59 @@ func replaceFlattened(srcLines []string, search, replace string) (string, error)
 				break
 			}
 			if got == want {
-				found = append(found, span{i, j})
+				at = append(at, i)
+				spans = append(spans, j-i+1)
+				i = j // 겹쳐 세지 않는다
 				break
 			}
 		}
 	}
-	switch len(found) {
-	case 1:
-		sp := found[0]
-		out := append([]string{}, srcLines[:sp.start]...)
-		// 원문의 들여쓰기를 그대로 물려준다.
-		indent := srcLines[sp.start][:len(srcLines[sp.start])-len(strings.TrimLeft(srcLines[sp.start], " \t"))]
-		for _, l := range strings.Split(strings.TrimRight(replace, "\n"), "\n") {
-			out = append(out, indent+strings.TrimSpace(l))
-		}
-		out = append(out, srcLines[sp.end+1:]...)
-		return strings.Join(out, "\n"), nil
-	case 0:
+
+	switch {
+	case len(at) == 0:
 		return "", fmt.Errorf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
-	default:
-		return "", fmt.Errorf("줄바꿈을 무시해도 %d군데가 맞아 어디인지 알 수 없다:\n%s", len(found), clipRunes(search, 200))
+	case len(at) > 1 && !isSubstantial(search):
+		return "", fmt.Errorf("줄바꿈을 무시하면 %d군데가 맞는데 너무 짧아 어디인지 알 수 없다:\n%s",
+			len(at), clipRunes(search, 200))
 	}
+	return spliceAll(srcLines, at, spans, replace), nil
+}
+
+// spliceAll 은 찾은 자리들을 **뒤에서부터** 바꾼다.
+//
+// 앞에서부터 바꾸면 줄 번호가 밀려 다음 자리를 잘못 짚는다. 바꿔 넣는 줄에는
+// 원문의 들여쓰기를 물려준다.
+func spliceAll(srcLines []string, at, spans []int, replace string) string {
+	repl := strings.Split(strings.TrimRight(replace, "\n"), "\n")
+	out := append([]string{}, srcLines...)
+	for k := len(at) - 1; k >= 0; k-- {
+		i, span := at[k], spans[k]
+		indent := leadingSpace(out[i])
+		block := make([]string, 0, len(repl))
+		for _, l := range repl {
+			if strings.TrimSpace(l) == "" {
+				block = append(block, "")
+				continue
+			}
+			block = append(block, indent+strings.TrimSpace(l))
+		}
+		next := append([]string{}, out[:i]...)
+		next = append(next, block...)
+		next = append(next, out[i+span:]...)
+		out = next
+	}
+	return strings.Join(out, "\n")
+}
+
+func leadingSpace(s string) string {
+	return s[:len(s)-len(strings.TrimLeft(s, " \t"))]
+}
+
+// isSubstantial 은 찾는 내용이 자리를 특정할 만큼 긴지 본다.
+//
+// "}" 한 글자가 여러 군데 맞는다고 전부 바꾸면 파일이 망가진다.
+func isSubstantial(search string) bool {
+	return len(flattenCode(search)) >= 20
 }
 
 // flattenCode 는 공백과 줄바꿈을 하나로 접는다. 코드의 뜻은 그대로 둔다.
@@ -253,6 +296,28 @@ func stripLineNumbers(s string) string {
 	out := make([]string, len(lines))
 	for i, l := range lines {
 		out[i] = lineNumberRe.ReplaceAllString(l, "")
+	}
+	return strings.Join(out, "\n")
+}
+
+var codeFenceRe = regexp.MustCompile("(?m)^\\s*```[a-zA-Z0-9_+-]*\\s*$")
+
+// stripCodeFence 는 블록 안에 딸려 온 마크다운 울타리를 뗀다.
+//
+// 모델이 코드를 적을 때 습관처럼 ```typescript 을 붙인다. 그 줄은 원문에
+// 없으므로 그대로 두면 영영 못 찾는다 — 실측으로 정확한 코드를 짚고도
+// 울타리 때문에 버려졌다.
+func stripCodeFence(s string) string {
+	if !strings.Contains(s, "```") {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if codeFenceRe.MatchString(l) {
+			continue
+		}
+		out = append(out, l)
 	}
 	return strings.Join(out, "\n")
 }
