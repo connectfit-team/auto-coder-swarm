@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
+	"strings"
 
 	"google.golang.org/adk/model"
 )
@@ -47,7 +50,7 @@ func callJSONWith(ctx context.Context, prompt string, out any, name string, call
 		if raw, err = call(p); err != nil {
 			return raw, err // LLM 자체가 안 되는 것은 다시 물어도 같다
 		}
-		if err = json.Unmarshal([]byte(ExtractJSON(raw)), out); err == nil {
+		if err = unmarshalMaybeWrapped([]byte(ExtractJSON(raw)), out); err == nil {
 			return raw, nil
 		}
 		lastErr = err
@@ -58,4 +61,65 @@ func callJSONWith(ctx context.Context, prompt string, out any, name string, call
 		}
 	}
 	return raw, fmt.Errorf("%d회 시도했지만 JSON 이 아니다: %w", jsonRetries, lastErr)
+}
+
+// 모델이 답을 봉투에 넣어 보내는 일이 있다.
+//
+//	{"response": {"total_files": 3, "is_feasible": true, ...}}
+//
+// 이게 **오류 없이** 통과한다 — JSON 은 모르는 키를 그냥 무시하므로,
+// 언마샬은 성공하고 구조체는 전 필드가 zero value 로 남는다. 그러면
+// is_feasible 이 false 가 되어 상위에서 "작업 규모 과다" 로 죽는다.
+// 모델은 제대로 답했는데 판단해 보지도 못하고 실패한 것이다(실측).
+//
+// 그래서 채워진 것이 하나도 없으면 봉투를 의심한다. 최상위 키가 하나이고
+// 그 값이 객체면 한 겹 벗겨 다시 넣어 본다.
+var envelopeKeys = map[string]bool{
+	"response": true, "result": true, "data": true, "output": true,
+	"answer": true, "content": true, "json": true,
+}
+
+func unmarshalMaybeWrapped(b []byte, out any) error {
+	if err := json.Unmarshal(b, out); err != nil {
+		return err
+	}
+	if !isZeroStruct(out) {
+		return nil
+	}
+
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(b, &probe); err != nil {
+		return nil // 객체가 아니면 벗길 것도 없다
+	}
+	for k, v := range probe {
+		if len(probe) > 1 && !envelopeKeys[strings.ToLower(k)] {
+			continue
+		}
+		inner := bytes.TrimSpace(v)
+		if len(inner) == 0 || inner[0] != '{' {
+			continue
+		}
+		if err := json.Unmarshal(inner, out); err == nil && !isZeroStruct(out) {
+			log.Printf("[JSON] 봉투 %q 를 벗겨 읽었다", k)
+			return nil
+		}
+	}
+	return nil
+}
+
+// isZeroStruct 는 채워진 필드가 하나도 없는지 본다.
+//
+// 다시 언마샬해도 안전하도록, 여기서 판단만 하고 값은 건드리지 않는다.
+func isZeroStruct(out any) bool {
+	v := reflect.ValueOf(out)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return true
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return false // 맵·슬라이스는 이 판단을 하지 않는다
+	}
+	return v.IsZero()
 }

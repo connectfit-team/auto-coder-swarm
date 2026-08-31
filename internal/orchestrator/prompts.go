@@ -33,7 +33,7 @@ MANDATORY JSON FORMAT:
 {"inspection_query": "CIE에게 보낼 고정밀 질의문"}`, userRequest, repo, path, inventory, filesList)
 }
 
-func getStrategyPrompt(userRequest, inspectRes, inventory string) string {
+func getStrategyPrompt(userRequest, inspectRes, inventory, candidates string) string {
 	return fmt.Sprintf(`사전 검사 결과를 바탕으로 작업 전략을 수립해줘. 
 
 [User Request]
@@ -42,6 +42,7 @@ func getStrategyPrompt(userRequest, inspectRes, inventory string) string {
 [Inspection Result]
 %s
 
+%s
 [Repository Inventory]
 %s
 
@@ -54,5 +55,5 @@ MANDATORY JSON FORMAT:
   "analysis_query": "CIE(Eyes)에게 보낼 고정밀 '이해(Analysis)' 질의문",
   "is_feasible": true
 }
-`, userRequest, inspectRes, inventory)
+`, userRequest, inspectRes, candidates, inventory)
 }
