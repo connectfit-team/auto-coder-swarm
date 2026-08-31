@@ -17,26 +17,28 @@ type taskContext struct {
 	repoLockFunc func(string) (bool, error)
 	// 계획이 없는 파일을 가리켰을 때 되돌려 줄 "실제로 있는 파일" 목록.
 	candidateHint string
-	orchestrator  *SwarmOrchestrator
-	primaryLLM    model.LLM
-	voter         *voter.MultiModelVoter
-	planner       *agent.PlannerAgent
-	coder         *agent.CoderAgent
-	reviewer      *agent.ReviewerAgent
-	critic        *agent.CriticAgent
-	healer        *healing.HealerAgent
-	analysis      string
-	ckhKnowledge  string     // Corporate Knowledge from CKH
-	skills        []SkillDoc // CIE 가 준 팀의 작업 절차
-	wsPath        string
-	repoPath      string
-	targetRepo    string
-	currentBranch string
-	lastFeedback  string
-	finalDiff     string
-	preBench      string
-	postBench     string
-	meta          ProjectMetadata
+	// 전략 단계가 짚은 고칠 파일. 계획이 이걸 무시하면 엉뚱한 데를 고친다.
+	actionablePath []string
+	orchestrator   *SwarmOrchestrator
+	primaryLLM     model.LLM
+	voter          *voter.MultiModelVoter
+	planner        *agent.PlannerAgent
+	coder          *agent.CoderAgent
+	reviewer       *agent.ReviewerAgent
+	critic         *agent.CriticAgent
+	healer         *healing.HealerAgent
+	analysis       string
+	ckhKnowledge   string     // Corporate Knowledge from CKH
+	skills         []SkillDoc // CIE 가 준 팀의 작업 절차
+	wsPath         string
+	repoPath       string
+	targetRepo     string
+	currentBranch  string
+	lastFeedback   string
+	finalDiff      string
+	preBench       string
+	postBench      string
+	meta           ProjectMetadata
 }
 
 func (o *SwarmOrchestrator) newTaskContext(ctx context.Context, taskID string, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) *taskContext {

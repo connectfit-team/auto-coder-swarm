@@ -20,6 +20,11 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		input = fmt.Sprintf("[CORPORATE KNOWLEDGE]\n%s\n\n[CODE ANALYSIS]\n%s", t.ckhKnowledge, input)
 	}
 
+	if len(t.actionablePath) > 0 {
+		input = fmt.Sprintf("[고칠 파일 — 이 중에서 골라라]\n%s\n\n%s",
+			strings.Join(t.actionablePath, "\n"), input)
+	}
+
 	if b := skillDigest(t.skills); b != "" {
 		input = b + "\n" + input
 	}

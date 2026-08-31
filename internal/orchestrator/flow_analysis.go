@@ -174,6 +174,13 @@ func (t *taskContext) prepareAnalysis() error {
 	// 봉투에 싸여 온 응답이 오류 없이 빈 구조체로 읽히면 IsFeasible 이 false 가
 	// 되어, 모델이 제대로 답했는데도 규모 과다로 죽었다. 무엇이 비었는지
 	// 그대로 말해야 다음 사람이 헤매지 않는다.
+	// **전략이 짚은 파일을 계획까지 들고 간다.**
+	//
+	// 그동안 이 목록은 "할 만한 일인가" 를 판단하는 데만 쓰고 버렸다. 그래서
+	// 전략이 server/workplace/workplace.ts 를 제대로 짚어 놓고도 계획은
+	// reward_new_point_dashboard.ts 를 골랐다.
+	t.actionablePath = strategy.ActionablePath
+
 	if len(strategy.ActionablePath) == 0 && strategy.TotalFiles == 0 {
 		return fmt.Errorf("전략이 비어 있다 — 고칠 파일을 하나도 지목하지 못했다")
 	}

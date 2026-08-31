@@ -71,7 +71,10 @@ func (t *taskContext) stepVerification() (bool, error) {
 		for _, step := range healingPlan.Steps {
 			switch step.Action {
 			case healing.ActionModifyCode:
-				t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, step.TargetFile), step.Instruction)
+				if _, err := t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, step.TargetFile), step.Instruction); err != nil {
+					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_FAILED",
+						fmt.Sprintf("[%s] 치유가 파일을 못 고쳤습니다", step.TargetFile), "", err.Error())
+				}
 			case healing.ActionRunCommand:
 				shellCmd(t.ctx, t.repoPath, step.Command).Run()
 			case healing.ActionAbort:
@@ -136,6 +139,19 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	// 실측으로 diff 11줄이 올라왔는데 내용은 파일 끝 개행 하나였다
 	// ("\ No newline at end of file"). 빈 diff 검사는 통과하고, 검토 관문은
 	// 지적할 자리가 없어 통과시킨다 — 아무것도 안 한 작업이 승인 대기까지 갔다.
+	// **주석만 바꾼 것도 고친 것이 아니다.**
+	//
+	// 실측으로 감사 로그 주석 한 줄에 "이 방법을 따지세요" 를 덧붙인 diff 가
+	// 승인 대기까지 왔다. 공백 검사에는 안 걸린다 — 글자가 실제로 바뀌었으니까.
+	// 주석을 고쳐 달라고 한 작업이면 그건 맞는 결과이므로 요청문을 함께 본다.
+	if !wantsCommentWork(t.req.UserRequest) && isCommentOnlyDiff(t.finalDiff) {
+		t.lastFeedback = "COMMENT ONLY: 주석만 바꿨다. 동작을 고쳐라 — 조건식·비교·경계값처럼 실제로 도는 코드를 바꿔야 한다."
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMMENT_ONLY_DIFF",
+			"주석만 바뀌었다 — 동작이 그대로다", "", clip(t.finalDiff, 800))
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return false, RunResult{}, nil
+	}
+
 	if isCosmeticDiff(t.finalDiff) {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COSMETIC_DIFF",
 			"공백만 바뀌었다 — 실제로 고친 것이 없다", "", clip(t.finalDiff, 800))
@@ -362,4 +378,53 @@ func isCosmeticDiff(diff string) bool {
 		}
 	}
 	return true
+}
+
+// 주석 한 줄의 시작 표시. 언어를 가리지 않고 흔한 것만 본다.
+var commentPrefixes = []string{"//", "/*", "*/", "*", "#", "<!--", "-->", "--"}
+
+func isCommentLine(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return true
+	}
+	for _, p := range commentPrefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCommentOnlyDiff 는 바뀐 줄이 전부 주석인지 본다.
+func isCommentOnlyDiff(diff string) bool {
+	changed := 0
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") {
+			continue
+		}
+		if !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") {
+			continue
+		}
+		body := line[1:]
+		if strings.TrimSpace(body) == "" {
+			continue
+		}
+		changed++
+		if !isCommentLine(body) {
+			return false
+		}
+	}
+	return changed > 0
+}
+
+// wantsCommentWork 는 요청이 주석·문서 작업인지 본다.
+func wantsCommentWork(req string) bool {
+	low := strings.ToLower(req)
+	for _, w := range []string{"주석", "comment", "문서", "docs", "doc comment", "godoc", "jsdoc"} {
+		if strings.Contains(low, w) {
+			return true
+		}
+	}
+	return false
 }
