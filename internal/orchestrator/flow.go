@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -36,6 +37,10 @@ func (t *taskContext) execute() (RunResult, error) {
 		startPlan := time.Now()
 		if err := t.stepPlanning(attempt); err != nil {
 			observability.IncrementAgentOp("Planner", "failed")
+			// 되먹임을 주고 다시 세우면 되는 실패는 남은 시도를 쓴다.
+			if errors.Is(err, errRetryPlanning) && attempt < 3 {
+				continue
+			}
 			return RunResult{}, err
 		}
 		observability.RecordStepDuration("planning", t.targetRepo, time.Since(startPlan).Seconds())
@@ -83,3 +88,6 @@ func (t *taskContext) execute() (RunResult, error) {
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
 	return RunResult{RepoName: t.targetRepo}, fmt.Errorf("최대 시도 초과")
 }
+
+// 되먹임을 주고 다시 세우면 되는 계획 실패. 남은 시도를 쓴다.
+var errRetryPlanning = errors.New("계획을 다시 세운다")

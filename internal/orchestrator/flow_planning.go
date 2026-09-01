@@ -20,12 +20,30 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		input = fmt.Sprintf("[CORPORATE KNOWLEDGE]\n%s\n\n[CODE ANALYSIS]\n%s", t.ckhKnowledge, input)
 	}
 
+	if len(t.actionablePath) > 0 {
+		input = fmt.Sprintf("[고칠 파일 — 이 중에서 골라라]\n%s\n\n%s",
+			strings.Join(t.actionablePath, "\n"), input)
+	}
+
 	if b := skillDigest(t.skills); b != "" {
 		input = b + "\n" + input
 	}
 
 	if t.lastFeedback != "" {
 		input += "\n\nFEEDBACK:\n" + t.lastFeedback
+	}
+
+	// **분석이 이미 짚었으면 다시 묻지 않는다.**
+	//
+	// 고장 질문에는 CIE 가 파일과 문제의 줄을 짚어 준다. 그걸 다시 모델에게
+	// 넘겨 "어느 파일을 고칠까" 를 물으면, 그 되물음에서 엉뚱한 화면 파일로
+	// 새는 일이 잦다. 아는 것은 그대로 쓴다.
+	if direct := agent.PlanFromDefectReport(t.analysis); len(direct) > 0 && t.lastFeedback == "" {
+		plan := agent.Plan{RepoName: t.req.TargetRepo, Changes: direct}
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_FROM_ANALYSIS",
+			fmt.Sprintf("분석이 짚은 파일 %d개를 그대로 계획으로 씁니다", len(direct)),
+			"", planSummary(direct))
+		return t.finishPlanning(plan, attempt)
 	}
 
 	voteRes, _ := t.voter.Vote(t.ctx, "Planner", t.planner.BuildPrompt(input))
@@ -54,11 +72,24 @@ func (t *taskContext) stepPlanning(attempt int) error {
 		}
 	}
 
+	return t.finishPlanning(plan, attempt)
+}
+
+// finishPlanning 은 계획이 정해진 뒤의 검사와 준비를 한다.
+//
+// 계획이 어디서 왔든(모델이 세웠든, 분석에서 그대로 왔든) 거쳐야 하는 길이
+// 같아서 한 곳에 모았다.
+func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 	// **변경이 하나도 없는 계획은 계획이 아니다.**
 	//
 	// 빈 계획이 오면 아무 파일도 안 쓰고, 빈 diff 가 만들어지고, 검토 두 관문이
 	// 그걸 통과시켜 **아무것도 안 한 작업이 "성공" 으로 기록됐다.**
 	if len(plan.Changes) == 0 {
+		if attempt < 3 {
+			t.lastFeedback = "PLAN REJECTED: changes 가 비어 있다. 고칠 파일을 최소 하나 고르고, " +
+				"그 파일에서 무엇을 어떻게 바꿀지 적어라.\n" + t.candidateHint
+			return errRetryPlanning
+		}
 		return fmt.Errorf("계획에 고칠 파일이 하나도 없다")
 	}
 
@@ -128,8 +159,16 @@ func (t *taskContext) stepPlanning(attempt int) error {
 				"", strings.Join(dropped, "\n"))
 		}
 		if len(kept) == 0 {
-			return fmt.Errorf("계획이 가리킨 파일이 %s 에 하나도 없다: %s",
-				t.targetRepo, strings.Join(dropped, ", "))
+			// **되살릴 수 있는 실패는 되먹임을 주고 다시 계획하게 한다.**
+			//
+			// 계획이 프롬프트 예시 path/to/file.ext 를 그대로 베껴 오기도 한다.
+			// 여기서 죽이면 남은 두 번의 기회를 못 쓴다. 무엇이 왜 틀렸는지와
+			// **실제로 있는 파일 이름**을 함께 돌려준다.
+			t.lastFeedback = fmt.Sprintf(
+				"PLAN REJECTED: 다음 경로는 %s 에 없다 — %s\n"+
+					"file_path 는 아래 실제 파일 중에서 고르고, 예시 경로(path/to/file.ext)를 그대로 쓰지 마라.\n%s",
+				t.targetRepo, strings.Join(dropped, ", "), t.candidateHint)
+			return errRetryPlanning
 		}
 		plan.Changes = kept
 	}
@@ -174,4 +213,13 @@ func splitByRepoReality(repoPath string, changes []agent.FileChange) (kept []age
 		dropped = append(dropped, c.FilePath)
 	}
 	return kept, dropped
+}
+
+// planSummary 는 계획을 한눈에 보이게 적는다.
+func planSummary(changes []agent.FileChange) string {
+	var b strings.Builder
+	for _, c := range changes {
+		b.WriteString("- " + c.FilePath + "\n")
+	}
+	return b.String()
 }
