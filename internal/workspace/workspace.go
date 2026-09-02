@@ -56,8 +56,17 @@ func (m *LocalManager) CreateWorktree(repoName, targetPath, branchName string) e
 	// 1. Prune stale worktrees first to ensure clean state
 	exec.Command("git", "-C", sourcePath, "worktree", "prune").Run()
 
+	// **언제나 원격 기본 브랜치에서 딴다.**
+	//
+	// 그동안 서버의 **현재 체크아웃**에서 땄다. 사람이 그 저장소에서 뭔가를
+	// 보고 있으면 그 내용이 자동 PR 에 통째로 섞인다 — 실제로 관계없는 파일
+	// 여덟 개가 딸려 올라갔다(cms#192, 닫음). 팀 규칙도 origin/main 에서
+	// 따라고 되어 있다.
+	exec.Command("git", "-C", sourcePath, "fetch", "-q", "origin").Run()
+	base := defaultBranch(sourcePath)
+
 	// 2. Add worktree
-	cmd := exec.Command("git", "-C", sourcePath, "worktree", "add", "-b", branchName, targetPath)
+	cmd := exec.Command("git", "-C", sourcePath, "worktree", "add", "-b", branchName, targetPath, base)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "already exists") {
 			cmd = exec.Command("git", "-C", sourcePath, "worktree", "add", targetPath, branchName)
@@ -152,4 +161,23 @@ func firstLine(s string) string {
 		s = s[:160]
 	}
 	return s
+}
+
+// defaultBranch 는 원격의 기본 브랜치를 준다(origin/main·origin/master).
+//
+// 못 알아내면 origin/HEAD 를 쓰고, 그것도 없으면 현재 HEAD 로 물러선다 —
+// 여기서 실패해 작업을 통째로 못 하게 만들 이유는 없다.
+func defaultBranch(repoPath string) string {
+	if out, err := exec.Command("git", "-C", repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output(); err == nil {
+		if b := strings.TrimSpace(string(out)); b != "" {
+			return b
+		}
+	}
+	for _, b := range []string{"origin/main", "origin/master"} {
+		if err := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "--quiet", b).Run(); err == nil {
+			return b
+		}
+	}
+	log.Printf("[Workspace] %s 의 기본 브랜치를 못 찾아 현재 HEAD 에서 딴다", repoPath)
+	return "HEAD"
 }

@@ -84,7 +84,8 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			statelessReq = orchestrator.StatelessRequest{UserRequest: task.UserRequest}
 		}
 
-		isApproved := task.Status == storage.StatusApproved
+		// 집는 순간 status 는 RUNNING 으로 덮인다. 집기 전 상태를 봐야 한다.
+		isApproved := task.ClaimedStatus == storage.StatusApproved
 		res, err := orc.RunStatelessTask(ctx, task.ID, statelessReq, isApproved, lockFunc)
 
 		// **취소 여부를 cancel() 보다 먼저 본다.**

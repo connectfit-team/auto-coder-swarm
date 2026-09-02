@@ -21,6 +21,14 @@ func (s *Storage) ClaimNextTask() (*SwarmTask, error) {
 			return err
 		}
 
+		// **집기 전의 상태를 남긴다.**
+		//
+		// 아래 Updates 가 task.Status 를 RUNNING 으로 덮어쓴다. 그래서 부르는
+		// 쪽의 `isApproved := task.Status == StatusApproved` 가 **항상 false**
+		// 였고, 사람이 승인해도 PR 을 만드는 단계에 영영 닿지 못했다 —
+		// 승인하면 같은 작업을 처음부터 다시 돌고 또 승인 대기로 끝났다.
+		task.ClaimedStatus = task.Status
+
 		return tx.Model(&task).Updates(map[string]interface{}{
 			"status":     StatusRunning,
 			"updated_at": time.Now(),

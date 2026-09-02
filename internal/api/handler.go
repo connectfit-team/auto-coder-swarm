@@ -80,7 +80,20 @@ func (h *SwarmHandler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/v1/approve", h.requestLogger(h.enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
-		h.store.UpdateTaskStatus(id, storage.StatusApproved, "", "")
+		// **이미 도는 작업에 승인해도 소용이 없다.**
+		//
+		// 상태만 APPROVED 로 바꿔 놓으면, 지금 도는 실행은 그 사실을 모른 채
+		// 끝나면서 다시 WAITING_APPROVAL 로 덮어쓴다. 승인이 조용히 사라진다.
+		// 무엇이 일어났는지 말해 준다.
+		if t, err := h.store.GetTaskByID(id); err == nil && t.Status == storage.StatusRunning {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprintf(w, "작업 %s 는 지금 돌고 있습니다. 끝난 뒤에 다시 승인하세요.", id)
+			return
+		}
+		if err := h.store.UpdateTaskStatus(id, storage.StatusApproved, "", ""); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		fmt.Fprintf(w, "Task %s approved", id)
 	})))
 }
