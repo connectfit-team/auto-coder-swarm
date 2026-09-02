@@ -41,6 +41,7 @@ func applyEditBlocks(original, raw string) (string, error) {
 		return "", fmt.Errorf("찾아바꾸기 블록이 없다 — 형식은 이렇다:\n%s", editBlockFormat)
 	}
 	out := original
+	applied := 0
 	for _, m := range ms {
 		search := stripLineNumbers(stripCodeFence(m[1]))
 		replace := stripLineNumbers(stripCodeFence(m[2]))
@@ -50,6 +51,7 @@ func applyEditBlocks(original, raw string) (string, error) {
 		switch n := strings.Count(out, search); {
 		case n == 1:
 			out = strings.Replace(out, search, replace, 1)
+			applied++
 			continue
 		case n > 1 && isSubstantial(search):
 			// **같은 코드가 여러 곳에 복사돼 있으면 전부 고친다.**
@@ -58,6 +60,7 @@ func applyEditBlocks(original, raw string) (string, error) {
 			// 그대로 남는다. 실제로 workplace.ts 의 말일 경계 버그가 29행과
 			// 133행 두 곳에 복사돼 있었고, 한 곳만 고치면 반만 고친 것이다.
 			out = strings.ReplaceAll(out, search, replace)
+			applied++
 			continue
 		case n > 1:
 			return "", fmt.Errorf("원문에 여러 번 나오지만 너무 짧아 어디인지 알 수 없다:\n%s", clipRunes(search, 200))
@@ -68,9 +71,19 @@ func applyEditBlocks(original, raw string) (string, error) {
 			// 줄 끝 공백을 털고 줄 단위로 견줘 한 군데만 맞으면 그 자리를 쓴다.
 			replaced, err := replaceLoosely(out, search, replace)
 			if err != nil {
+				// **이미 고친 자리를 또 고치라는 블록은 그냥 넘긴다.**
+				//
+				// 같은 코드가 두 곳에 복사돼 있으면 모델이 블록을 두 번 낸다.
+				// 첫 블록이 두 곳을 다 고치고 나면 두 번째 블록은 찾을 것이
+				// 없다. 그걸 오류로 보면 **맞게 고친 것까지 통째로 버려진다** —
+				// 실제로 workplace.ts 의 말일 경계 수정이 그렇게 날아갔다.
+				if applied > 0 && isNotFound(err) {
+					continue
+				}
 				return "", err
 			}
 			out = replaced
+			applied++
 		}
 	}
 	if out == original {
@@ -225,15 +238,7 @@ func spliceAll(srcLines []string, at, spans []int, replace string) string {
 	out := append([]string{}, srcLines...)
 	for k := len(at) - 1; k >= 0; k-- {
 		i, span := at[k], spans[k]
-		indent := leadingSpace(out[i])
-		block := make([]string, 0, len(repl))
-		for _, l := range repl {
-			if strings.TrimSpace(l) == "" {
-				block = append(block, "")
-				continue
-			}
-			block = append(block, indent+strings.TrimSpace(l))
-		}
+		block := reindent(repl, leadingSpace(out[i]))
 		next := append([]string{}, out[:i]...)
 		next = append(next, block...)
 		next = append(next, out[i+span:]...)
@@ -320,4 +325,44 @@ func stripCodeFence(s string) string {
 		out = append(out, l)
 	}
 	return strings.Join(out, "\n")
+}
+
+// isNotFound 는 "찾을 것이 없다" 류의 실패인지 본다.
+//
+// 여러 군데라 못 정하겠다는 것과는 다르다. 그건 넘기면 안 된다.
+func isNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "원문에 없는 내용")
+}
+
+// reindent 는 바꿔 넣을 블록을 원문 자리의 들여쓰기에 맞춘다.
+//
+// **블록 안의 상대 들여쓰기는 지킨다.** 예전에는 모든 줄에 첫 줄 들여쓰기를
+// 그대로 붙였다. 그래서 workAt: { 안의 gte·lt 가 바깥과 같은 깊이로 나와
+// 들여쓰기가 무너졌다(16칸 → 12칸). 동작에는 지장이 없지만 리뷰에서 지적당한다.
+func reindent(lines []string, indent string) []string {
+	base := -1
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if w := len(leadingSpace(l)); base < 0 || w < base {
+			base = w
+		}
+	}
+	if base < 0 {
+		base = 0
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			out = append(out, "")
+			continue
+		}
+		rel := ""
+		if w := len(leadingSpace(l)); w > base {
+			rel = strings.Repeat(" ", w-base)
+		}
+		out = append(out, indent+rel+strings.TrimSpace(l))
+	}
+	return out
 }
