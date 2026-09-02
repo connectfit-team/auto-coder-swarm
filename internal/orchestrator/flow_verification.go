@@ -225,7 +225,9 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		return false, RunResult{}, nil
 	}
 
-	reviewResp, rErr := t.reviewer.Process(t.ctx, reviewInput)
+	// 검토자에게 요청문과 분석을 함께 준다 — 근거 없이 diff 만 보면
+	// 맞는 수정을 되돌리라고 한다.
+	reviewResp, rErr := t.reviewer.ProcessWithContext(t.ctx, reviewInput, t.req.UserRequest, t.analysis)
 	if rErr != nil {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEW_ERROR", "리뷰어 호출 실패", "", rErr.Error())
 		return false, RunResult{}, fmt.Errorf("리뷰어를 부르지 못했다: %w", rErr)
@@ -236,6 +238,20 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	rv := agent.ParseReviewerVerdict(reviewResp, t.finalDiff)
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEWER", rv.Why, "", reviewResp)
 	if rv.Blocking {
+		// **분석이 처방한 수정이면 검토자의 반대는 자문이다.**
+		//
+		// 검토자가 경계값을 못 읽는다. 실측으로 말일 경계를 정확히 고친
+		// 최소 수정(파일 1개)을 세 번 연속 반려하면서 "lt 를 다음 달 1일로
+		// 옮기면 말일이 빠진다" 고 했다 — 정확히 거꾸로다. 그 말을 따르면
+		// 원래 버그가 그대로 남는다.
+		//
+		// 근거는 분석 쪽에 있다(원인 줄·이유·고칠 값). 그러니 되돌리지 않고
+		// 반대 의견을 붙여 사람에게 넘긴다. 사람이 보면 5초면 판정할 일이다.
+		if t.planFromAnalysis {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEW_ADVISORY",
+				"검토자가 반대했지만 분석이 짚은 수정이라 사람 판단으로 넘깁니다", "", reviewResp)
+			return true, RunResult{RepoName: t.targetRepo, WaitingApproval: true}, nil
+		}
 		t.lastFeedback = "REVIEWER REJECTION: " + reviewResp
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
