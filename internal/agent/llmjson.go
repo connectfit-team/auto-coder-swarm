@@ -43,7 +43,7 @@ func callJSONWith(ctx context.Context, prompt string, out any, name string, call
 	for i := 0; i < jsonRetries; i++ {
 		p := prompt
 		if i > 0 {
-			p = prompt + stricterJSON
+			p = prompt + stricterJSON + parseHint(lastErr, raw)
 		}
 
 		var err error
@@ -122,4 +122,34 @@ func isZeroStruct(out any) bool {
 		return false // 맵·슬라이스는 이 판단을 하지 않는다
 	}
 	return v.IsZero()
+}
+
+// parseHint 는 방금 답이 왜 안 읽혔는지 모델에게 되돌려 준다.
+//
+// **무엇이 틀렸는지 말해 주지 않으면 같은 실수를 반복한다.** 그동안은
+// 재시도에 일반적인 "JSON 만 내라" 만 덧붙였다. 실측으로 3회를 다 쓰고
+// 죽은 실패가 30건 중 7건이었고, 원인은 첫 글자가 산문이거나(invalid
+// character 'R') 문자열 안에서 따옴표가 일찍 닫힌 것이었다 — 둘 다
+// 지적하면 고칠 수 있는 종류다.
+func parseHint(err error, raw string) string {
+	if err == nil {
+		return ""
+	}
+	h := "\n\n[방금 낸 답을 못 읽었다]\n오류: " + err.Error()
+	if bad := strings.TrimSpace(raw); bad != "" {
+		h += "\n네가 낸 답의 앞부분: " + clipRunes(bad, 200)
+		if c := firstNonJSONChar(bad); c != "" {
+			h += "\n첫 글자가 " + c + " 다. `{` 로 시작해야 한다."
+		}
+	}
+	return h
+}
+
+// firstNonJSONChar 는 답이 `{` 로 시작하지 않을 때 그 첫 글자를 준다.
+func firstNonJSONChar(s string) string {
+	r := []rune(s)
+	if len(r) == 0 || r[0] == '{' {
+		return ""
+	}
+	return string(r[0])
 }
