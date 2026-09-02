@@ -19,6 +19,9 @@ type taskContext struct {
 	candidateHint string
 	// 전략 단계가 짚은 고칠 파일. 계획이 이걸 무시하면 엉뚱한 데를 고친다.
 	actionablePath []string
+	// 분석이 원인과 고칠 값까지 짚어 준 계획인가. 그렇다면 검토자의 반대는
+	// 자문으로만 본다 — 근거는 분석 쪽에 있다.
+	planFromAnalysis bool
 	orchestrator   *SwarmOrchestrator
 	primaryLLM     model.LLM
 	voter          *voter.MultiModelVoter

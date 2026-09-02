@@ -38,7 +38,19 @@ func (t *taskContext) stepPlanning(attempt int) error {
 	// 고장 질문에는 CIE 가 파일과 문제의 줄을 짚어 준다. 그걸 다시 모델에게
 	// 넘겨 "어느 파일을 고칠까" 를 물으면, 그 되물음에서 엉뚱한 화면 파일로
 	// 새는 일이 잦다. 아는 것은 그대로 쓴다.
-	if direct := agent.PlanFromDefectReport(t.analysis); len(direct) > 0 && t.lastFeedback == "" {
+	// **재시도에서도 분석이 짚은 파일을 지킨다.**
+	//
+	// 처음에는 첫 시도에만 썼다. 그런데 1차가 반려되자 2차부터 모델 계획으로
+	// 넘어가 파일이 1개에서 6개로 번졌고, 그중 넷이 요청과 무관했다(실측).
+	// 분석은 그대로인데 계획만 나빠진 것이다. 되먹임은 코더에게 붙여 준다.
+	if direct := agent.PlanFromDefectReport(t.analysis); len(direct) > 0 {
+		if t.lastFeedback != "" {
+			// 앞 시도에서 무엇이 잘못됐는지 코더가 알아야 같은 실수를 안 한다.
+			for i := range direct {
+				direct[i].Instructions += "\n[앞 시도에서 지적받은 것]\n" + t.lastFeedback
+			}
+		}
+		t.planFromAnalysis = true
 		plan := agent.Plan{RepoName: t.req.TargetRepo, Changes: direct}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_FROM_ANALYSIS",
 			fmt.Sprintf("분석이 짚은 파일 %d개를 그대로 계획으로 씁니다", len(direct)),
