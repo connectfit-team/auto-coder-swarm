@@ -14,6 +14,7 @@ var (
 	reportFileRe   = regexp.MustCompile("(?m)^\\s*\\*\\*`([^`]+)`\\*\\*\\s*$")
 	reportCauseRe  = regexp.MustCompile(`(?m)^\s*원인\s*:\s*(.+)$`)
 	reportReasonRe = regexp.MustCompile(`(?m)^\s*이유\s*:\s*(.+)$`)
+	reportConfRe   = regexp.MustCompile(`(?m)^\s*확신\s*:\s*(.+)$`)
 )
 
 // PlanFromDefectReport 는 분석이 이미 짚은 파일·줄을 그대로 계획으로 만든다.
@@ -28,7 +29,7 @@ func PlanFromDefectReport(analysis string) []FileChange {
 	if len(heads) == 0 {
 		return nil
 	}
-	var out []FileChange
+	var strong, weak []FileChange
 	for i, h := range heads {
 		path := strings.TrimSpace(analysis[h[2]:h[3]])
 		end := len(analysis)
@@ -43,14 +44,29 @@ func PlanFromDefectReport(analysis string) []FileChange {
 		}
 		reason := firstGroup(reportReasonRe, body)
 
-		out = append(out, FileChange{
+		fc := FileChange{
 			FilePath:    path,
 			Description: reason,
 			Instructions: "아래 줄이 이 문제의 원인이다. 이 줄만 고쳐라.\n" +
 				"[문제의 줄]\n" + cause + "\n[왜 문제인가]\n" + reason,
-		})
+		}
+		if strings.Contains(firstGroup(reportConfRe, body), "높") {
+			strong = append(strong, fc)
+		} else {
+			weak = append(weak, fc)
+		}
 	}
-	return out
+
+	// **확신이 높은 것만 고친다.**
+	//
+	// 분석에게 "관련 있어 보이는 코드를 하나 뽑아라" 고 하면 어느 파일에서든
+	// 뭔가를 뽑아 온다 — 실측으로 파일 8개 중 7개에서 원인을 만들어 냈고,
+	// 그 계획대로 고치니 정작 진짜 자리는 안 고치고 엉뚱한 파일 넷이 바뀌었다.
+	// 확신이 높은 것이 하나도 없을 때만 나머지를 쓴다.
+	if len(strong) > 0 {
+		return strong
+	}
+	return weak
 }
 
 func firstGroup(re *regexp.Regexp, s string) string {

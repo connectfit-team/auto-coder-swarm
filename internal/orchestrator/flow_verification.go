@@ -71,6 +71,17 @@ func (t *taskContext) stepVerification() (bool, error) {
 		for _, step := range healingPlan.Steps {
 			switch step.Action {
 			case healing.ActionModifyCode:
+				// **치유는 계획한 파일과 오류가 지목한 파일까지만 건드린다.**
+				//
+				// 말일 경계 하나를 고치라고 했는데 치유기가 export API 를
+				// 함께 뜯어고쳐, 요청하지 않은 workAt 필터가 diff 에 섞여
+				// 승인 대기까지 갔다. 빌드가 지목하지 않은 파일이라면 이
+				// 작업과 상관이 없다.
+				if !allowedToHeal(step.TargetFile, plan, failure) {
+					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_BLOCKED",
+						fmt.Sprintf("[%s] 계획에도 오류에도 없는 파일이라 건드리지 않습니다", step.TargetFile), "", "")
+					continue
+				}
 				if _, err := t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, step.TargetFile), step.Instruction); err != nil {
 					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_FAILED",
 						fmt.Sprintf("[%s] 치유가 파일을 못 고쳤습니다", step.TargetFile), "", err.Error())
@@ -96,6 +107,19 @@ func (t *taskContext) stepVerification() (bool, error) {
 }
 
 func (t *taskContext) stepReview() (bool, RunResult, error) {
+	// **계획에 없는 파일이 섞였으면 그 파일만 되돌린다.**
+	//
+	// 작업 전체를 버릴 일은 아니다 — 맞게 고친 파일은 살리고, 요청하지 않은
+	// 파일만 원래대로 되돌린다. 실측으로 말일 경계 수정에 export API 변경이
+	// 딸려 와 승인 대기까지 갔다.
+	if plan, ok := t.ctx.Value("current_plan").(agent.Plan); ok {
+		if reverted := t.revertUnplannedFiles(plan); len(reverted) > 0 {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "UNPLANNED_REVERTED",
+				fmt.Sprintf("계획에 없는 파일 %d개를 되돌렸습니다", len(reverted)),
+				"", strings.Join(reverted, "\n"))
+		}
+	}
+
 	diffCmd := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "diff", "HEAD")
 	diffOut, _ := diffCmd.CombinedOutput()
 	t.finalDiff = string(diffOut)
@@ -439,6 +463,62 @@ func wantsCommentWork(req string) bool {
 		}
 	}
 	return false
+}
+
+// allowedToHeal 은 치유가 그 파일을 건드려도 되는지 본다.
+//
+// 계획한 파일이거나, 빌드 오류가 이름을 댄 파일이어야 한다. 그 밖의 파일을
+// 고치는 것은 이 작업이 하기로 한 일이 아니다.
+func allowedToHeal(target string, plan agent.Plan, buildError string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for _, c := range plan.Changes {
+		if sameFilePath(c.FilePath, target) {
+			return true
+		}
+	}
+	// 오류 메시지에 **전체 경로**가 그대로 찍힌다:
+	// `"getX" is not exported by "src/lib/server/db/attendance.ts"`
+	//
+	// 파일 이름만으로 맞추면 안 된다 — +server.ts·index.ts·main.go 처럼
+	// 같은 이름이 저장소에 수십 개다. 실제로 오류에 찍힌 다른 +server.ts
+	// 때문에 상관없는 파일이 통과했다.
+	return strings.Contains(buildError, target)
+}
+
+// sameFilePath 는 앞의 ./ 나 / 차이를 무시하고 견준다.
+func sameFilePath(a, b string) bool {
+	return strings.Trim(filepath.Clean(a), "/") == strings.Trim(filepath.Clean(b), "/")
+}
+
+// revertUnplannedFiles 는 계획에 없는데 바뀐 파일을 되돌린다.
+func (t *taskContext) revertUnplannedFiles(plan agent.Plan) []string {
+	out, err := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "diff", "--name-only", "HEAD").Output()
+	if err != nil {
+		return nil
+	}
+	var reverted []string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.TrimSpace(line)
+		if f == "" {
+			continue
+		}
+		planned := false
+		for _, c := range plan.Changes {
+			if sameFilePath(c.FilePath, f) {
+				planned = true
+				break
+			}
+		}
+		if planned {
+			continue
+		}
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", "--", f).Run()
+		reverted = append(reverted, f)
+	}
+	return reverted
 }
 
 // commitMessageFor 는 요청문에서 커밋 제목을 만든다.
