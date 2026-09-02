@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -57,6 +58,13 @@ func (s *Storage) UpdateTaskStatus(id string, status TaskStatus, result, errLog 
 	updates := map[string]interface{}{"status": status, "updated_at": time.Now()}
 	if result != "" {
 		updates["result"] = result
+		// **PR 주소는 pr_url 에도 넣는다.**
+		//
+		// result 에만 넣어서 화면의 "PR 열기" 단추가 영영 안 떴다. 작업은
+		// 성공했는데 사람은 그 주소를 로그에서 찾아야 했다.
+		if strings.HasPrefix(result, "http://") || strings.HasPrefix(result, "https://") {
+			updates["pr_url"] = result
+		}
 	}
 	if errLog != "" {
 		updates["error_log"] = errLog

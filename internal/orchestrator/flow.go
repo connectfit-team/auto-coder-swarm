@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +17,17 @@ func (t *taskContext) execute() (RunResult, error) {
 	log.Printf("🏁 [ACS] Starting task execution: %s (Repo: %s)", t.taskID, t.req.TargetRepo)
 	observability.ActiveWorkers.Inc()
 	defer observability.ActiveWorkers.Dec()
+
+	// **승인은 "본 것을 그대로 올린다" 는 뜻이다.**
+	//
+	// 그동안 승인하면 분석부터 전부 다시 돌았다. 5분 넘게 걸리는 것도 문제지만,
+	// 더 나쁜 것은 **사람이 본 diff 와 올라가는 diff 가 달라질 수 있다**는 점이다.
+	// 검토의 뜻이 사라진다. 이미 만들어 둔 변경이 있으면 그것만 올린다.
+	if t.isApproved {
+		if res, done, err := t.shipReviewedDiff(); done {
+			return res, err
+		}
+	}
 
 	start := time.Now()
 	if err := t.prepareAnalysis(); err != nil {
@@ -129,4 +142,64 @@ func (t *taskContext) currentDiff() string {
 		return ""
 	}
 	return d
+}
+
+// shipReviewedDiff 는 사람이 본 변경을 그대로 올린다.
+//
+// 저장해 둔 diff 를 새 작업공간에 그대로 적용하고 push·PR 까지 간다.
+// 다시 만들지 않는다 — 다시 만들면 다른 것이 나올 수 있고, 그러면 승인한
+// 사람이 못 본 코드가 나간다.
+//
+// 저장된 diff 가 없거나 적용에 실패하면 done=false 로 돌려 평소 흐름을 탄다.
+func (t *taskContext) shipReviewedDiff() (RunResult, bool, error) {
+	task, err := t.orchestrator.store.GetTaskByID(t.taskID)
+	if err != nil || task == nil || strings.TrimSpace(task.ProposedDiff) == "" {
+		return RunResult{}, false, nil
+	}
+	repo := task.RepoName
+	if repo == "" {
+		repo = t.req.TargetRepo
+	}
+	if repo == "" {
+		return RunResult{}, false, nil
+	}
+
+	wsPath, err := t.orchestrator.wsMgr.CreateWorkspace()
+	if err != nil {
+		return RunResult{}, false, nil
+	}
+	defer t.orchestrator.wsMgr.Cleanup(wsPath)
+
+	t.targetRepo = repo
+	t.wsPath = wsPath
+	t.repoPath = filepath.Join(wsPath, "repo")
+	t.currentBranch = fmt.Sprintf("acs-fix-%s", time.Now().Format("0102150405"))
+	if err := t.orchestrator.wsMgr.CreateWorktree(repo, t.repoPath, t.currentBranch); err != nil {
+		return RunResult{}, false, nil
+	}
+
+	patch := filepath.Join(wsPath, "approved.patch")
+	if err := os.WriteFile(patch, []byte(task.ProposedDiff), 0o644); err != nil {
+		return RunResult{}, false, nil
+	}
+	apply := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "apply", "--whitespace=nowarn", patch)
+	if out, err := apply.CombinedOutput(); err != nil {
+		// 저장소가 그 사이 바뀌었을 수 있다. 그때는 처음부터 다시 하는 편이 맞다.
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REAPPLY_FAILED",
+			"승인된 변경을 그대로 적용하지 못해 처음부터 다시 합니다", "", strings.TrimSpace(string(out)))
+		return RunResult{}, false, nil
+	}
+
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SHIP_REVIEWED",
+		"사람이 본 변경을 그대로 올립니다 (다시 만들지 않음)", "", "")
+
+	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChanges(
+		t.repoPath, repo, t.currentBranch, commitMessageFor(t.req.UserRequest))
+	if prErr != nil {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PR_MANUAL",
+			"PR 은 못 열었지만 브랜치는 올라갔습니다", prURL, prErr.Error())
+	} else {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMPLETED", "성공", prURL, "")
+	}
+	return RunResult{RepoName: repo, PRURL: prURL}, true, nil
 }
