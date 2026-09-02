@@ -1,12 +1,15 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 )
 
 func (t *taskContext) prepareAnalysis() error {
@@ -47,8 +50,23 @@ func (t *taskContext) prepareAnalysis() error {
 		scope.Path = "전체"
 	}
 
+	// **저장소를 못 정했다고 죽이지 않는다.**
+	//
+	// 여기서 죽으면 사람이 저장소 이름을 알고 있어야 작업을 넣을 수 있다.
+	// 요청문만 주면 되어야 한다. CIE 에게 물어본다 — 코드 색인에서 실제로
+	// 걸리는 곳을 세므로, 모델에게 이름을 묻는 것과 달리 없는 이름이
+	// 나올 수 없다.
 	if scope.Repo == "" {
-		err := fmt.Errorf("대상 레포지토리를 특정할 수 없습니다.")
+		if routed := t.routeRepos(); len(routed) > 0 {
+			scope.Repo = routed[0].RepoName
+			t.routedRepos = routed
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REPO_ROUTED",
+				fmt.Sprintf("저장소를 스스로 골랐습니다: %s", scope.Repo), "", routeSummary(routed))
+		}
+	}
+
+	if scope.Repo == "" {
+		err := fmt.Errorf("어느 저장소인지 못 찾았다 — 요청에 저장소 이름을 적어 주면 그것만 본다")
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ERROR", "검사 범위 파악 실패", scopeRaw, "")
 		return err
 	}
@@ -278,4 +296,26 @@ func looksLikeDefectRequest(req string) bool {
 		}
 	}
 	return false
+}
+
+// routeRepos 는 요청문만으로 저장소 후보를 받아 온다.
+func (t *taskContext) routeRepos() []insightclient.RepoRoute {
+	sub, cancel := context.WithTimeout(t.ctx, 30*time.Second)
+	defer cancel()
+
+	routed, err := t.orchestrator.insightClient.RouteRepos(sub, t.req.UserRequest)
+	if err != nil {
+		log.Printf("[Orchestrator] 저장소 라우팅 실패: %v", err)
+		return nil
+	}
+	return routed
+}
+
+// routeSummary 는 왜 그 저장소를 골랐는지 사람이 읽을 수 있게 만든다.
+func routeSummary(rs []insightclient.RepoRoute) string {
+	var b strings.Builder
+	for _, r := range rs {
+		fmt.Fprintf(&b, "%s (%.2f) — %s\n", r.RepoName, r.Score, r.Why)
+	}
+	return b.String()
 }
