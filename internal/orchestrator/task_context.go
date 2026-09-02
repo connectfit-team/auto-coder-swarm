@@ -5,6 +5,7 @@ import (
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/healing"
+	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/voter"
 	"google.golang.org/adk/model"
 )
@@ -23,7 +24,9 @@ type taskContext struct {
 	// 자문으로만 본다 — 근거는 분석 쪽에 있다.
 	planFromAnalysis bool
 	// 분석이 짚었지만 고칠 것이 없던 파일. 다음 시도에서는 건너뛴다.
-	deadPaths     []string
+	deadPaths []string
+	// 요청문만으로 고른 저장소 후보. 여럿이면 저장소마다 따로 낸다.
+	routedRepos   []insightclient.RepoRoute
 	orchestrator  *SwarmOrchestrator
 	primaryLLM    model.LLM
 	voter         *voter.MultiModelVoter
