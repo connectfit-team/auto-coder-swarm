@@ -43,7 +43,7 @@ func (t *taskContext) stepPlanning(attempt int) error {
 	// 처음에는 첫 시도에만 썼다. 그런데 1차가 반려되자 2차부터 모델 계획으로
 	// 넘어가 파일이 1개에서 6개로 번졌고, 그중 넷이 요청과 무관했다(실측).
 	// 분석은 그대로인데 계획만 나빠진 것이다. 되먹임은 코더에게 붙여 준다.
-	if direct := agent.PlanFromDefectReport(t.analysis); len(direct) > 0 {
+	if direct := agent.PlanFromDefectReportExcluding(t.analysis, t.deadPaths); len(direct) > 0 {
 		if t.lastFeedback != "" {
 			// 앞 시도에서 무엇이 잘못됐는지 코더가 알아야 같은 실수를 안 한다.
 			for i := range direct {

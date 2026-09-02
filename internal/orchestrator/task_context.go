@@ -22,26 +22,28 @@ type taskContext struct {
 	// 분석이 원인과 고칠 값까지 짚어 준 계획인가. 그렇다면 검토자의 반대는
 	// 자문으로만 본다 — 근거는 분석 쪽에 있다.
 	planFromAnalysis bool
-	orchestrator   *SwarmOrchestrator
-	primaryLLM     model.LLM
-	voter          *voter.MultiModelVoter
-	planner        *agent.PlannerAgent
-	coder          *agent.CoderAgent
-	reviewer       *agent.ReviewerAgent
-	critic         *agent.CriticAgent
-	healer         *healing.HealerAgent
-	analysis       string
-	ckhKnowledge   string     // Corporate Knowledge from CKH
-	skills         []SkillDoc // CIE 가 준 팀의 작업 절차
-	wsPath         string
-	repoPath       string
-	targetRepo     string
-	currentBranch  string
-	lastFeedback   string
-	finalDiff      string
-	preBench       string
-	postBench      string
-	meta           ProjectMetadata
+	// 분석이 짚었지만 고칠 것이 없던 파일. 다음 시도에서는 건너뛴다.
+	deadPaths     []string
+	orchestrator  *SwarmOrchestrator
+	primaryLLM    model.LLM
+	voter         *voter.MultiModelVoter
+	planner       *agent.PlannerAgent
+	coder         *agent.CoderAgent
+	reviewer      *agent.ReviewerAgent
+	critic        *agent.CriticAgent
+	healer        *healing.HealerAgent
+	analysis      string
+	ckhKnowledge  string     // Corporate Knowledge from CKH
+	skills        []SkillDoc // CIE 가 준 팀의 작업 절차
+	wsPath        string
+	repoPath      string
+	targetRepo    string
+	currentBranch string
+	lastFeedback  string
+	finalDiff     string
+	preBench      string
+	postBench     string
+	meta          ProjectMetadata
 }
 
 func (o *SwarmOrchestrator) newTaskContext(ctx context.Context, taskID string, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) *taskContext {
