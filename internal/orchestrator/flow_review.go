@@ -130,6 +130,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CRITIC", cv.Why, "", criticResp)
 	if cv.Blocking {
 		t.lastFeedback = "CRITIC REJECTION: " + criticResp
+		t.keepRejectedDiff()
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
 	}
@@ -162,6 +163,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 			return true, RunResult{RepoName: t.targetRepo, WaitingApproval: true}, nil
 		}
 		t.lastFeedback = "REVIEWER REJECTION: " + reviewResp
+		t.keepRejectedDiff()
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
 	}
