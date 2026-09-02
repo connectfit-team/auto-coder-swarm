@@ -245,8 +245,20 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		return true, RunResult{RepoName: t.targetRepo, WaitingApproval: true}, nil
 	}
 
-	prURL, _ := t.orchestrator.gitMgr.PushApprovedChanges(t.repoPath, t.targetRepo, t.currentBranch, "feat: automated enhancement")
-	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMPLETED", "성공", prURL, "")
+	// **커밋 메시지가 "feat: automated enhancement" 였다.**
+	//
+	// 무엇을 왜 바꿨는지 아무것도 안 남으므로, 나중에 이 커밋을 만난 사람이
+	// 다시 diff 를 읽어야 한다. 요청한 말을 그대로 쓴다.
+	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChanges(
+		t.repoPath, t.targetRepo, t.currentBranch, commitMessageFor(t.req.UserRequest))
+	if prErr != nil {
+		// PR 을 못 열어도 브랜치는 올라가 있다. 그 주소를 남긴다 —
+		// 버리면 사람은 브랜치 이름조차 못 듣는다.
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PR_MANUAL",
+			"PR 은 못 열었지만 브랜치는 올라갔습니다", prURL, prErr.Error())
+	} else {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMPLETED", "성공", prURL, "")
+	}
 	return true, RunResult{RepoName: t.targetRepo, PRURL: prURL}, nil
 }
 
@@ -507,4 +519,25 @@ func (t *taskContext) revertUnplannedFiles(plan agent.Plan) []string {
 		reverted = append(reverted, f)
 	}
 	return reverted
+}
+
+// commitMessageFor 는 요청문에서 커밋 제목을 만든다.
+//
+// 첫 문장만 쓰고 너무 길면 자른다. 요청이 비면 예전 문구로 물러선다.
+func commitMessageFor(request string) string {
+	r := strings.TrimSpace(request)
+	if r == "" {
+		return "fix: 자동 수정"
+	}
+	for _, sep := range []string{"\n", ". ", "다. ", "요. "} {
+		if i := strings.Index(r, sep); i > 10 {
+			r = r[:i+len(sep)-1]
+			break
+		}
+	}
+	r = strings.TrimSpace(strings.Trim(r, ".。 "))
+	if n := []rune(r); len(n) > 60 {
+		r = string(n[:60]) + "…"
+	}
+	return "fix: " + r
 }
