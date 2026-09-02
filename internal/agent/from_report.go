@@ -15,6 +15,7 @@ var (
 	reportCauseRe  = regexp.MustCompile(`(?m)^\s*원인\s*:\s*(.+)$`)
 	reportReasonRe = regexp.MustCompile(`(?m)^\s*이유\s*:\s*(.+)$`)
 	reportConfRe   = regexp.MustCompile(`(?m)^\s*확신\s*:\s*(.+)$`)
+	reportFixRe    = regexp.MustCompile(`(?m)^\s*고침\s*:\s*(.+)$`)
 )
 
 // PlanFromDefectReport 는 분석이 이미 짚은 파일·줄을 그대로 계획으로 만든다.
@@ -44,11 +45,20 @@ func PlanFromDefectReport(analysis string) []FileChange {
 		}
 		reason := firstGroup(reportReasonRe, body)
 
+		// **분석이 고칠 값까지 말해 줬으면 그대로 전한다.**
+		//
+		// 원인만 주면 코더가 그럴듯하지만 틀린 고침을 낸다 — 실측으로 경계가
+		// 말일 00:00 인데 "미만"을 "이하"로만 바꿔, 그 날 낮 기록은 여전히
+		// 빠지는 diff 가 승인 대기까지 왔다.
+		instr := "아래 줄이 이 문제의 원인이다. 이 줄만 고쳐라.\n" +
+			"[문제의 줄]\n" + cause + "\n[왜 문제인가]\n" + reason
+		if fix := firstGroup(reportFixRe, body); fix != "" {
+			instr += "\n[이렇게 바꿔라]\n" + fix
+		}
 		fc := FileChange{
-			FilePath:    path,
-			Description: reason,
-			Instructions: "아래 줄이 이 문제의 원인이다. 이 줄만 고쳐라.\n" +
-				"[문제의 줄]\n" + cause + "\n[왜 문제인가]\n" + reason,
+			FilePath:     path,
+			Description:  reason,
+			Instructions: instr,
 		}
 		if strings.Contains(firstGroup(reportConfRe, body), "높") {
 			strong = append(strong, fc)
