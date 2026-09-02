@@ -26,6 +26,19 @@ var (
 //
 // 원인 줄이 없으면 nil 을 준다 — 그때는 평소대로 모델에게 계획을 맡긴다.
 func PlanFromDefectReport(analysis string) []FileChange {
+	return PlanFromDefectReportExcluding(analysis, nil)
+}
+
+// PlanFromDefectReportExcluding 는 이미 막다른 길로 드러난 파일을 빼고 뽑는다.
+//
+// 분석이 짚은 파일을 고치려 했는데 고칠 것이 없으면(빈 diff) 그 분석은
+// 그 파일에 관해 틀린 것이다. 같은 입력으로 다시 시도해 봐야 결과가 같다 —
+// 실측으로 세 번을 그렇게 쓰고 실패했다. 다음 후보로 넘어간다.
+func PlanFromDefectReportExcluding(analysis string, exclude []string) []FileChange {
+	skip := make(map[string]bool, len(exclude))
+	for _, e := range exclude {
+		skip[strings.TrimSpace(e)] = true
+	}
 	heads := reportFileRe.FindAllStringSubmatchIndex(analysis, -1)
 	if len(heads) == 0 {
 		return nil
@@ -33,6 +46,9 @@ func PlanFromDefectReport(analysis string) []FileChange {
 	var strong, weak []FileChange
 	for i, h := range heads {
 		path := strings.TrimSpace(analysis[h[2]:h[3]])
+		if skip[path] {
+			continue
+		}
 		end := len(analysis)
 		if i+1 < len(heads) {
 			end = heads[i+1][0]

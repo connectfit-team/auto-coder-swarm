@@ -154,6 +154,13 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	// 빈 diff 는 검토 두 관문을 그냥 통과한다(지적할 자리가 없으니까).
 	// 그래서 아무것도 안 한 작업이 "성공" 으로 기록됐다.
 	if strings.TrimSpace(t.finalDiff) == "" {
+		// 분석이 짚은 파일에 고칠 것이 없었다면 그 후보가 틀린 것이다.
+		// 남은 시도를 같은 입력에 쓰지 말고 다음 후보로 넘긴다.
+		if paths := t.markAnalysisDeadEnd(); len(paths) > 0 {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ANALYSIS_DEAD_END",
+				"분석이 짚은 곳에 고칠 것이 없어 다음 후보로 넘어갑니다", "", strings.Join(paths, "\n"))
+			return false, RunResult{}, nil
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "EMPTY_DIFF", "바뀐 것이 없다", "", "")
 		return false, RunResult{}, fmt.Errorf("코드가 하나도 바뀌지 않았다 — 승인할 것이 없다")
 	}
@@ -556,4 +563,30 @@ func commitMessageFor(request string) string {
 		r = string(n[:60]) + "…"
 	}
 	return "fix: " + r
+}
+
+// markAnalysisDeadEnd 는 이번 계획의 파일을 막다른 길로 표시한다.
+// 분석에서 나온 계획일 때만 뜻이 있다 — 모델이 세운 계획은 다음 시도에
+// 어차피 달라진다.
+func (t *taskContext) markAnalysisDeadEnd() []string {
+	if !t.planFromAnalysis {
+		return nil
+	}
+	plan, ok := t.ctx.Value("current_plan").(agent.Plan)
+	if !ok {
+		return nil
+	}
+	var added []string
+	for _, c := range plan.Changes {
+		if c.FilePath == "" {
+			continue
+		}
+		t.deadPaths = append(t.deadPaths, c.FilePath)
+		added = append(added, c.FilePath)
+	}
+	if len(added) > 0 {
+		t.lastFeedback = "앞 시도에서 " + strings.Join(added, ", ") +
+			" 를 고치려 했으나 고칠 것이 없었다. 그 파일은 원인이 아니다."
+	}
+	return added
 }
