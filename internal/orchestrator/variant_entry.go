@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,11 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 	sub, cancel := context.WithTimeout(t.ctx, variantAskTimeout)
 	ask, err := t.orchestrator.insightClient.VariantAsk(sub, t.req.UserRequest, []string{"clockio"})
 	cancel()
+	if errors.Is(err, insightclient.ErrNotAuthorized) {
+		// 열쇠가 틀린 것을 "값 추가가 아니다" 로 넘기면, 설정 문제가 판단
+		// 문제로 위장돼 엉뚱한 흐름이 조용히 돈다. 여기서 멈춘다.
+		return RunResult{}, true, fmt.Errorf("CIE 에 물어보지 못했다 — CIE_API_KEY 를 확인해라: %w", err)
+	}
 	if err != nil {
 		// 물어보지 못한 것과 값 추가가 아닌 것은 다르다. 결함 흐름으로 넘긴다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_ASK_FAILED",
