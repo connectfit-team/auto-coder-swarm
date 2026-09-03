@@ -174,7 +174,7 @@ func main() {
 	if primaryModelName == "" {
 		primaryModelName = "gemma4:31b"
 	}
-	primaryModel := llm.NewRabbitMQModel(primaryModelName, amqpURL)
+	primaryModel := llm.FromEnv(primaryModelName, amqpURL)
 	reportingSvc := reporting.NewService(store, primaryModel)
 
 	sg := security.NewGuardrail(&security.SecretScanner{}, &security.StaticAnalysisScanner{})
