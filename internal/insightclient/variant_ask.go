@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -12,6 +13,10 @@ import (
 //
 // 값을 뽑고 씨앗을 정하는 규칙은 CIE 에만 둔다. 여기서 따로 뽑으면 두 규칙이
 // 어긋나고, 어긋난 쪽이 조용히 틀린 PR 을 연다.
+
+// ErrNotAuthorized 는 CIE 가 열쇠를 거절했다는 뜻이다. 설정 문제지 판단 결과가
+// 아니므로, 이것을 "값 추가가 아니다" 로 읽으면 안 된다.
+var ErrNotAuthorized = errors.New("CIE 가 열쇠를 거절했다 (CIE_API_KEY)")
 
 // VariantAskResult 는 요청문 하나에 대한 답이다.
 type VariantAskResult struct {
@@ -50,6 +55,9 @@ func (c *Client) VariantAsk(ctx context.Context, request string, exclude []strin
 		return out, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return out, ErrNotAuthorized
+	}
 	if resp.StatusCode != http.StatusOK {
 		return out, fmt.Errorf("값 추가 판단 실패: HTTP %d", resp.StatusCode)
 	}

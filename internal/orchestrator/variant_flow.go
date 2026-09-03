@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
+	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
 // 값 하나를 더하는 작업을 저장소마다 돈다.
@@ -26,7 +28,6 @@ type VariantResult struct {
 	Skipped     int
 	NeedsManual []string
 	Err         string
-	Halted      bool // 여기서 멈췄나(앞 저장소가 머지돼야 다음이 된다)
 }
 
 const variantPlanTimeout = 3 * time.Minute
@@ -44,35 +45,30 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 	}
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PLAN",
-		fmt.Sprintf("저장소 %d개에 %s 을 더한다", len(plans), req.Value), "", planSummaryText(plans))
+		fmt.Sprintf("저장소 %d개에 %s 더한다", len(plans), korean.With(req.Value, "을", "를")), "", planSummaryText(plans))
 
-	var out []VariantResult
-	for _, p := range plans {
-		r := t.applyOneRepo(p, req)
-		out = append(out, r)
-
-		// 막는 저장소는 머지·배포를 기다려야 한다. 여기서 멈춘다.
-		if p.Blocks && r.Err == "" {
-			r.Halted = true
-			out[len(out)-1] = r
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_HALT",
-				fmt.Sprintf("%s 가 머지·배포돼야 나머지가 컴파일된다 — 여기서 멈춘다", p.Repo),
-				"", p.Note)
-			break
-		}
-		if r.Err != "" {
-			break
-		}
-	}
-	return out, nil
+	return t.applyPlans(plans, req), nil
 }
 
-func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest) VariantResult {
+func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
+
+	if url := existingVariantPR(p.Repo, req.Value); url != "" {
+		r.PRURL = url
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PR_EXISTS",
+			fmt.Sprintf("%s 에는 같은 PR 이 이미 열려 있다 — 그것을 쓴다", p.Repo), "", url)
+		return r
+	}
 
 	branch := fmt.Sprintf("feat/add-%s-%s", req.Value, t.taskID)
 	repoPath := filepath.Join(t.wsPath, p.Repo)
-	if err := t.orchestrator.wsMgr.CreateWorktree(p.Repo, repoPath, branch); err != nil {
+
+	// 사본 경로가 저장소 이름과 다를 수 있다 — 서브모듈이 그렇다.
+	source := p.SourcePath
+	if source == "" {
+		source = p.Repo
+	}
+	if err := t.orchestrator.wsMgr.CreateWorktree(source, repoPath, branch); err != nil {
 		r.Err = fmt.Sprintf("작업공간을 못 만들었다: %v", err)
 		return r
 	}
@@ -96,8 +92,13 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 
-	url, err := t.orchestrator.gitMgr.PushApprovedChanges(repoPath, p.Repo, branch,
-		variantCommitMessage(req, p))
+	msg := variantCommitMessage(req, p)
+	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
+		gitmgr.PushOptions{
+			Title:    fmt.Sprintf("%s %s 더한다", p.Repo, korean.With(req.Label, "을", "를")),
+			BodyLead: blockerNote(blockers),
+			Draft:    len(blockers) > 0,
+		})
 	if err != nil {
 		r.Err = fmt.Sprintf("PR 을 못 열었다: %v", err)
 		r.PRURL = url // 브랜치는 올라갔을 수 있다. 주소를 버리지 않는다.
@@ -132,7 +133,7 @@ func verifyRepo(path, repo string) string {
 
 func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.VariantRepoPlan) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s 를 더한다\n\n", req.Label)
+	fmt.Fprintf(&b, "%s 더한다\n\n", korean.With(req.Label, "을", "를"))
 	fmt.Fprintf(&b, "%s 가 있는 자리마다 %s 몫을 나란히 넣는다.\n", req.Seed, req.Value)
 	if p.Note != "" {
 		fmt.Fprintf(&b, "\n%s\n", p.Note)
