@@ -57,42 +57,7 @@ func (m *RabbitMQModel) getConnection() (*amqp.Connection, error) {
 
 func (m *RabbitMQModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
-		var toolDesc strings.Builder
-		if req.Config != nil && req.Config.Tools != nil {
-			toolDesc.WriteString("\n\n[MANDATORY TOOL CALL FORMAT]\nTo use a tool, you MUST output: <|tool_call|>call:tool_name{\"arg\":\"val\"}<|tool_call|>\n\n[Available Tools]\n")
-			for _, t := range req.Config.Tools {
-				for _, fd := range t.FunctionDeclarations {
-					params, _ := json.Marshal(fd.ParametersJsonSchema)
-					toolDesc.WriteString(fmt.Sprintf("- %s: %s (Parameters: %s)\n", fd.Name, fd.Description, string(params)))
-				}
-			}
-		}
-
-		var prompt strings.Builder
-		for i, c := range req.Contents {
-			txt := ""
-			for _, p := range c.Parts {
-				if p.Text != "" {
-					txt += p.Text
-				} else if p.FunctionCall != nil {
-					args, _ := json.Marshal(p.FunctionCall.Args)
-					txt += fmt.Sprintf("<|tool_call|>call:%s%s<|tool_call|>", p.FunctionCall.Name, string(args))
-				} else if p.FunctionResponse != nil {
-					resp, _ := json.Marshal(p.FunctionResponse.Response)
-					txt += fmt.Sprintf("\n[Tool Result: %s] %s\n", p.FunctionResponse.Name, string(resp))
-				}
-			}
-
-			if i == 0 && toolDesc.Len() > 0 {
-				txt += toolDesc.String()
-			}
-
-			role := c.Role
-			if role == "model" {
-				role = "assistant"
-			}
-			prompt.WriteString(fmt.Sprintf("[%s]:\n%s\n\n", strings.ToUpper(role), txt))
-		}
+		promptText := BuildPrompt(req)
 
 		conn, err := m.getConnection()
 		if err != nil {
@@ -124,7 +89,7 @@ func (m *RabbitMQModel) GenerateContent(ctx context.Context, req *model.LLMReque
 		corrID := hex.EncodeToString(b)
 
 		payload := map[string]interface{}{
-			"prompt": prompt.String(),
+			"prompt": promptText,
 		}
 		body, _ := json.Marshal(payload)
 
