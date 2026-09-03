@@ -9,7 +9,7 @@ func TestStorageTasks(t *testing.T) {
 	dbPath := "./test_swarm.db"
 	defer os.Remove(dbPath)
 
-	s, err := NewStorage(dbPath, nil)
+	s, err := NewStorage("", dbPath, nil)
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}

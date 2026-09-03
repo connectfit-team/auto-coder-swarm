@@ -19,9 +19,9 @@ type Storage struct {
 	rdb          *redis.Client
 }
 
-func NewStorage(dbPath string, rdb *redis.Client) (*Storage, error) {
+// NewStorage 는 DSN 을 인자로 받는다. 비면 dbPath 의 SQLite 로 물러선다.
+func NewStorage(dsn, dbPath string, rdb *redis.Client) (*Storage, error) {
 	var dialector gorm.Dialector
-	dsn := os.Getenv("DATABASE_DSN")
 
 	if dsn != "" {
 		log.Println("🗄️ [Storage] Connecting to MariaDB/MySQL...")
@@ -86,4 +86,9 @@ func (s *Storage) processLogQueue() {
 			log.Printf("⚠️ [Storage] Async write failed: %v", err)
 		}
 	}
+}
+
+// StorageFromEnv 는 조립 지점에서 쓰는 편의 생성자다.
+func StorageFromEnv(dbPath string, rdb *redis.Client) (*Storage, error) {
+	return NewStorage(os.Getenv("DATABASE_DSN"), dbPath, rdb)
 }

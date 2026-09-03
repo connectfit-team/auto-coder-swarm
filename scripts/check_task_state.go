@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	store, err := storage.NewStorage("swarm.db")
+	store, err := storage.NewStorage("", "swarm.db", nil)
 	if err != nil {
 		log.Fatal(err)
 	}

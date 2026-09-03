@@ -2,6 +2,7 @@ package voter
 
 import (
 	"context"
+
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
 
