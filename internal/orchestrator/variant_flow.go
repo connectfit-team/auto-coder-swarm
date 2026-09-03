@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
@@ -27,7 +28,6 @@ type VariantResult struct {
 	Skipped     int
 	NeedsManual []string
 	Err         string
-	Halted      bool // 여기서 멈췄나(앞 저장소가 머지돼야 다음이 된다)
 }
 
 const variantPlanTimeout = 3 * time.Minute
@@ -45,30 +45,12 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 	}
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PLAN",
-		fmt.Sprintf("저장소 %d개에 %s 을 더한다", len(plans), req.Value), "", planSummaryText(plans))
+		fmt.Sprintf("저장소 %d개에 %s 더한다", len(plans), korean.With(req.Value, "을", "를")), "", planSummaryText(plans))
 
-	var out []VariantResult
-	for _, p := range plans {
-		r := t.applyOneRepo(p, req)
-		out = append(out, r)
-
-		// 막는 저장소는 머지·배포를 기다려야 한다. 여기서 멈춘다.
-		if p.Blocks && r.Err == "" {
-			r.Halted = true
-			out[len(out)-1] = r
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_HALT",
-				fmt.Sprintf("%s 가 머지·배포돼야 나머지가 컴파일된다 — 여기서 멈춘다", p.Repo),
-				"", p.Note)
-			break
-		}
-		if r.Err != "" {
-			break
-		}
-	}
-	return out, nil
+	return t.applyPlans(plans, req), nil
 }
 
-func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest) VariantResult {
+func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
 
 	branch := fmt.Sprintf("feat/add-%s-%s", req.Value, t.taskID)
@@ -103,8 +85,13 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 
-	url, err := t.orchestrator.gitMgr.PushApprovedChanges(repoPath, p.Repo, branch,
-		variantCommitMessage(req, p))
+	msg := variantCommitMessage(req, p)
+	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
+		gitmgr.PushOptions{
+			Title:    fmt.Sprintf("%s %s 더한다", p.Repo, korean.With(req.Label, "을", "를")),
+			BodyLead: blockerNote(blockers),
+			Draft:    len(blockers) > 0,
+		})
 	if err != nil {
 		r.Err = fmt.Sprintf("PR 을 못 열었다: %v", err)
 		r.PRURL = url // 브랜치는 올라갔을 수 있다. 주소를 버리지 않는다.

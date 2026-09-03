@@ -34,7 +34,21 @@ func (m *GitManager) CreateBranch(path, branchName string) error {
 	return nil
 }
 
+// PushOptions 는 PR 을 어떻게 열지 정한다. 빈 값이면 예전과 같이 연다.
+type PushOptions struct {
+	// 제목. 비면 커밋 메시지 첫 줄을 쓴다.
+	Title string
+	// 본문 맨 앞에 덧붙일 글. 다른 PR 이 먼저 머지돼야 한다는 안내 같은 것.
+	BodyLead string
+	// 초안으로 연다. 먼저 머지될 것이 있어 아직 빌드되지 않는 PR 에 쓴다.
+	Draft bool
+}
+
 func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message string) (string, error) {
+	return m.PushApprovedChangesOpt(path, repoName, branchName, message, PushOptions{})
+}
+
+func (m *GitManager) PushApprovedChangesOpt(path, repoName, branchName, message string, opt PushOptions) (string, error) {
 	log.Printf("[GitMgr] [%s] Finalizing changes for repo: %s, branch: %s", path, repoName, branchName)
 
 	githubURL := fmt.Sprintf("https://github.com/connectfit-team/%s.git", repoName)
@@ -71,21 +85,21 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 	}
 
 	log.Printf("[GitMgr] [%s] Creating Pull Request via gh CLI", path)
-	prCmd := exec.Command("gh", "pr", "create",
-		"--title", message,
-		"--body", prBody(path),
+	title := opt.Title
+	if title == "" {
+		// 여러 줄을 통째로 넘기면 제목에 본문이 딸려 들어간다.
+		title = firstLine(message)
+	}
+	args := []string{"pr", "create",
+		"--title", title,
+		"--body", opt.BodyLead + prBody(path),
 		"--head", branchName,
-		"--repo", fmt.Sprintf("connectfit-team/%s", repoName))
-	prCmd.Dir = path
-	prCmd.Env = os.Environ()
-
-	out, err := prCmd.CombinedOutput()
+		"--repo", fmt.Sprintf("connectfit-team/%s", repoName)}
+	out, err := runPRCreate(path, args, opt.Draft)
 	if err != nil {
-		// **PR 을 못 열었다고 push 한 것까지 잃지 않는다.**
-		//
-		// gh 인증이 없으면(office 는 SSH 키로 push 하고 API 토큰은 없다)
-		// 여기서 오류를 내고 끝났다. 그러면 브랜치는 올라가 있는데 사람은
-		// 그 이름조차 못 듣는다. 한 번에 열 수 있는 주소를 돌려준다.
+		// PR 을 못 열어도 push 한 것은 잃지 않는다. gh 인증이 없을 수 있고
+		// (office 는 SSH 로 push 한다), 그러면 브랜치만 올라간 채 이름조차
+		// 전해지지 않는다. 바로 열 수 있는 주소를 돌려준다.
 		compare := fmt.Sprintf("https://github.com/connectfit-team/%s/compare/%s?expand=1",
 			repoName, branchName)
 		log.Printf("[GitMgr] [WARN] PR 을 못 열었다 (%v). 브랜치는 올라갔다: %s", err, compare)
@@ -98,10 +112,37 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 	return prURL, nil
 }
 
-// prBody 는 무엇을 왜 바꿨는지 적는다.
-//
-// 예전에는 "automatically generated and verified" 한 줄뿐이라, 받는 사람이
-// diff 를 처음부터 읽어야 했다. 바뀐 파일과 줄 수는 기계가 알고 있다.
+// runPRCreate 는 초안으로 먼저 열어 보고, 초안을 못 여는 저장소면 보통 PR 로 연다.
+// 요금제에 따라 비공개 저장소는 초안을 못 쓴다. 초안 하나 때문에 PR 을 통째로
+// 잃는 것보다 낫다.
+func runPRCreate(path string, args []string, draft bool) ([]byte, error) {
+	if draft {
+		out, err := ghPR(path, append(args, "--draft"))
+		if err == nil {
+			return out, nil
+		}
+		log.Printf("[GitMgr] 초안으로 못 열었다 (%s). 보통 PR 로 연다.", firstLine(string(out)))
+	}
+	return ghPR(path, args)
+}
+
+func ghPR(path string, args []string) ([]byte, error) {
+	cmd := exec.Command("gh", args...)
+	cmd.Dir = path
+	cmd.Env = os.Environ()
+	return cmd.CombinedOutput()
+}
+
+// firstLine 은 첫 줄만 준다. 제목에 쓴다.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return strings.TrimSpace(s)
+}
+
+// prBody 는 바뀐 파일과 줄 수, 커밋 메시지를 적는다. 받는 사람이 diff 를
+// 처음부터 읽지 않아도 되게 한다.
 func prBody(path string) string {
 	var b strings.Builder
 	b.WriteString("Auto-Coder Swarm 이 만든 변경입니다. 사람 검토가 필요합니다.\n\n")
