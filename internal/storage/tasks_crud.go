@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"strings"
+	"regexp"
 	"time"
 )
 
@@ -58,12 +58,12 @@ func (s *Storage) UpdateTaskStatus(id string, status TaskStatus, result, errLog 
 	updates := map[string]interface{}{"status": status, "updated_at": time.Now()}
 	if result != "" {
 		updates["result"] = result
-		// **PR 주소는 pr_url 에도 넣는다.**
+		// 화면의 "PR 열기" 는 pr_url 만 본다. 여기 안 넣으면 작업은 성공인데
+		// 주소는 로그 안에만 남는다.
 		//
-		// result 에만 넣어서 화면의 "PR 열기" 단추가 영영 안 떴다. 작업은
-		// 성공했는데 사람은 그 주소를 로그에서 찾아야 했다.
-		if strings.HasPrefix(result, "http://") || strings.HasPrefix(result, "https://") {
-			updates["pr_url"] = result
+		// 저장소가 여럿이면 result 가 "repo: 주소" 여러 줄이라 주소가 맨 앞이 아니다.
+		if u := urlRe.FindString(result); u != "" {
+			updates["pr_url"] = u
 		}
 	}
 	if errLog != "" {
@@ -96,3 +96,5 @@ func (s *Storage) GetContextState(id string) string {
 	}
 	return task.ContextState
 }
+
+var urlRe = regexp.MustCompile(`https?://[^\s]+`)

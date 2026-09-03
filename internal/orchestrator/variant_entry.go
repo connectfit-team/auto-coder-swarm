@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
+	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
 // 값 추가 요청은 결함 흐름과 길이 다르다.
@@ -39,7 +40,8 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 	}
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_DETECTED",
-		fmt.Sprintf("%s 를 더한다 — %s 가 있는 자리를 따라간다", ask.Value, ask.Seed),
+		fmt.Sprintf("%s 더한다 — %s 있는 자리를 따라간다",
+			korean.With(ask.Value, "을", "를"), korean.With(ask.Seed, "이", "가")),
 		"", askSummary(ask))
 
 	wsPath, err := t.orchestrator.wsMgr.CreateWorkspace()
@@ -84,7 +86,8 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 		if p.Blocks {
 			out[len(out)-1].Halted = true
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_HALT",
-				fmt.Sprintf("%s 가 머지·배포돼야 나머지가 컴파일된다 — 여기서 멈춘다", p.Repo),
+				fmt.Sprintf("%s 머지·배포돼야 나머지가 컴파일된다 — 여기서 멈춘다",
+					korean.With(p.Repo, "이", "가")),
 				"", p.Note)
 			break
 		}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
+	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
 // 값 하나를 더하는 작업을 저장소마다 돈다.
@@ -138,7 +139,7 @@ func verifyRepo(path, repo string) string {
 
 func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.VariantRepoPlan) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s 를 더한다\n\n", req.Label)
+	fmt.Fprintf(&b, "%s 더한다\n\n", korean.With(req.Label, "을", "를"))
 	fmt.Fprintf(&b, "%s 가 있는 자리마다 %s 몫을 나란히 넣는다.\n", req.Seed, req.Value)
 	if p.Note != "" {
 		fmt.Fprintf(&b, "\n%s\n", p.Note)
