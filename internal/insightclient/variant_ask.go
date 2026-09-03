@@ -29,6 +29,8 @@ type VariantAskResult struct {
 	Repos             int               `json:"repos"`
 	Error             string            `json:"error"`
 	Why               string            `json:"why"`
+	// 씨앗이 나오는 저장소를 모두 세고 뺀 이유를 붙인 것.
+	Coverage []RepoVerdict `json:"coverage"`
 }
 
 // VariantAsk 는 요청문을 그대로 넘겨 계획을 받아 온다.
@@ -65,4 +67,14 @@ func (c *Client) VariantAsk(ctx context.Context, request string, exclude []strin
 		return out, err
 	}
 	return out, nil
+}
+
+// RepoVerdict 는 저장소 하나를 왜 넣었는지, 왜 뺐는지다.
+type RepoVerdict struct {
+	Repo     string `json:"repo"`
+	Hits     int    `json:"hits"`
+	GenHits  int    `json:"gen_hits"`
+	Planned  int    `json:"planned"`
+	Reason   string `json:"reason"`
+	Evidence string `json:"evidence"`
 }

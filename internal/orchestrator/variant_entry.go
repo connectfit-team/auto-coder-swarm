@@ -45,6 +45,13 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 		return RunResult{}, false, nil
 	}
 
+	if len(ask.Coverage) > 0 {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_COVERAGE",
+			fmt.Sprintf("%s 가 나오는 저장소 %d개를 봤고 %d개를 고친다",
+				ask.Seed, len(ask.Coverage), len(ask.Plans)),
+			"", coverageTable(ask.Coverage))
+	}
+
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_DETECTED",
 		fmt.Sprintf("%s 더한다 — %s 있는 자리를 따라간다",
 			korean.With(ask.Value, "을", "를"), korean.With(ask.Seed, "이", "가")),
@@ -194,4 +201,21 @@ func (t *taskContext) recordProtoPublish(p insightclient.VariantRepoPlan) Varian
 		fmt.Sprintf("%s 는 make %s 로 배포한다 — PR 이 아니다", p.Repo, p.MakeTarget),
 		"", b.String())
 	return VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual, Inserted: len(p.Changes)}
+}
+
+// coverageTable 은 저장소마다 담았는지, 뺐으면 왜인지 적는다.
+// 뺀 것을 보여 주지 않으면 놓친 것인지 사람이 알 수 없다.
+func coverageTable(vs []insightclient.RepoVerdict) string {
+	var b strings.Builder
+	for _, v := range vs {
+		if v.Planned > 0 {
+			fmt.Fprintf(&b, "담음  %-24s %d곳 (낱말 %d회)\n", v.Repo, v.Planned, v.Hits)
+			continue
+		}
+		fmt.Fprintf(&b, "뺌    %-24s 낱말 %d회 — %s\n", v.Repo, v.Hits, v.Reason)
+		if v.Evidence != "" {
+			fmt.Fprintf(&b, "        %s\n", v.Evidence)
+		}
+	}
+	return b.String()
 }
