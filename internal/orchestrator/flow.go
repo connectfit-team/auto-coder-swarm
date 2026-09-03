@@ -29,6 +29,11 @@ func (t *taskContext) execute() (RunResult, error) {
 		}
 	}
 
+	// 값 추가 요청은 길이 다르다 — 여러 저장소를 나란히 고치고 순서가 강제된다.
+	if res, handled, err := t.tryVariantAddition(); handled {
+		return res, err
+	}
+
 	start := time.Now()
 	if err := t.prepareAnalysis(); err != nil {
 		log.Printf("❌ [ACS] Analysis phase failed for %s: %v", t.taskID, err)
