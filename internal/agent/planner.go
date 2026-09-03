@@ -3,9 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
-	"google.golang.org/adk/model"
 	"regexp"
 	"strings"
+
+	"google.golang.org/adk/model"
 )
 
 type PlannerAgent struct {

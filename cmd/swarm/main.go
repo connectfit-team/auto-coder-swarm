@@ -153,7 +153,7 @@ func main() {
 
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
 
-	store, err := storage.NewStorage(dbPath, rdb)
+	store, err := storage.StorageFromEnv(dbPath, rdb)
 	if err != nil {
 		log.Fatalf("❌ DB init failed: %v", err)
 	}
@@ -165,8 +165,8 @@ func main() {
 	agent.GlobalStorage = store
 
 	// 3. Orchestration Layer
-	ic := insightclient.NewClient(oracleURL, mb)
-	cc := ckhclient.NewClient(ckhURL) // Initialize CKH Client
+	ic := insightclient.ClientFromEnv(oracleURL, mb)
+	cc := ckhclient.ClientFromEnv(ckhURL) // Initialize CKH Client
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 

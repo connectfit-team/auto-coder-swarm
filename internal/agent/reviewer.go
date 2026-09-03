@@ -2,8 +2,9 @@ package agent
 
 import (
 	"context"
-	"google.golang.org/adk/model"
 	"strings"
+
+	"google.golang.org/adk/model"
 )
 
 type ReviewerAgent struct {

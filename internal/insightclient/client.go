@@ -20,10 +20,13 @@ type Client struct {
 	bus     *bus.MessageBus
 }
 
-func NewClient(baseURL string, mb *bus.MessageBus) *Client {
+// NewClient 는 필요한 것을 전부 인자로 받는다.
+// 환경변수를 여기서 읽으면 두 인스턴스를 다른 설정으로 만들 수 없고,
+// 시험에서 갈아끼우려면 환경변수를 건드려야 한다.
+func NewClient(baseURL, apiKey string, mb *bus.MessageBus) *Client {
 	return &Client{
 		baseURL: baseURL,
-		apiKey:  os.Getenv("CIE_API_KEY"),
+		apiKey:  apiKey,
 		hc: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
@@ -149,4 +152,10 @@ func (c *Client) FindCandidates(ctx context.Context, repo, request string, limit
 		return nil, err
 	}
 	return out.Files, nil
+}
+
+// ClientFromEnv 는 조립 지점에서 쓰는 편의 생성자다.
+// 환경변수를 읽는 자리는 여기 하나뿐이다.
+func ClientFromEnv(baseURL string, mb *bus.MessageBus) *Client {
+	return NewClient(baseURL, os.Getenv("CIE_API_KEY"), mb)
 }

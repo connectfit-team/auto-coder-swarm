@@ -3,8 +3,9 @@ package agent
 import (
 	"context"
 	"fmt"
-	"google.golang.org/adk/model"
 	"strings"
+
+	"google.golang.org/adk/model"
 )
 
 type CriticAgent struct {

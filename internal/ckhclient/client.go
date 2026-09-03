@@ -17,11 +17,11 @@ type Client struct {
 	hc      *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, apiKey string) *Client {
 	return &Client{
 		baseURL: baseURL,
 		// CKH 는 키를 검사하지 않는다. 상수를 두면 공개 저장소에 비밀처럼 보이는 값만 남는다.
-		apiKey: os.Getenv("CKH_API_KEY"),
+		apiKey: apiKey,
 		hc: &http.Client{
 			Timeout: 30 * time.Second, // Reduced for interactive responsiveness
 		},
@@ -75,4 +75,9 @@ func (c *Client) GetContextReport(ctx context.Context, workID, taskDesc, repo st
 	}
 	log.Printf("[CKH] Knowledge retrieved for %s", workID)
 	return &result, nil
+}
+
+// ClientFromEnv 는 조립 지점에서 쓰는 편의 생성자다.
+func ClientFromEnv(baseURL string) *Client {
+	return NewClient(baseURL, os.Getenv("CKH_API_KEY"))
 }
