@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -52,7 +53,11 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 
 		changed := false
 		for _, c := range cs {
-			at := c.InsertAfter
+			shift, err := anchorShift(lines, c)
+			if err != nil {
+				return out, fmt.Errorf("%s: %w", rel, err)
+			}
+			at := c.InsertAfter + shift
 			if at < 0 || at > len(lines) {
 				return out, fmt.Errorf("%s:%d 는 파일 범위 밖이다(%d줄)", rel, at, len(lines))
 			}
@@ -67,6 +72,11 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 		if changed {
 			if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 				return out, fmt.Errorf("%s 를 못 썼다: %w", rel, err)
+			}
+			// 정렬된 var·const 묶음에 한 줄을 끼우면 정렬이 깨진다.
+			// 검증이 gofmt 로 막기 전에 여기서 맞춘다.
+			if strings.HasSuffix(rel, ".go") {
+				exec.Command("gofmt", "-w", path).Run()
 			}
 			out.Files = append(out.Files, rel)
 		}
@@ -109,4 +119,36 @@ func stripRepo(path, repo string) string {
 		return path[i+1:]
 	}
 	return path
+}
+
+// 계획은 색인용 사본에서 세우고, 적용은 origin/main 에서 새로 딴 작업공간에서
+// 한다. 사본이 뒤처져 있으면 줄 번호가 어긋나 엉뚱한 자리에 들어간다.
+// 기준 줄이 제자리에 있는지 보고, 옮겨졌으면 그만큼 민다.
+//
+// 같은 규칙이 CIE 에도 있다. 한쪽만 고치면 조용히 어긋난다.
+
+// anchorShift 는 기준 줄이 계획 때와 몇 줄 어긋났는지 준다.
+// 찾을 수 없거나 여러 곳에 있으면 오류다 — 어림짐작으로 넣지 않는다.
+func anchorShift(lines []string, c insightclient.VariantChange) (int, error) {
+	if c.AnchorLine <= 0 || c.Anchor == "" {
+		return 0, nil
+	}
+	want := strings.TrimSpace(c.Anchor)
+	if i := c.AnchorLine - 1; i >= 0 && i < len(lines) && strings.TrimSpace(lines[i]) == want {
+		return 0, nil
+	}
+	found := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) != want {
+			continue
+		}
+		if found >= 0 {
+			return 0, fmt.Errorf("기준 줄 %q 이 여러 곳에 있다 — 어디에 넣을지 모른다", want)
+		}
+		found = i
+	}
+	if found < 0 {
+		return 0, fmt.Errorf("기준 줄 %q 을 못 찾았다 — 사본이 뒤처졌거나 코드가 바뀌었다", want)
+	}
+	return found - (c.AnchorLine - 1), nil
 }

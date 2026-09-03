@@ -19,6 +19,7 @@ type VariantChange struct {
 	InsertAfter int      `json:"insert_after"` // 이 줄 다음에 넣는다(1부터)
 	Block       []string `json:"block"`
 	Anchor      string   `json:"anchor"`
+	AnchorLine  int      `json:"anchor_line"` // 계획을 세울 때 그 줄의 번호(1부터)
 }
 
 // VariantRepoPlan 은 저장소 하나의 작업이다.
