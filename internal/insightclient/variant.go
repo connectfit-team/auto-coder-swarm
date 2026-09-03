@@ -27,10 +27,15 @@ type VariantRepoPlan struct {
 	Repo string `json:"repo"`
 	// 워크트리를 딸 사본의 경로. 서브모듈이면 껍데기 안의 경로다 —
 	// proto-userapis 는 따로 받아 두지 않고 protogen/userapis 로 있다.
-	SourcePath  string          `json:"source_path"`
-	Order       int             `json:"order"`
-	Blocks      bool            `json:"blocks_others"`
-	PushToMain  bool            `json:"push_to_main"`
+	SourcePath string `json:"source_path"`
+	Order      int    `json:"order"`
+	Blocks     bool   `json:"blocks_others"`
+	PushToMain bool   `json:"push_to_main"`
+	// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다.
+	Publish    string `json:"publish"`
+	MakeTarget string `json:"make_target"`
+	// 코드를 고치기 전에 갱신해야 할 의존. 없으면 소비자 PR 이 빌드에서 깨진다.
+	DepBumps    []DepBump       `json:"dep_bumps"`
 	Note        string          `json:"note"`
 	Changes     []VariantChange `json:"changes"`
 	NeedsManual []string        `json:"needs_manual"`
@@ -75,4 +80,12 @@ func (c *Client) VariantPlan(ctx context.Context, req VariantPlanRequest) ([]Var
 		return nil, err
 	}
 	return out.Plans, nil
+}
+
+// DepBump 는 코드를 고치기 전에 갱신해야 할 의존이다.
+type DepBump struct {
+	Kind   string `json:"kind"` // go | pubspec | vendored
+	File   string `json:"file"`
+	Module string `json:"module"`
+	From   string `json:"from"`
 }

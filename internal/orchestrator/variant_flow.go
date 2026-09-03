@@ -138,6 +138,12 @@ func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.
 	if p.Note != "" {
 		fmt.Fprintf(&b, "\n%s\n", p.Note)
 	}
+	if len(p.DepBumps) > 0 {
+		b.WriteString("\n이 변경이 컴파일되려면 먼저 갱신해야 한다:\n")
+		for _, d := range p.DepBumps {
+			fmt.Fprintf(&b, "  %s\n", depBumpLine(d))
+		}
+	}
 	if len(p.NeedsManual) > 0 {
 		fmt.Fprintf(&b, "\n저장소에 없는 이름이 있다 — 사람이 채워야 한다:\n")
 		for _, n := range p.NeedsManual {
@@ -164,4 +170,17 @@ func firstLineOf(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// depBumpLine 은 무엇을 어떻게 갱신해야 하는지 한 줄로 적는다.
+func depBumpLine(d insightclient.DepBump) string {
+	switch d.Kind {
+	case "go":
+		return fmt.Sprintf("%s — go get %s@<새 커밋> (%s 배포 뒤)", d.File, d.Module, d.From)
+	case "pubspec":
+		return fmt.Sprintf("%s — %s 의 ref 를 새 태그로 (%s 배포 뒤)", d.File, d.Module, d.From)
+	case "vendored":
+		return fmt.Sprintf("%s — %s 에서 다시 생성해 넣는다 (protogen 의 make)", d.File, d.Module)
+	}
+	return d.File + " — " + d.Module
 }
