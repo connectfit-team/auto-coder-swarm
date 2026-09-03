@@ -90,6 +90,15 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 	var blockers []string
 
 	for _, p := range plans {
+		if p.Publish == "protogen-make" {
+			// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다.
+			// 그것이 컴파일·커밋·push 를 한다. 여기서 PR 을 열면 안 된다.
+			out = append(out, t.recordProtoPublish(p))
+			blockers = append(blockers,
+				fmt.Sprintf("%s — protogen 에서 `make %s` (사람이 돌린다)", p.Repo, p.MakeTarget))
+			continue
+		}
+
 		r := t.applyOneRepo(p, req, blockers)
 		out = append(out, r)
 
@@ -167,4 +176,22 @@ func firstError(rs []VariantResult) string {
 		}
 	}
 	return "넣을 것이 하나도 없었다"
+}
+
+// recordProtoPublish 는 proto 를 어떻게 배포해야 하는지 남긴다.
+// 실제 배포는 사람이 protogen 에서 make 로 한다 — 그것이 main 에 바로 민다.
+func (t *taskContext) recordProtoPublish(p insightclient.VariantRepoPlan) VariantResult {
+	var b strings.Builder
+	fmt.Fprintf(&b, "protogen 에서 `make %s` 을 돌린다. 그것이 컴파일·커밋·push 를 한다.\n", p.MakeTarget)
+	b.WriteString("넣을 것:\n")
+	for _, c := range p.Changes {
+		fmt.Fprintf(&b, "  %s:%d 다음에\n", c.File, c.InsertAfter)
+		for _, l := range c.Block {
+			fmt.Fprintf(&b, "    %s\n", l)
+		}
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PROTO_PUBLISH",
+		fmt.Sprintf("%s 는 make %s 로 배포한다 — PR 이 아니다", p.Repo, p.MakeTarget),
+		"", b.String())
+	return VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual, Inserted: len(p.Changes)}
 }
