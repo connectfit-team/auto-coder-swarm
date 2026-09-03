@@ -158,6 +158,9 @@ func resultSummary(rs []VariantResult) string {
 	var b strings.Builder
 	for _, r := range rs {
 		fmt.Fprintf(&b, "%s — 넣음 %d · 건너뜀 %d", r.Repo, r.Inserted, r.Skipped)
+		if len(r.Unverified) > 0 {
+			fmt.Fprintf(&b, " · 문법 확인 못 함: %s", strings.Join(r.Unverified, " "))
+		}
 		if r.PRURL != "" {
 			fmt.Fprintf(&b, " · %s", r.PRURL)
 		}
