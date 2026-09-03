@@ -23,7 +23,10 @@ type VariantChange struct {
 
 // VariantRepoPlan 은 저장소 하나의 작업이다.
 type VariantRepoPlan struct {
-	Repo        string          `json:"repo"`
+	Repo string `json:"repo"`
+	// 워크트리를 딸 사본의 경로. 서브모듈이면 껍데기 안의 경로다 —
+	// proto-userapis 는 따로 받아 두지 않고 protogen/userapis 로 있다.
+	SourcePath  string          `json:"source_path"`
 	Order       int             `json:"order"`
 	Blocks      bool            `json:"blocks_others"`
 	PushToMain  bool            `json:"push_to_main"`

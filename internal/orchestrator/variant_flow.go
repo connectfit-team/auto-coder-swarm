@@ -72,7 +72,13 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 
 	branch := fmt.Sprintf("feat/add-%s-%s", req.Value, t.taskID)
 	repoPath := filepath.Join(t.wsPath, p.Repo)
-	if err := t.orchestrator.wsMgr.CreateWorktree(p.Repo, repoPath, branch); err != nil {
+
+	// 사본 경로가 저장소 이름과 다를 수 있다 — 서브모듈이 그렇다.
+	source := p.SourcePath
+	if source == "" {
+		source = p.Repo
+	}
+	if err := t.orchestrator.wsMgr.CreateWorktree(source, repoPath, branch); err != nil {
 		r.Err = fmt.Sprintf("작업공간을 못 만들었다: %v", err)
 		return r
 	}
