@@ -110,7 +110,14 @@ func (t *taskContext) execute() (RunResult, error) {
 	// 사람에게 넘기면 5초면 판정할 일을, 아무것도 안 남기고 실패로 끝내면
 	// 고친 것과 그 논쟁이 함께 사라진다. 고친 것이 남아 있으면 검토자의
 	// 반대를 붙여 승인 대기로 보낸다.
-	if diff := t.currentDiff(); diff != "" {
+	// 반려는 작업공간을 되돌린다. 그래서 마지막 시도가 반려되면 여기 오기
+	// 전에 고친 것이 사라져, 바로 아래의 "버리지 않는다" 가 무력해진다 —
+	// 실측으로 그렇게 끝난 실패가 4건이었다. 되돌리기 직전에 남겨 둔 것을 쓴다.
+	diff := t.currentDiff()
+	if diff == "" {
+		diff = t.lastRejectedDiff
+	}
+	if diff != "" {
 		log.Printf("⚖️ [ACS] Task %s: 검토자와 뜻이 다릅니다. 사람 판단으로 넘깁니다.", t.taskID)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HANDOVER_TO_HUMAN",
 			"검토자가 반대했지만 고친 내용이 남아 있어 사람 판단으로 넘깁니다",

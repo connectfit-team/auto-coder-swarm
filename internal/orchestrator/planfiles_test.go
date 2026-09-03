@@ -14,12 +14,12 @@ func TestSplitByRepoReality(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "src/lib/server/db/attendance.ts"), []byte("x"), 0o644)
 
 	changes := []agent.FileChange{
-		{FilePath: "src/lib/server/db/attendance.ts"}, // 있다
-		{FilePath: "src/lib/server/db/workplace.ts"},  // 없지만 폴더는 있다 — 새 파일
+		{FilePath: "src/lib/server/db/attendance.ts"},                     // 있다
+		{FilePath: "src/lib/server/db/workplace.ts"},                      // 없지만 폴더는 있다 — 새 파일
 		{FilePath: "statistics/internal/event-synchronizer/workplace.go"}, // 다른 저장소
-		{FilePath: "/etc/passwd"},        // 저장소 밖
-		{FilePath: "../other/thing.ts"},  // 저장소 밖
-		{FilePath: ""},                   // 빈 경로
+		{FilePath: "/etc/passwd"},                                         // 저장소 밖
+		{FilePath: "../other/thing.ts"},                                   // 저장소 밖
+		{FilePath: ""},                                                    // 빈 경로
 	}
 	kept, dropped := splitByRepoReality(repo, changes)
 	if len(kept) != 2 {
