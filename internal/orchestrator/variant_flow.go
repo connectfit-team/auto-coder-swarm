@@ -53,6 +53,13 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
 
+	if url := existingVariantPR(p.Repo, req.Value); url != "" {
+		r.PRURL = url
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PR_EXISTS",
+			fmt.Sprintf("%s 에는 같은 PR 이 이미 열려 있다 — 그것을 쓴다", p.Repo), "", url)
+		return r
+	}
+
 	branch := fmt.Sprintf("feat/add-%s-%s", req.Value, t.taskID)
 	repoPath := filepath.Join(t.wsPath, p.Repo)
 
