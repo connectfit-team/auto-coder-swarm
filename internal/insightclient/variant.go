@@ -1,0 +1,74 @@
+package insightclient
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+// 값 하나를 더하는 작업의 계획을 CIE 에서 받아 온다.
+//
+// 계획을 만드는 규칙은 CIE 에만 있다. 여기서 따로 만들면 두 규칙이 어긋나고,
+// 어긋난 쪽이 조용히 틀린 PR 을 연다.
+
+// VariantChange 는 파일 한 곳에 넣을 것이다.
+type VariantChange struct {
+	File        string   `json:"file"`         // 저장소 이름을 포함한 경로
+	InsertAfter int      `json:"insert_after"` // 이 줄 다음에 넣는다(1부터)
+	Block       []string `json:"block"`
+	Anchor      string   `json:"anchor"`
+}
+
+// VariantRepoPlan 은 저장소 하나의 작업이다.
+type VariantRepoPlan struct {
+	Repo        string          `json:"repo"`
+	Order       int             `json:"order"`
+	Blocks      bool            `json:"blocks_others"`
+	PushToMain  bool            `json:"push_to_main"`
+	Note        string          `json:"note"`
+	Changes     []VariantChange `json:"changes"`
+	NeedsManual []string        `json:"needs_manual"`
+}
+
+// VariantPlanRequest 는 무엇을 더할지다.
+type VariantPlanRequest struct {
+	Seed    string   `json:"seed"`
+	Value   string   `json:"value"`
+	Label   string   `json:"label"`
+	Peers   []string `json:"peers,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
+}
+
+// VariantPlan 은 저장소별 작업 계획을 순서대로 받아 온다.
+func (c *Client) VariantPlan(ctx context.Context, req VariantPlanRequest) ([]VariantRepoPlan, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/api/v1/variant/plan", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.hc.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("계획 요청 실패: HTTP %d", resp.StatusCode)
+	}
+
+	var out struct {
+		Plans []VariantRepoPlan `json:"plans"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Plans, nil
+}
