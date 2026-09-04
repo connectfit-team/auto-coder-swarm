@@ -70,6 +70,11 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 			changed = true
 		}
 		if changed {
+			// 조각을 잘못 복사하면 거의 언제나 괄호 균형이 어긋난다.
+			// 언어를 몰라도 잡을 수 있는 검사라, 파서가 없는 Dart·TS 에도 듣는다.
+			if msg := balanceShift(string(b), strings.Join(lines, "\n")); msg != "" {
+				return out, fmt.Errorf("%s: %s", rel, msg)
+			}
 			if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 				return out, fmt.Errorf("%s 를 못 썼다: %w", rel, err)
 			}
@@ -151,4 +156,20 @@ func anchorShift(lines []string, c insightclient.VariantChange) (int, error) {
 		return 0, fmt.Errorf("기준 줄 %q 을 못 찾았다 — 사본이 뒤처졌거나 코드가 바뀌었다", want)
 	}
 	return found - (c.AnchorLine - 1), nil
+}
+
+// 괄호 균형은 파일마다 원래 값이 있다 — 문자열이나 주석 안의 괄호 때문이다.
+// 그 값이 넣기 전후로 같아야 한다. 0 이 아니어도 상관없다.
+
+// balanceShift 는 넣기 전후의 괄호 균형이 달라졌으면 그 까닭을 준다.
+func balanceShift(before, after string) string {
+	for _, pair := range []struct{ open, close byte }{{'{', '}'}, {'(', ')'}, {'[', ']'}} {
+		b := strings.Count(before, string(pair.open)) - strings.Count(before, string(pair.close))
+		a := strings.Count(after, string(pair.open)) - strings.Count(after, string(pair.close))
+		if a != b {
+			return fmt.Sprintf("%c%c 균형이 %d 에서 %d 로 바뀌었다 — 넣은 조각이 온전하지 않다",
+				pair.open, pair.close, b, a)
+		}
+	}
+	return ""
 }
