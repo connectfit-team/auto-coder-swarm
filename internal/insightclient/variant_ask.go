@@ -31,6 +31,8 @@ type VariantAskResult struct {
 	Why               string            `json:"why"`
 	// 씨앗이 나오는 저장소를 모두 세고 뺀 이유를 붙인 것.
 	Coverage []RepoVerdict `json:"coverage"`
+	// 요청문이 지목한 저장소. 있으면 거기만 고친다.
+	NamedRepos []string `json:"named_repos"`
 }
 
 // VariantAsk 는 요청문을 그대로 넘겨 계획을 받아 온다.
