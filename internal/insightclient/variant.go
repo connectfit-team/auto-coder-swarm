@@ -35,10 +35,12 @@ type VariantRepoPlan struct {
 	Publish    string `json:"publish"`
 	MakeTarget string `json:"make_target"`
 	// 코드를 고치기 전에 갱신해야 할 의존. 없으면 소비자 PR 이 빌드에서 깨진다.
-	DepBumps    []DepBump       `json:"dep_bumps"`
-	Note        string          `json:"note"`
-	Changes     []VariantChange `json:"changes"`
-	NeedsManual []string        `json:"needs_manual"`
+	DepBumps []DepBump `json:"dep_bumps"`
+	// 이미 값이 들어 있어 넣을 것이 없던 자리. 절반만 적용된 상태를 알린다.
+	AlreadyThere int             `json:"already_there"`
+	Note         string          `json:"note"`
+	Changes      []VariantChange `json:"changes"`
+	NeedsManual  []string        `json:"needs_manual"`
 }
 
 // VariantPlanRequest 는 무엇을 더할지다.

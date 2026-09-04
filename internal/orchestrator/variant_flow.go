@@ -164,6 +164,9 @@ func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.
 	if p.Note != "" {
 		fmt.Fprintf(&b, "\n%s\n", p.Note)
 	}
+	if p.AlreadyThere > 0 {
+		fmt.Fprintf(&b, "\n%d곳은 이미 값이 들어 있어 건드리지 않았다.\n", p.AlreadyThere)
+	}
 	if len(p.DepBumps) > 0 {
 		b.WriteString("\n이 변경이 컴파일되려면 먼저 갱신해야 한다:\n")
 		for _, d := range p.DepBumps {
@@ -183,6 +186,9 @@ func planSummaryText(plans []insightclient.VariantRepoPlan) string {
 	var b strings.Builder
 	for _, p := range plans {
 		fmt.Fprintf(&b, "%d) %s — 자리 %d곳", p.Order, p.Repo, len(p.Changes))
+		if p.AlreadyThere > 0 {
+			fmt.Fprintf(&b, " (이미 있음 %d곳)", p.AlreadyThere)
+		}
 		if p.Blocks {
 			b.WriteString(" (이게 먼저 배포돼야 함)")
 		}

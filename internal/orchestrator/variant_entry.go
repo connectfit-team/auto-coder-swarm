@@ -143,6 +143,9 @@ func askSummary(ask insightclient.VariantAskResult) string {
 	fmt.Fprintf(&b, "씨앗 %s · 더할 값 %s (%s)\n", ask.Seed, ask.Value, ask.Label)
 	for _, p := range ask.Plans {
 		fmt.Fprintf(&b, "%d) %s — 자리 %d곳", p.Order, p.Repo, len(p.Changes))
+		if p.AlreadyThere > 0 {
+			fmt.Fprintf(&b, " (이미 있음 %d곳)", p.AlreadyThere)
+		}
 		if p.Blocks {
 			b.WriteString(" (이게 먼저 배포돼야 함)")
 		}
