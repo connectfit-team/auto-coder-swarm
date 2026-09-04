@@ -45,6 +45,12 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 		return RunResult{}, false, nil
 	}
 
+	if len(ask.NamedRepos) > 0 {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_SCOPE",
+			fmt.Sprintf("요청이 저장소를 지목했다 — %s 만 고친다",
+				strings.Join(ask.NamedRepos, ", ")),
+			"", "proto 는 지목되지 않았어도 배포돼야 나머지가 컴파일된다.")
+	}
 	if len(ask.Coverage) > 0 {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_COVERAGE",
 			fmt.Sprintf("%s 가 나오는 저장소 %d개를 봤고 %d개를 고친다",
