@@ -3,8 +3,10 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +30,9 @@ type VariantResult struct {
 	Skipped     int
 	NeedsManual []string
 	Err         string
+	// 이 기계에 도구가 없어 문법을 확인하지 못한 언어. 확인했다고 침묵하면
+	// 받는 사람이 검증된 줄 안다.
+	Unverified []string
 }
 
 const variantPlanTimeout = 3 * time.Minute
@@ -87,10 +92,11 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 
-	if msg := verifyRepo(repoPath, p.Repo); msg != "" {
+	if msg := verifyRepo(repoPath, r.Files); msg != "" {
 		r.Err = fmt.Sprintf("검증 실패: %s", msg)
 		return r
 	}
+	r.Unverified = unverifiedKinds(r.Files)
 
 	msg := variantCommitMessage(req, p)
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
@@ -108,25 +114,45 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 	return r
 }
 
-// verifyRepo 는 볼 수 있는 것만 본다. 못 보는 것은 통과시킨다 —
-// 검증 못 한 것을 실패로 적으면 멀쩡한 PR 이 막힌다.
-func verifyRepo(path, repo string) string {
-	if _, err := exec.LookPath("gofmt"); err == nil {
-		cmd := exec.Command("bash", "-c",
-			`find . -name '*.go' -not -path './vendor/*' -print0 | xargs -0 -r gofmt -e -l`)
-		cmd.Dir = path
-		if b, err := cmd.CombinedOutput(); err == nil && len(strings.TrimSpace(string(b))) > 0 {
-			return "gofmt 가 읽지 못하는 파일: " + firstLineOf(string(b))
+// verifyRepo 는 우리가 고친 파일만 본다.
+//
+// 저장소 전체를 보면 원래 포맷이 안 맞던 남의 파일 때문에 멀쩡한 PR 이 막힌다
+// (worker 의 internal/push/sender.go 가 그랬다).
+//
+// 함정: gofmt 는 문법 오류가 있으면 종료 코드가 0이 아니다. 그것을 "검증
+// 못 함" 으로 보고 넘기면, 잡으라고 만든 경우가 정확히 빠진다.
+// 종료 코드가 아니라 출력이 있는지로 판단한다.
+func verifyRepo(path string, files []string) string {
+	for _, f := range files {
+		switch filepath.Ext(f) {
+		case ".go":
+			if _, err := exec.LookPath("gofmt"); err != nil {
+				continue
+			}
+			cmd := exec.Command("gofmt", "-e", "-l", f)
+			cmd.Dir = path
+			b, _ := cmd.CombinedOutput()
+			if len(strings.TrimSpace(string(b))) > 0 {
+				return "gofmt 가 읽지 못한다: " + firstLineOf(string(b))
+			}
+		case ".proto":
+			if msg := braceBalance(filepath.Join(path, f)); msg != "" {
+				return msg
+			}
 		}
 	}
-	// proto 는 중괄호가 맞는지만 본다. protoc 은 여기 없다.
-	cmd := exec.Command("bash", "-c",
-		`for f in $(find . -name '*.proto'); do `+
-			`a=$(grep -o '{' "$f"|wc -l); b=$(grep -o '}' "$f"|wc -l); `+
-			`[ "$a" = "$b" ] || echo "$f"; done`)
-	cmd.Dir = path
-	if b, err := cmd.CombinedOutput(); err == nil && len(strings.TrimSpace(string(b))) > 0 {
-		return "중괄호가 안 맞는 proto: " + firstLineOf(string(b))
+	return ""
+}
+
+// braceBalance 는 중괄호 짝이 맞는지만 본다. protoc 은 여기 없다.
+func braceBalance(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	text := string(b)
+	if strings.Count(text, "{") != strings.Count(text, "}") {
+		return "중괄호가 안 맞는다: " + filepath.Base(path)
 	}
 	return ""
 }
@@ -183,4 +209,36 @@ func depBumpLine(d insightclient.DepBump) string {
 		return fmt.Sprintf("%s — %s 에서 다시 생성해 넣는다 (protogen 의 make)", d.File, d.Module)
 	}
 	return d.File + " — " + d.Module
+}
+
+// 확인할 수 있는 언어와, 그 도구가 있어야 확인이 되는 것.
+var syntaxTool = map[string]string{
+	".go": "gofmt", ".dart": "dart", ".ts": "tsc", ".svelte": "tsc",
+}
+
+// unverifiedKinds 는 고친 파일 가운데 문법을 확인하지 못한 확장자를 준다.
+func unverifiedKinds(files []string) []string {
+	var out []string
+	for _, f := range files {
+		ext := filepath.Ext(f)
+		tool, ok := syntaxTool[ext]
+		if !ok {
+			continue
+		}
+		if _, err := exec.LookPath(tool); err == nil {
+			continue
+		}
+		out = appendOnceStr(out, ext)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func appendOnceStr(xs []string, x string) []string {
+	for _, v := range xs {
+		if v == x {
+			return xs
+		}
+	}
+	return append(xs, x)
 }
