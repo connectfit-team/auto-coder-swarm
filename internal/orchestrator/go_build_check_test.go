@@ -56,3 +56,33 @@ func TestNeedsManualNameIsExpected(t *testing.T) {
 		}
 	}
 }
+
+// 알림 문장에서 낱말을 아무거나 뽑으면 흔한 낱말이 섞여 들어와
+// 우리 편집이 틀려서 난 오류까지 덮는다.
+func TestPendingSymbolsTakesOnlyNames(t *testing.T) {
+	plans := []insightclient.VariantRepoPlan{
+		{
+			Repo: "proto-gigpointapis", Publish: "protogen-make",
+			Changes: []insightclient.VariantChange{{
+				Block: []string{"  // 쿠폰 사용 완료", "  COUPON_STATUS_REFUNDED = 5;"},
+			}},
+		},
+		{
+			Repo: "cms", Publish: "pr",
+			NeedsManual: []string{
+				"refundedPrice",
+				"cms/a.svelte:141 — 설명이 consumed 것 그대로다: \"쿠폰 사용됨\"",
+			},
+		},
+	}
+	got := PendingSymbols(plans)
+	want := map[string]bool{"COUPON_STATUS_REFUNDED": true, "refundedPrice": true}
+	for _, g := range got {
+		if !want[g] {
+			t.Errorf("이름이 아닌 것을 담았다: %q (전체 %v)", g, got)
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("담은 이름 = %v, 둘이어야 한다", got)
+	}
+}
