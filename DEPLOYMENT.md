@@ -27,7 +27,8 @@ Dart SDK 는 여기서 받지 않는다. `~/tools/dart-sdk` 에 풀거나 `DART_
 
 | 이름 | 몫 | 기본값 |
 |---|---|---|
-| `SWARM_API_KEY` | API·대시보드 열쇠 | (없음 — 비면 인증이 없다) |
+| `SWARM_API_KEY` | API·대시보드 열쇠 | (없음 — **비면 인증이 없다**) |
+| `SWARM_REQUIRE_API_KEY` | 주면 열쇠 없이는 뜨지 않는다 | (없음) |
 | `LISTEN_ADDR` | API·대시보드 주소 | `:8006` |
 | `ORACLE_URL` | code-insight-engine | `http://localhost:8005` |
 | `CIE_API_KEY` | CIE 열쇠 | (없음) |
@@ -50,6 +51,17 @@ Dart SDK 는 여기서 받지 않는다. `~/tools/dart-sdk` 에 풀거나 `DART_
 
 쓰는 모델 이름은 env 가 아니라 DB 설정값 `primary_model` 이다(없으면 `gemma4:31b`).
 대시보드에서 바꾼다.
+
+**함정 — 열쇠를 정하지 않으면 8006 이 열려 있다.** `checkAuth` 는 열쇠가
+정해지지 않으면 모두 통과시킨다. 이 API 로 만든 작업은 저장소를 고치고 PR 을
+연다. 열쇠는 두 곳에서 정할 수 있다.
+
+1. 대시보드 설정 화면 — 넣으면 DB 에 저장되고 다시 떠도 유지된다
+2. 드롭인 `Environment="SWARM_API_KEY=..."` — env 가 DB 보다 앞선다
+
+정하고 나면 REST 클라이언트는 `X-API-Key` 를 붙이고, 브라우저는 `/unlock` 에서
+한 번 넣는다. office-bridge 는 이미 `BRIDGE_APIKEY_ACS` 로 붙여 보내므로
+그 값과 같게 두면 cms → 브리지 → ACS 는 그대로 돈다.
 
 **함정 — `CIE_API_KEY` 가 없으면 값 추가 흐름이 통째로 서지 않는다.** CIE 가 401 을 주고
 작업은 거기서 멈춘다. 전에는 그 401 을 "값 추가 요청이 아니다" 로 삼켜서, 설정 문제가

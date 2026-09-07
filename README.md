@@ -3,7 +3,7 @@
 요청 하나를 받아 **필요한 저장소를 모두 고치고 PR 을 여는** 서비스다.
 어디를 고쳐야 하는지는 code-insight-engine(CIE)이 찾고, ACS 가 적용한다.
 
-- 들어오는 곳: `POST /api/v1/tasks`, `POST /api/v1/chat` (`X-API-Key`) — 명세는 [API_SPEC.md](./API_SPEC.md)
+- 들어오는 곳: `POST /api/v1/tasks`, `POST /api/v1/chat` (`X-API-Key`, 브라우저는 `/unlock`) — 명세는 [API_SPEC.md](./API_SPEC.md)
 - 도는 곳: systemd `auto-coder-swarm.service`, 포트 8006, 작업자 3
 - 저장소 사본: `MASTER_REPOS_PATH`(기본 `/home/cnf/cie-repos`) → 작업마다 `/tmp/swarm_ws_*` 아래 워크트리
 
