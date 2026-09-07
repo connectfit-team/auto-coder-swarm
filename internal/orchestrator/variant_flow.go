@@ -179,8 +179,8 @@ func verifyRepo(path string, files, skip []string) string {
 				return "gofmt 가 읽지 못한다: " + firstLineOf(string(b))
 			}
 		case ".dart":
-			if !dartParses(path, f) {
-				return "Dart 로 읽히지 않는다: " + f
+			if msg := dartParses(filepath.Join(path, f)); msg != "" {
+				return msg
 			}
 		case ".ts", ".js", ".mjs", ".svelte":
 			if msg := nodeParses(filepath.Join(path, f)); msg != "" {

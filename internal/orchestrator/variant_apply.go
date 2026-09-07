@@ -250,8 +250,8 @@ func insertBreaksSyntax(path, rel, before string, after []string, parsedBefore b
 			return "Go 로 읽히지 않는다: " + firstLineOf(string(b))
 		}
 	case ".dart":
-		if !dartParsesFile(tmp) {
-			return "Dart 로 읽히지 않는다"
+		if msg := dartParses(tmp); msg != "" {
+			return msg
 		}
 	case ".ts", ".js", ".mjs", ".svelte":
 		if msg := nodeParses(tmp); msg != "" {
@@ -269,7 +269,7 @@ func fileParses(path, rel string) bool {
 		b, _ := exec.Command("gofmt", "-e", "-l", path).CombinedOutput()
 		return !(strings.Contains(string(b), path) && strings.Contains(string(b), ":"))
 	case ".dart":
-		return dartParsesFile(path)
+		return dartParses(path) == ""
 	case ".ts", ".js", ".mjs", ".svelte":
 		return nodeParses(path) == ""
 	}

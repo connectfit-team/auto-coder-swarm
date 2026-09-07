@@ -16,25 +16,34 @@ echo "===================================="
 
 # 1. Git Pull
 echo ""
-echo "[1/4] Git Pull (branch: $BRANCH)..."
+echo "[1/5] Git Pull (branch: $BRANCH)..."
 git fetch origin
 git reset --hard "origin/$BRANCH"
 HASH=$(git rev-parse --short HEAD)
 
 # 2. Go Deps + Build
 echo ""
-echo "[2/4] Building..."
+echo "[2/5] Building..."
 go mod tidy 2>&1
 go build -o "$BIN" ./cmd/swarm/main.go 2>&1
 echo "  → Build OK ($(du -h $BIN | cut -f1))"
 
-# 3. Systemd File Update (Optional)
+# 3. 문법 검사기
+#
+# 검사기가 없으면 그 언어의 검사가 사라지는데, 사라진 것이 통과처럼 보인다.
+# 배포마다 깔고 살아 있는지 확인한다. 실패해도 배포는 멈추지 않는다 —
+# PR 은 그것을 "문법 확인 못 함" 으로 알린다.
+echo ""
+echo "[3/5] Syntax checkers..."
+bash scripts/install-checkers.sh || true
+
+# 4. Systemd File Update (Optional)
 sudo cp scripts/auto-coder-swarm.service /etc/systemd/system/ 2>/dev/null || true
 sudo systemctl daemon-reload
 
-# 4. Restart
+# 5. Restart
 echo ""
-echo "[4/4] Restarting systemd service..."
+echo "[5/5] Restarting systemd service..."
 sudo systemctl restart "$SERVICE"
 
 echo ""
