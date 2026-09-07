@@ -1,61 +1,110 @@
-# 🚀 Deployment Guide: Auto-Coder Swarm
+# 설치와 배포 — Auto-Coder Swarm
 
-이 문서는 Auto-Coder Swarm을 새로운 서버에 설치하고 실행하기 위한 가이드를 제공합니다.
+## 1. 필요한 것
 
-## 1. Prerequisites (사전 준비)
-- **Go**: 1.25.0 이상
-- **gh CLI**: GitHub PR 생성을 위해 필요
-- **Ollama**: 에이전트 브레인(LLM) 구동을 위해 필요
-- **Code-Insight Engine**: 코드 분석을 담당하는 오라클 서버
+| 것 | 왜 | 없으면 |
+|---|---|---|
+| Go 1.25+ | 빌드 | — |
+| gh CLI (로그인된 상태) | PR 을 열고, 같은 PR 이 이미 있는지 본다 | PR 을 못 연다 |
+| NATS (JetStream) | 작업 사이 신호(`SWARM_EVENTS` 스트림) | **서비스가 뜨지 않는다** — `main` 이 여기서 멈춘다 |
+| Redis | 조회 캐시 | 뜨기는 한다 |
+| RabbitMQ | `LLM_DIRECT_URL` 이 없을 때 모델을 큐로 부른다 | 모델을 못 부른다 |
+| code-insight-engine (:8005) | 어디를 고칠지 찾는다 | 값 추가 흐름이 멈춘다 |
+| corporate-knowledge-hub (:8007) | 도메인 지식 | 그 조회만 빈다 |
+| Dart SDK · node + 파서 | Dart·TS·Svelte 문법 검사 | 그 언어는 "확인 못 함" 으로 적힌다 |
 
-## 2. Setup Steps (설치 단계)
+문법 검사기는 저장소가 들고 있다:
 
-### 1) Repository Clone
 ```bash
-git clone https://github.com/connectfit-team/auto-coder-swarm.git
-cd auto-coder-swarm
+bash scripts/install-checkers.sh   # ~/tools/tsparse 에 깔고, 살아 있는지 확인한다
 ```
 
-### 2) Environment Configuration
-`.env.example` 파일을 복사하여 `.env` 파일을 생성하고 본인의 환경에 맞게 수정합니다.
-```bash
-cp .env.example .env
-# .env 파일 내의 MASTER_REPOS_PATH, ORACLE_URL 등을 수정하세요.
-```
+Dart SDK 는 여기서 받지 않는다. `~/tools/dart-sdk` 에 풀거나 `DART_BIN` 으로 알려 준다.
 
-### 3) Export Variables
-현재 세션에서 환경변수를 로드합니다 (또는 시스템 환경변수에 등록).
-```bash
-export $(grep -v '^#' .env | xargs)
-```
+## 2. 설정값
 
-### 4) Systemd Service Setup
-`scripts/auto-coder-swarm.service` 파일을 `/etc/systemd/system/`으로 복사하여 데몬으로 등록합니다.
+`.env.example` 을 복사해 쓴다. 기본값은 코드에 있는 그대로다.
+
+| 이름 | 몫 | 기본값 |
+|---|---|---|
+| `SWARM_API_KEY` | API·대시보드 열쇠 | (없음 — **비면 인증이 없다**) |
+| `SWARM_REQUIRE_API_KEY` | 주면 열쇠 없이는 뜨지 않는다 | (없음) |
+| `LISTEN_ADDR` | API·대시보드 주소 | `:8006` |
+| `ORACLE_URL` | code-insight-engine | `http://localhost:8005` |
+| `CIE_API_KEY` | CIE 열쇠 | (없음) |
+| `CKH_URL` | corporate-knowledge-hub | `http://localhost:8007` |
+| `CKH_API_KEY` | CKH 열쇠 | (없음) |
+| `NATS_URL` | 신호 버스 | `nats://localhost:4222` |
+| `REDIS_ADDR` | 캐시 | `localhost:6379` |
+| `AMQP_URL` | LLM 큐 | `amqp://guest:guest@192.168.120.54:5672/` |
+| `LLM_DIRECT_URL` | 있으면 큐를 거치지 않고 이 주소에 직접 묻는다 | (없음) |
+| `LLM_API_URL` · `LLM_API_KEY` | 대시보드가 모델 목록을 볼 주소 | (없음) |
+| `LLM_JUDGE_TEMPERATURE` | 판정 온도 — 판정은 흔들리면 안 된다 | `0` |
+| `LLM_MAX_TOKENS` | 한 번에 받을 최대 길이 | `4096` |
+| `MASTER_REPOS_PATH` | 저장소 사본이 있는 곳 | `/home/cnf/cie-repos` |
+| `WORKSPACE_BASE_PATH` | 작업용 워크트리를 만들 곳 | `/tmp` |
+| `SWARM_DB_PATH` | SQLite 파일 | `./swarm.db` |
+| `DATABASE_DSN` | 주면 SQLite 대신 이 DB 를 쓴다 | (없음) |
+| `TEMPLATES_PATH` | 대시보드 템플릿 | `./web/templates` |
+| `SLACK_WEBHOOK_URL` | 끝났을 때 알릴 곳 | (없음) |
+| `DART_BIN` · `TS_PARSER` | 문법 검사기 경로를 직접 줄 때 | 자동으로 찾는다 |
+
+쓰는 모델 이름은 env 가 아니라 DB 설정값 `primary_model` 이다(없으면 `gemma4:31b`).
+대시보드에서 바꾼다.
+
+**함정 — 열쇠를 정하지 않으면 8006 이 열려 있다.** `checkAuth` 는 열쇠가
+정해지지 않으면 모두 통과시킨다. 이 API 로 만든 작업은 저장소를 고치고 PR 을
+연다. 열쇠는 두 곳에서 정할 수 있다.
+
+1. 대시보드 설정 화면 — 넣으면 DB 에 저장되고 다시 떠도 유지된다
+2. 드롭인 `Environment="SWARM_API_KEY=..."` — env 가 DB 보다 앞선다
+
+정하고 나면 REST 클라이언트는 `X-API-Key` 를 붙이고, 브라우저는 `/unlock` 에서
+한 번 넣는다. office-bridge 는 이미 `BRIDGE_APIKEY_ACS` 로 붙여 보내므로
+그 값과 같게 두면 cms → 브리지 → ACS 는 그대로 돈다.
+
+**함정 — `CIE_API_KEY` 가 없으면 값 추가 흐름이 통째로 서지 않는다.** CIE 가 401 을 주고
+작업은 거기서 멈춘다. 전에는 그 401 을 "값 추가 요청이 아니다" 로 삼켜서, 설정 문제가
+판단 문제로 위장돼 엉뚱한 흐름이 조용히 돌았다.
+
+## 3. systemd
+
 ```bash
 sudo cp scripts/auto-coder-swarm.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable auto-coder-swarm
+sudo systemctl daemon-reload && sudo systemctl enable --now auto-coder-swarm
 ```
 
-### 5) Build & Run
-이후부터는 `deploy.sh`를 활용하거나 직접 systemctl 명령으로 관리합니다.
+열쇠는 유닛 파일에 두지 않는다. 사무실 기계에서는 드롭인으로 준다:
+
+```
+/etc/systemd/system/auto-coder-swarm.service.d/
+  10-wait-deps.conf   의존 서비스가 뜬 뒤에 시작한다
+  cie-key.conf        CIE_API_KEY
+  direct-llm.conf     LLM_DIRECT_URL
+```
+
+드롭인은 이 저장소에 없다(열쇠가 들어 있다). 새 기계에 올릴 때는 손으로 만든다.
+`deploy.sh` 는 유닛 파일만 덮어쓰므로 드롭인은 그대로 남는다.
+
+## 4. 배포
+
 ```bash
-# 바이너리 빌드 및 서비스 재시작
 ./deploy.sh
-
-# 상태 확인
-sudo systemctl status auto-coder-swarm
-# 로그 모니터링
-sudo journalctl -u auto-coder-swarm -f
 ```
 
-## 3. Configuration Details (설정값 설명)
-| Key | Description | Default |
-|-----|-------------|---------|
-| `SWARM_API_KEY` | API 및 대시보드 접근용 보안 키 | (Empty) |
-| `MASTER_REPOS_PATH` | 분석 대상 레포지토리들이 위치한 절대 경로 | `/home/cnf/...` |
-| `ORACLE_URL` | Code-Insight Engine 주소 | `http://localhost:8005` |
-| `LISTEN_ADDR` | 대시보드 포트 설정 | `:8006` |
+`git fetch` → **현재 브랜치를 `origin/<브랜치>` 로 강제 정렬** → 빌드 → 검사기 설치 →
+유닛 갱신 → 재시작.
 
----
-*Last Updated: 2026-05-21*
+**함정: 배포는 원격 브랜치를 본다.** 밀지 않은 커밋은 배포되지 않고 `git reset --hard` 에
+지워진다. 배포 전에 밀어야 한다.
+
+## 5. 살아 있는지 보기
+
+```bash
+systemctl status auto-coder-swarm
+tail -f service.log                  # 유닛이 표준출력을 여기에 붙인다
+curl -s localhost:8006/metrics | head
+```
+
+대시보드는 `http://<호스트>:8006` 이다. 작업 하나의 속내는 대시보드의 작업 상세
+(deep technical log)에 남는다 — 무엇을 왜 건너뛰었는지가 거기 적힌다.

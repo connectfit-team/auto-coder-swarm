@@ -1,9 +1,26 @@
 # 🔌 API Specification: Auto-Coder Swarm (Normalized)
 
-모든 엔드포인트는 CORS를 지원하며, `X-API-Key` 인증이 필수입니다. 모든 작업 식별자는 `W-XXXXXX` 형식을 따릅니다.
+모든 작업 식별자는 `W-XXXXXX` 형식을 따릅니다.
 
-## 1. Authentication
-- Header: `X-API-Key: {your_secret}`
+## 1. 인증
+
+`/api/v1/*` 는 전부 `X-API-Key` 를 봅니다. 길 목록 하나로 등록하고 그 목록을
+감싸므로 새 길을 더해도 빠지지 않습니다(`internal/api/handler.go` 의 `routes`).
+
+- 헤더: `X-API-Key: {열쇠}`
+- **열쇠가 정해져 있지 않으면 전부 통과입니다.** 그 상태로 도는 것은 시작
+  기록에 경고로 남습니다. `SWARM_REQUIRE_API_KEY` 를 주면 열쇠 없이는 뜨지
+  않습니다. 열쇠를 정하는 법은 DEPLOYMENT.md 를 봅니다
+- 브라우저의 예비 요청(`OPTIONS /api/v1/...`)은 열쇠를 묻지 않습니다 —
+  예비 요청에는 열쇠가 없고, 막으면 본 요청이 오지 않습니다
+- CORS 는 `Access-Control-Allow-Origin: *` 입니다. 열쇠를 헤더로만 받으므로
+  다른 사이트의 스크립트는 열쇠 없이 부를 수 없습니다
+
+### 대시보드(`/`, `/settings`, `/task/...`)
+
+브라우저는 헤더를 못 붙입니다. 같은 열쇠를 `/unlock` 에서 한 번 넣으면 그
+브라우저는 계속 쓸 수 있습니다(쿠키에는 열쇠가 아니라 지문이 담깁니다).
+열쇠를 바꾸면 예전 쿠키는 그 자리에서 못 씁니다.
 
 ## 2. Task Management
 
@@ -34,7 +51,7 @@
 - **Data**: `data: { agent: Planner, message: ... }`
 
 ---
-*Last Updated: 2026-05-21 (Chat API Integration & Handler Modularization)*
+*갱신: 2026-09-07 (인증을 코드에 맞춤)*
 
 ## 4. Event Architecture (NATS JetStream)
 Zero-Latency 연동을 위한 이벤트 통신 명세입니다.
