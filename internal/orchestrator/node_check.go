@@ -52,6 +52,9 @@ func nodeParses(path string) string {
 	if script == "" {
 		return ""
 	}
+	if msg := fileMissing(path); msg != "" {
+		return msg
+	}
 	cmd := exec.Command("node", script, path)
 	cmd.Dir = filepath.Dir(script)
 	b, err := cmd.CombinedOutput()

@@ -66,9 +66,14 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 
 	if len(p.Changes) == 0 {
 		// 넣을 자리가 없는 계획도 온다 — protogen 처럼 생성된 파일만 든
-		// 저장소가 그렇다. 사본을 만들 이유가 없다. 사람이 볼 것만 남긴다.
+		// 저장소가 그렇다. 사본을 만들 이유가 없다.
+		//
+		// 그래도 할 일은 남는다: 사람이 채워야 하는 이름, 다시 생성해야 하는
+		// 파일, 배포 순서. 그것을 적지 않으면 그 저장소는 아예 없던 일이 된다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_NO_SITE",
-			fmt.Sprintf("%s 에는 넣을 자리가 없다", p.Repo), "", strings.Join(p.NeedsManual, "\n"))
+			fmt.Sprintf("%s 에는 넣을 자리가 없다 — 사람이 할 일 %d개",
+				p.Repo, len(p.NeedsManual)+len(p.DepBumps)),
+			"", manualWork(p))
 		return r
 	}
 

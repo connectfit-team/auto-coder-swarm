@@ -19,9 +19,11 @@ if ! command -v node >/dev/null; then
   FAIL=1
 else
   mkdir -p "$DEST"
-  cp "$SRC/parse.js" "$SRC/package.json" "$DEST/"
+  cp "$SRC/parse.js" "$SRC/package.json" "$SRC/package-lock.json" "$DEST/"
+  # npm ci 는 잠금 파일 그대로 깐다. install 은 ^ 범위를 새로 풀어서, 파서가
+  # 기계마다 다른 판정을 낼 수 있다.
   if [ ! -d "$DEST/node_modules/typescript" ] || [ ! -d "$DEST/node_modules/svelte" ]; then
-    (cd "$DEST" && npm install --no-audit --no-fund) || {
+    (cd "$DEST" && npm ci --no-audit --no-fund) || {
       echo "  ✗ npm install 실패 — TS·Svelte 검사가 돌지 않는다"
       FAIL=1
     }

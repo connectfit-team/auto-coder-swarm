@@ -49,6 +49,9 @@ func dartParses(path string) string {
 	if bin == "" {
 		return ""
 	}
+	if msg := fileMissing(path); msg != "" {
+		return msg
+	}
 	b, _ := exec.Command(bin, "format", "--output=none", path).CombinedOutput()
 	out := string(b)
 	if strings.Contains(out, dartParseFailure) {
@@ -72,4 +75,16 @@ func dartWhere(out string) string {
 		}
 	}
 	return firstLineOf(out)
+}
+
+// fileMissing 은 검사할 파일이 실제로 있는지 본다.
+//
+// 없는 파일을 검사기에 주면 도구마다 다르게 실패한다 — dart format 은 종료
+// 코드 0 을 주고, node 는 스택 추적을 뱉는다. 어느 쪽도 "문법이 틀렸다" 가
+// 아니고 "검사가 안 돌았다" 다. 여기서 먼저 걸러 한 가지 말로 준다.
+func fileMissing(path string) string {
+	if _, err := os.Stat(path); err != nil {
+		return "검사할 파일이 없다: " + path
+	}
+	return ""
 }

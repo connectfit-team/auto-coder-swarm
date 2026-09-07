@@ -55,7 +55,7 @@ func TestNodeMissingFileIsNotSyntaxError(t *testing.T) {
 	if msg == "" {
 		t.Fatal("없는 파일이 통과했다")
 	}
-	if !strings.Contains(msg, "파서를 돌리지 못했다") {
+	if !strings.Contains(msg, "검사할 파일이 없다") {
 		t.Fatalf("문법 오류로 잘못 읽었다: %s", msg)
 	}
 }

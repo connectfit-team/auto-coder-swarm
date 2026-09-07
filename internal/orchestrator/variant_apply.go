@@ -236,9 +236,10 @@ func insertBreaksSyntax(path, rel, before string, after []string, parsedBefore b
 	if !parsedBefore {
 		return ""
 	}
-	tmp, ok := writeProbe(path, text)
-	if !ok {
-		return ""
+	tmp, err := writeProbe(path, text)
+	if err != nil {
+		// 사본을 못 만들면 검사가 돌지 않았다. 통과로 세지 않는다.
+		return "문법을 확인할 사본을 못 만들었다: " + err.Error()
 	}
 	defer os.RemoveAll(filepath.Dir(tmp))
 
@@ -283,15 +284,15 @@ func fileParses(path, rel string) bool {
 //
 // 확장자는 지켜야 한다. 확장자가 없으면 파서가 언어를 못 알아보고 Svelte 를
 // TypeScript 로 읽거나, dart format 이 파일을 그냥 건너뛴다.
-func writeProbe(path, text string) (string, bool) {
+func writeProbe(path, text string) (string, error) {
 	dir, err := os.MkdirTemp("", "variant-probe-")
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	tmp := filepath.Join(dir, filepath.Base(path))
 	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
 		os.RemoveAll(dir)
-		return "", false
+		return "", err
 	}
-	return tmp, true
+	return tmp, nil
 }

@@ -166,6 +166,9 @@ func resultSummary(rs []VariantResult) string {
 		if r.MakeTarget != "" {
 			fmt.Fprintf(&b, " · make %s", r.MakeTarget)
 		}
+		if len(r.NeedsManual) > 0 {
+			fmt.Fprintf(&b, " · 사람이 볼 것 %d개", len(r.NeedsManual))
+		}
 		if r.Err != "" {
 			fmt.Fprintf(&b, " · 실패: %s", r.Err)
 		}
@@ -202,5 +205,20 @@ func blockerNote(blockers []string) string {
 		fmt.Fprintf(&b, "> - %s\n", x)
 	}
 	b.WriteString(">\n> 그때까지 초안으로 둔다.\n\n")
+	return b.String()
+}
+
+// manualWork 는 코드가 못 하고 사람이 해야 하는 것을 적는다.
+func manualWork(p insightclient.VariantRepoPlan) string {
+	var b strings.Builder
+	if p.Note != "" {
+		fmt.Fprintf(&b, "%s\n\n", p.Note)
+	}
+	for _, n := range p.NeedsManual {
+		fmt.Fprintf(&b, "- %s\n", n)
+	}
+	for _, d := range p.DepBumps {
+		fmt.Fprintf(&b, "- %s\n", depBumpLine(d))
+	}
 	return b.String()
 }
