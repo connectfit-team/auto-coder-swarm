@@ -113,7 +113,7 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 			continue
 		}
 
-		r := t.applyOneRepoWith(p, req, blockers, pending)
+		r := t.applyOneRepo(p, req, blockers, pending)
 		out = append(out, r)
 
 		if r.Err != "" {

@@ -17,9 +17,9 @@ import (
 
 // 값 하나를 더하는 작업을 저장소마다 돈다.
 //
-// 순서가 강제된다. protogen 의 proto 가 배포돼야 소비자가 컴파일되므로,
-// 막는 저장소의 PR 이 열리면 거기서 멈추고 사람에게 넘긴다. 앞이 머지되기
-// 전에 뒤를 밀면 소비자 PR 이 빌드에서 깨진다.
+// proto 가 배포돼야 소비자가 컴파일되지만 거기서 멈추지 않는다 — 멈추면
+// 사람은 나머지 저장소에 무엇이 필요한지 못 보고, 그것이 요청의 전부다.
+// 뒤따르는 PR 은 초안으로 열고 무엇이 먼저 배포돼야 하는지 본문에 적는다.
 
 // VariantResult 는 저장소 하나의 결과다.
 type VariantResult struct {
@@ -55,13 +55,10 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 	return t.applyPlans(plans, req), nil
 }
 
-func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
-	return t.applyOneRepoWith(p, req, blockers, nil)
-}
-
-// applyOneRepoWith 는 아직 배포되지 않은 이름들을 함께 받는다.
-// 그 이름을 말하는 빌드 오류는 우리 탓이 아니다.
-func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
+// applyOneRepo 는 한 저장소에 적용하고 PR 을 연다.
+// pending 은 아직 배포되지 않은 이름들이다 — 그 이름을 말하는 빌드 오류는
+// 우리 탓이 아니다.
+func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
 
 	if url := existingVariantPR(p.Repo, req.Value); url != "" {
@@ -94,10 +91,15 @@ func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insi
 	}
 	r.Files, r.Inserted, r.Skipped = out.Files, out.Inserted, out.Skipped
 
+	r.NeedsManual = append(r.NeedsManual, refusalNotes(out.Refused)...)
+
 	if r.Inserted == 0 {
-		// 이미 다 들어 있다. PR 을 열 이유가 없다.
+		// 넣은 것이 없으면 PR 을 열 이유가 없다. 다만 까닭이 둘이라 갈라 적는다 —
+		// 이미 다 들어 있는 것과, 넣으려다 되돌린 것은 다르다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_NOOP",
-			fmt.Sprintf("%s 에는 이미 다 들어 있다 (건너뜀 %d)", p.Repo, r.Skipped), "", "")
+			fmt.Sprintf("%s 에 넣은 것이 없다 (이미 있음 %d · 되돌림 %d)",
+				p.Repo, r.Skipped, len(out.Refused)),
+			"", strings.Join(refusalNotes(out.Refused), "\n"))
 		return r
 	}
 
@@ -119,10 +121,6 @@ func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insi
 		for _, m := range missing {
 			r.NeedsManual = append(r.NeedsManual, "아직 없는 이름이라 빌드가 안 된다: "+m)
 		}
-	}
-	for _, x := range out.Refused {
-		r.NeedsManual = append(r.NeedsManual,
-			fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s", x.File, x.Line, x.Why))
 	}
 
 	msg := variantCommitMessage(req, p)
@@ -297,4 +295,15 @@ func appendOnceStr(xs []string, x string) []string {
 		}
 	}
 	return append(xs, x)
+}
+
+// refusalNotes 는 되돌린 자리를 사람이 읽을 줄로 만든다.
+// 조용히 빼면 무엇이 빠졌는지 알 수 없다.
+func refusalNotes(refused []RefusedChange) []string {
+	var out []string
+	for _, x := range refused {
+		out = append(out, fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s",
+			x.File, x.Line, x.Why))
+	}
+	return out
 }
