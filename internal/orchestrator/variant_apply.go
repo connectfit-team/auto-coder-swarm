@@ -26,6 +26,15 @@ type ApplyOutcome struct {
 	// 원래부터 gofmt 를 안 지키던 파일. 우리가 만든 어긋남이 아니므로
 	// 다시 정렬하지도, 검증으로 막지도 않는다.
 	Unformatted []string
+	// 넣으면 문법이 깨져서 되돌린 자리. 사람이 봐야 한다.
+	Refused []RefusedChange
+}
+
+// RefusedChange 는 넣으려다 되돌린 자리다.
+type RefusedChange struct {
+	File string
+	Line int
+	Why  string
 }
 
 // applyVariantPlan 은 한 저장소의 변경을 작업공간에 적용한다.
@@ -51,6 +60,10 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 		}
 		lines := strings.Split(string(b), "\n")
 		wasClean := goFileIsFormatted(path, rel)
+		// 원래 파싱이 안 되던 파일은 우리 탓이 아니다. 그런 파일에 파서를 걸면
+		// 멀쩡한 자리까지 되돌린다. 괄호 균형은 그래도 본다 — 그것은 넣기
+		// 전후의 차이라서 원래 상태와 무관하다.
+		parsedBefore := fileParses(path, rel)
 
 		cs := byFile[name]
 		sort.Slice(cs, func(i, j int) bool { return cs[i].InsertAfter > cs[j].InsertAfter })
@@ -69,16 +82,24 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 				out.Skipped++
 				continue
 			}
-			lines = append(lines[:at], append(append([]string{}, c.Block...), lines[at:]...)...)
+
+			// 자리마다 넣어 보고 문법이 깨지면 그 자리만 되돌린다.
+			//
+			// 예전에는 파일을 다 고친 뒤에 한 번 검사해서, 삼항 연산자 한 자리
+			// 때문에 gig_mobile 의 멀쩡한 13곳까지 통째로 날아갔다.
+			// 깨진 자리만 빼고 나머지를 살린다.
+			next := append(lines[:at:at], append(append([]string{}, c.Block...), lines[at:]...)...)
+			if msg := lineBreaksSyntax(path, rel, string(b), next, parsedBefore); msg != "" {
+				out.Refused = append(out.Refused, RefusedChange{
+					File: rel, Line: at, Why: msg,
+				})
+				continue
+			}
+			lines = next
 			out.Inserted++
 			changed = true
 		}
 		if changed {
-			// 조각을 잘못 복사하면 거의 언제나 괄호 균형이 어긋난다.
-			// 언어를 몰라도 잡을 수 있는 검사라, 파서가 없는 Dart·TS 에도 듣는다.
-			if msg := balanceShift(string(b), strings.Join(lines, "\n")); msg != "" {
-				return out, fmt.Errorf("%s: %s", rel, msg)
-			}
 			if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 				return out, fmt.Errorf("%s 를 못 썼다: %w", rel, err)
 			}
@@ -197,4 +218,50 @@ func goFileIsFormatted(path, rel string) bool {
 	}
 	b, _ := exec.Command("gofmt", "-l", path).CombinedOutput()
 	return len(strings.TrimSpace(string(b))) == 0
+}
+
+// lineBreaksSyntax 는 그 자리를 넣으면 문법이 깨지는지 본다.
+// 깨지지 않으면 빈 문자열이다.
+//
+// 괄호 균형은 언어를 몰라도 듣는다. 그 위에 파서가 있는 언어는 파서로도 본다.
+func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore bool) string {
+	text := strings.Join(after, "\n")
+	if msg := balanceShift(before, text); msg != "" {
+		return msg
+	}
+	if !parsedBefore {
+		return ""
+	}
+	tmp := path + ".variant-probe"
+	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+		return ""
+	}
+	defer os.Remove(tmp)
+
+	switch filepath.Ext(rel) {
+	case ".go":
+		cmd := exec.Command("gofmt", "-e", "-l", tmp)
+		b, _ := cmd.CombinedOutput()
+		if strings.Contains(string(b), tmp) && strings.Contains(string(b), ":") {
+			return "Go 로 읽히지 않는다: " + firstLineOf(string(b))
+		}
+	case ".dart":
+		if !dartParsesFile(tmp) {
+			return "Dart 로 읽히지 않는다"
+		}
+	}
+	return ""
+}
+
+// fileParses 는 그 파일이 지금 문법에 맞는지 본다.
+// 파서가 없는 언어는 판단하지 않는다(true).
+func fileParses(path, rel string) bool {
+	switch filepath.Ext(rel) {
+	case ".go":
+		b, _ := exec.Command("gofmt", "-e", "-l", path).CombinedOutput()
+		return !(strings.Contains(string(b), path) && strings.Contains(string(b), ":"))
+	case ".dart":
+		return dartParsesFile(path)
+	}
+	return true
 }
