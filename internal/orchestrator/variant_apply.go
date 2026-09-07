@@ -232,7 +232,9 @@ func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore boo
 	if !parsedBefore {
 		return ""
 	}
-	tmp := path + ".variant-probe"
+	// 확장자를 지켜야 한다. .variant-probe 로 끝내면 파서가 언어를 못 알아보고
+	// Svelte 를 TypeScript 로 읽거나, dart format 이 파일을 그냥 건너뛴다.
+	tmp := filepath.Join(filepath.Dir(path), ".variant-probe."+filepath.Base(path))
 	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
 		return ""
 	}
@@ -249,6 +251,10 @@ func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore boo
 		if !dartParsesFile(tmp) {
 			return "Dart 로 읽히지 않는다"
 		}
+	case ".ts", ".js", ".mjs", ".svelte":
+		if msg := nodeParses(tmp); msg != "" {
+			return "못 읽는다: " + firstLineOf(msg)
+		}
 	}
 	return ""
 }
@@ -262,6 +268,8 @@ func fileParses(path, rel string) bool {
 		return !(strings.Contains(string(b), path) && strings.Contains(string(b), ":"))
 	case ".dart":
 		return dartParsesFile(path)
+	case ".ts", ".js", ".mjs", ".svelte":
+		return nodeParses(path) == ""
 	}
 	return true
 }
