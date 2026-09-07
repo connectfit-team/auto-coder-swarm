@@ -10,10 +10,6 @@ import (
 // HandleChatSubmission provides a specialized API endpoint for chat interfaces.
 // It wraps the task submission logic but could be expanded for session-based chat.
 func (h *SwarmHandler) HandleChatSubmission(w http.ResponseWriter, r *http.Request) {
-	if !h.checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 
 	var req struct {
 		Message string `json:"message"`

@@ -46,10 +46,6 @@ func (h *SwarmHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *SwarmHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	if !h.checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	var settings map[string]interface{}
 	json.NewDecoder(r.Body).Decode(&settings)
 
