@@ -142,6 +142,10 @@ func verifyRepo(path string, files, skip []string) string {
 			if len(strings.TrimSpace(string(b))) > 0 {
 				return "gofmt 가 읽지 못한다: " + firstLineOf(string(b))
 			}
+		case ".dart":
+			if !dartParses(path, f) {
+				return "Dart 로 읽히지 않는다: " + f
+			}
 		case ".proto":
 			if msg := braceBalance(filepath.Join(path, f)); msg != "" {
 				return msg
@@ -226,13 +230,17 @@ func depBumpLine(d insightclient.DepBump) string {
 
 // 확인할 수 있는 언어와, 그 도구가 있어야 확인이 되는 것.
 var syntaxTool = map[string]string{
-	".go": "gofmt", ".dart": "dart", ".ts": "tsc", ".svelte": "tsc",
+	".go": "gofmt", ".ts": "tsc", ".svelte": "tsc",
 }
 
 // unverifiedKinds 는 고친 파일 가운데 문법을 확인하지 못한 확장자를 준다.
 func unverifiedKinds(files []string) []string {
 	var out []string
 	for _, f := range files {
+		if filepath.Ext(f) == ".dart" && dartBin() == "" {
+			out = appendOnceStr(out, ".dart")
+			continue
+		}
 		ext := filepath.Ext(f)
 		tool, ok := syntaxTool[ext]
 		if !ok {
