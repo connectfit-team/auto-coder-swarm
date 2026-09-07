@@ -12,6 +12,7 @@ import (
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"github.com/connectfit-team/auto-coder-swarm/internal/api"
+	"github.com/connectfit-team/auto-coder-swarm/internal/apikey"
 	"github.com/connectfit-team/auto-coder-swarm/internal/bus"
 	"github.com/connectfit-team/auto-coder-swarm/internal/ckhclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
@@ -158,6 +159,11 @@ func main() {
 		log.Fatalf("❌ DB init failed: %v", err)
 	}
 	store.ResetRunningToPending()
+
+	// 열쇠가 없으면 API 가 열려 있다. 그 사실을 시작 기록에 남긴다.
+	if err := apikey.Resolve(store.GetSetting("swarm_api_key"), listenAddr); err != nil {
+		log.Fatal(err)
+	}
 
 	wm := worker.NewManager()
 	sm := stream.NewManager(store)

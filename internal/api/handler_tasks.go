@@ -42,10 +42,6 @@ func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) {
-	if !h.checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	var req orchestrator.StatelessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -62,10 +58,6 @@ func (h *SwarmHandler) HandleSubmitTask(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
-	if !h.checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	id := r.URL.Query().Get("id")
 
 	// [Deep Stop] Stop remote CIE task if tracked
@@ -81,4 +73,25 @@ func (h *SwarmHandler) HandleStopTask(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "Task not running or not found", http.StatusNotFound)
 	}
+}
+
+// HandleApproveTask 는 사람의 승인을 받아 작업을 다시 큐에 넣는다.
+// 그 뒤 실행은 사람이 본 diff 를 그대로 올린다.
+func (h *SwarmHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	// **이미 도는 작업에 승인해도 소용이 없다.**
+	//
+	// 상태만 APPROVED 로 바꿔 놓으면, 지금 도는 실행은 그 사실을 모른 채
+	// 끝나면서 다시 WAITING_APPROVAL 로 덮어쓴다. 승인이 조용히 사라진다.
+	// 무엇이 일어났는지 말해 준다.
+	if t, err := h.store.GetTaskByID(id); err == nil && t.Status == storage.StatusRunning {
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(w, "작업 %s 는 지금 돌고 있습니다. 끝난 뒤에 다시 승인하세요.", id)
+		return
+	}
+	if err := h.store.UpdateTaskStatus(id, storage.StatusApproved, "", ""); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "Task %s approved", id)
 }

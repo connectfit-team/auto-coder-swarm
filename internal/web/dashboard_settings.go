@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/apikey"
 )
 
 func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request) {
@@ -54,13 +56,13 @@ func (h *DashboardHandler) HandleSettings(w http.ResponseWriter, r *http.Request
 		modelNames = append(modelNames, m.ID)
 	}
 
-	apiKey := h.store.GetSetting("swarm_api_key")
-
+	// **열쇠를 화면에 찍지 않는다.** 이 화면이 곧 열쇠 유출 경로가 된다.
+	// 설정돼 있는지만 알린다.
 	h.render(w, "settings.html", map[string]interface{}{
 		"Models":       modelNames,
 		"PrimaryModel": primary,
 		"VoterMap":     voterMap,
-		"ApiKey":       apiKey,
+		"KeySet":       apikey.Configured() != "",
 	})
 }
 
@@ -77,7 +79,21 @@ func (h *DashboardHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.R
 
 	h.store.SaveSetting("primary_model", newModel)
 	h.store.SaveSetting("voter_models", strings.Join(r.Form["voter_models"], ","))
-	h.store.SaveSetting("swarm_api_key", r.FormValue("swarm_api_key"))
-	os.Setenv("SWARM_API_KEY", r.FormValue("swarm_api_key"))
+
+	// 빈 칸은 "그대로 두라" 는 뜻이다. 화면에 열쇠를 찍지 않으니 빈 칸이 곧
+	// 지우기가 되면, 모델만 바꾸려고 저장한 사람이 인증을 풀어 버린다.
+	// 지우는 것은 따로 말해야 한다.
+	switch k := strings.TrimSpace(r.FormValue("swarm_api_key")); {
+	case k != "":
+		h.store.SaveSetting("swarm_api_key", k)
+		os.Setenv("SWARM_API_KEY", k)
+		// 넣은 사람은 그 자리에서 계속 쓸 수 있어야 한다.
+		apikey.SetCookie(w, k)
+		log.Println("[Dashboard] SWARM_API_KEY 를 새로 넣었다")
+	case r.FormValue("clear_api_key") != "":
+		h.store.SaveSetting("swarm_api_key", "")
+		os.Setenv("SWARM_API_KEY", "")
+		log.Println("[Dashboard] SWARM_API_KEY 를 지웠다 — 인증이 풀렸다")
+	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
