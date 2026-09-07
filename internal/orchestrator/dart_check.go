@@ -50,3 +50,13 @@ func dartParses(dir, rel string) bool {
 	b, _ := cmd.CombinedOutput()
 	return !strings.Contains(string(b), dartParseFailure)
 }
+
+// dartParsesFile 은 절대 경로 하나를 본다. 실행 파일이 없으면 판단하지 않는다.
+func dartParsesFile(path string) bool {
+	bin := dartBin()
+	if bin == "" {
+		return true
+	}
+	b, _ := exec.Command(bin, "format", "--output=none", path).CombinedOutput()
+	return !strings.Contains(string(b), dartParseFailure)
+}

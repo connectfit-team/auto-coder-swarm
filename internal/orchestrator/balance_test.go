@@ -19,25 +19,38 @@ const elseIfChain = `func f() {
 `
 
 // } else if 블록을 닫는 괄호까지 통째로 복사해 뒤에 넣으면 괄호가 어긋난다.
-// 파서가 없어도 이것으로 잡힌다 — Dart·TypeScript 도 마찬가지다.
-func TestBrokenElseIfIsCaughtByBalance(t *testing.T) {
+// 그 자리만 되돌리고 나머지는 살린다 — 예전에는 저장소 전체가 날아갔다.
+func TestBrokenElseIfIsRefusedAlone(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte(elseIfChain), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := applyVariantPlan(root, insightclient.VariantRepoPlan{
+	out, err := applyVariantPlan(root, insightclient.VariantRepoPlan{
 		Repo: "r",
-		Changes: []insightclient.VariantChange{{
-			File: "r/a.go", InsertAfter: 6,
-			Block:  []string{"\t} else if p.IsInstagram() {", "\t\tt = INSTAGRAM", "\t}"},
-			Anchor: "}", AnchorLine: 6,
-		}},
+		Changes: []insightclient.VariantChange{
+			{
+				File: "r/a.go", InsertAfter: 6,
+				Block:  []string{"\t} else if p.IsInstagram() {", "\t\tt = INSTAGRAM", "\t}"},
+				Anchor: "}", AnchorLine: 6,
+			},
+			{
+				File: "r/a.go", InsertAfter: 5,
+				Block:  []string{"\t} else if p.IsKakao() {", "\t\tt = KAKAO"},
+				Anchor: "t = NAVER", AnchorLine: 5,
+			},
+		},
 	})
-	if err == nil {
-		t.Fatal("괄호가 어긋났는데 그냥 넣었다")
+	if err != nil {
+		t.Fatalf("저장소 전체를 버렸다: %v", err)
 	}
-	if !strings.Contains(err.Error(), "균형") {
-		t.Errorf("오류 내용: %v", err)
+	if len(out.Refused) != 1 {
+		t.Fatalf("되돌린 자리 %d개: %+v", len(out.Refused), out.Refused)
+	}
+	if !strings.Contains(out.Refused[0].Why, "균형") {
+		t.Errorf("되돌린 까닭: %q", out.Refused[0].Why)
+	}
+	if out.Inserted != 1 {
+		t.Errorf("멀쩡한 자리를 못 살렸다: 넣은 수 %d", out.Inserted)
 	}
 }
 

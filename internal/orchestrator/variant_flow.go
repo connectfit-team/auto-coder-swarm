@@ -97,6 +97,10 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 	r.Unverified = unverifiedKinds(r.Files)
+	for _, x := range out.Refused {
+		r.NeedsManual = append(r.NeedsManual,
+			fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s", x.File, x.Line, x.Why))
+	}
 
 	msg := variantCommitMessage(req, p)
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
@@ -145,6 +149,10 @@ func verifyRepo(path string, files, skip []string) string {
 		case ".dart":
 			if !dartParses(path, f) {
 				return "Dart 로 읽히지 않는다: " + f
+			}
+		case ".ts", ".js", ".mjs", ".svelte":
+			if msg := nodeParses(filepath.Join(path, f)); msg != "" {
+				return f + " 를 못 읽는다: " + firstLineOf(msg)
 			}
 		case ".proto":
 			if msg := braceBalance(filepath.Join(path, f)); msg != "" {
@@ -230,18 +238,22 @@ func depBumpLine(d insightclient.DepBump) string {
 
 // 확인할 수 있는 언어와, 그 도구가 있어야 확인이 되는 것.
 var syntaxTool = map[string]string{
-	".go": "gofmt", ".ts": "tsc", ".svelte": "tsc",
+	".go": "gofmt",
 }
 
 // unverifiedKinds 는 고친 파일 가운데 문법을 확인하지 못한 확장자를 준다.
 func unverifiedKinds(files []string) []string {
 	var out []string
 	for _, f := range files {
-		if filepath.Ext(f) == ".dart" && dartBin() == "" {
+		ext := filepath.Ext(f)
+		if ext == ".dart" && dartBin() == "" {
 			out = appendOnceStr(out, ".dart")
 			continue
 		}
-		ext := filepath.Ext(f)
+		if nodeParsedExts[ext] && tsParserScript() == "" {
+			out = appendOnceStr(out, ext)
+			continue
+		}
 		tool, ok := syntaxTool[ext]
 		if !ok {
 			continue

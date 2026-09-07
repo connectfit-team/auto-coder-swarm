@@ -56,6 +56,9 @@ func TestApplyDry(t *testing.T) {
 			msg := verifyRepo(dst, res.Files, res.Unformatted)
 			fmt.Printf("\n##### %s — 넣음 %d · 건너뜀 %d · 검증 %s\n",
 				p.Repo, res.Inserted, res.Skipped, orOK(msg))
+			for _, x := range res.Refused {
+				fmt.Printf("  !! 되돌림 %s:%d — %s\n", x.File, x.Line, x.Why)
+			}
 			d, _ := exec.Command("git", "-C", dst, "diff", "--stat").CombinedOutput()
 			fmt.Print(string(d))
 		}
