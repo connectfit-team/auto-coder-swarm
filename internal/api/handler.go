@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,13 +50,17 @@ func (h *SwarmHandler) enableCORS(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// checkAuth 는 X-API-Key 를 본다.
+//
+// 열쇠가 정해져 있지 않으면 모두 통과다 — 그대로 두면 조용히 열린 API 가 되므로,
+// 시작할 때 resolveAPIKey 가 그 사실을 눈에 띄게 적는다.
 func (h *SwarmHandler) checkAuth(r *http.Request) bool {
 	expectedKey := os.Getenv("SWARM_API_KEY")
 	if expectedKey == "" {
 		return true
 	}
 	clientKey := r.Header.Get("X-API-Key")
-	return clientKey == expectedKey
+	return subtle.ConstantTimeCompare([]byte(clientKey), []byte(expectedKey)) == 1
 }
 
 func (h *SwarmHandler) HandleGenerateReport(w http.ResponseWriter, r *http.Request) {

@@ -36,6 +36,28 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+// resolveAPIKey 는 열쇠를 env → 저장된 설정 순으로 정한다.
+//
+// 대시보드는 열쇠를 DB 와 os.Setenv 양쪽에 넣는다. 다시 뜨면 env 쪽만 사라지고
+// DB 에 남은 것을 아무도 읽지 않아서, checkAuth 가 빈 열쇠를 보고 모두
+// 통과시킨다. 이 기계는 하루 세 번 다시 뜬다.
+func resolveAPIKey(store *storage.Storage, listenAddr string) {
+	if os.Getenv("SWARM_API_KEY") == "" {
+		if k := store.GetSetting("swarm_api_key"); k != "" {
+			os.Setenv("SWARM_API_KEY", k)
+			log.Println("🔑 저장된 SWARM_API_KEY 를 쓴다")
+		}
+	}
+	if os.Getenv("SWARM_API_KEY") != "" {
+		return
+	}
+	log.Printf("⚠️  SWARM_API_KEY 가 없다 — %s 의 API 가 열쇠 없이 열려 있다. "+
+		"이 API 로 만든 작업은 코드를 고치고 PR 을 연다", listenAddr)
+	if getEnv("SWARM_REQUIRE_API_KEY", "") != "" {
+		log.Fatal("SWARM_REQUIRE_API_KEY 가 켜져 있는데 열쇠가 없다 — 뜨지 않는다")
+	}
+}
+
 type StreamAdapter struct {
 	manager *stream.Manager
 }
@@ -158,6 +180,8 @@ func main() {
 		log.Fatalf("❌ DB init failed: %v", err)
 	}
 	store.ResetRunningToPending()
+
+	resolveAPIKey(store, listenAddr)
 
 	wm := worker.NewManager()
 	sm := stream.NewManager(store)
