@@ -13,8 +13,10 @@ type ProjectMetadata struct {
 }
 
 type RunResult struct {
-	RepoName        string
-	PRURL           string
+	RepoName string
+	// 사람이 다음에 무엇을 할지 적은 글. 열린 PR 주소가 대부분이지만
+	// 저장소가 여럿이면 여러 줄이고, proto 는 주소가 아니라 make 안내다.
+	Result          string
 	WaitingApproval bool
 	ChainTasks      []StatelessRequest
 }

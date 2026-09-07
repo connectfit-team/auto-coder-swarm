@@ -213,5 +213,5 @@ func (t *taskContext) shipReviewedDiff() (RunResult, bool, error) {
 	} else {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMPLETED", "성공", prURL, "")
 	}
-	return RunResult{RepoName: repo, PRURL: prURL}, true, nil
+	return RunResult{RepoName: repo, Result: prURL}, true, nil
 }

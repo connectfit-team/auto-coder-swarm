@@ -93,3 +93,23 @@ func TestUnbalancedStringsStillPass(t *testing.T) {
 		t.Errorf("문자열 속 괄호 때문에 막혔다: %v", err)
 	}
 }
+
+// 모든 자리가 되돌려지면 그 까닭을 잃어서는 안 된다.
+// 예전에는 "넣은 것 없음" 조기 반환이 되돌림 보고보다 앞에 있었다.
+func TestAllRefusedStillReportsWhy(t *testing.T) {
+	out := ApplyOutcome{
+		Refused: []RefusedChange{
+			{File: "a.go", Line: 6, Why: "{} 균형이 0 에서 2 로 바뀌었다"},
+			{File: "b.go", Line: 9, Why: "Go 로 읽히지 않는다"},
+		},
+	}
+	notes := refusalNotes(out.Refused)
+	if len(notes) != 2 {
+		t.Fatalf("되돌림 알림 %d개: %v", len(notes), notes)
+	}
+	for _, want := range []string{"a.go:6", "균형", "b.go:9"} {
+		if !strings.Contains(strings.Join(notes, "\n"), want) {
+			t.Errorf("%q 가 없다: %v", want, notes)
+		}
+	}
+}

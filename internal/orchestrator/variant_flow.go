@@ -17,14 +17,17 @@ import (
 
 // 값 하나를 더하는 작업을 저장소마다 돈다.
 //
-// 순서가 강제된다. protogen 의 proto 가 배포돼야 소비자가 컴파일되므로,
-// 막는 저장소의 PR 이 열리면 거기서 멈추고 사람에게 넘긴다. 앞이 머지되기
-// 전에 뒤를 밀면 소비자 PR 이 빌드에서 깨진다.
+// proto 가 배포돼야 소비자가 컴파일되지만 거기서 멈추지 않는다 — 멈추면
+// 사람은 나머지 저장소에 무엇이 필요한지 못 보고, 그것이 요청의 전부다.
+// 뒤따르는 PR 은 초안으로 열고 무엇이 먼저 배포돼야 하는지 본문에 적는다.
 
 // VariantResult 는 저장소 하나의 결과다.
 type VariantResult struct {
-	Repo        string
-	PRURL       string
+	Repo  string
+	PRURL string
+	// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다 — 그 목표 이름.
+	// 비어 있지 않으면 PR 주소가 없는 것이 정상이다.
+	MakeTarget  string
 	Files       []string
 	Inserted    int
 	Skipped     int
@@ -55,14 +58,24 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 	return t.applyPlans(plans, req), nil
 }
 
-func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
-	return t.applyOneRepoWith(p, req, blockers, nil)
-}
-
-// applyOneRepoWith 는 아직 배포되지 않은 이름들을 함께 받는다.
-// 그 이름을 말하는 빌드 오류는 우리 탓이 아니다.
-func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
+// applyOneRepo 는 한 저장소에 적용하고 PR 을 연다.
+// pending 은 아직 배포되지 않은 이름들이다 — 그 이름을 말하는 빌드 오류는
+// 우리 탓이 아니다.
+func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
+
+	if len(p.Changes) == 0 {
+		// 넣을 자리가 없는 계획도 온다 — protogen 처럼 생성된 파일만 든
+		// 저장소가 그렇다. 사본을 만들 이유가 없다.
+		//
+		// 그래도 할 일은 남는다: 사람이 채워야 하는 이름, 다시 생성해야 하는
+		// 파일, 배포 순서. 그것을 적지 않으면 그 저장소는 아예 없던 일이 된다.
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_NO_SITE",
+			fmt.Sprintf("%s 에는 넣을 자리가 없다 — 사람이 할 일 %d개",
+				p.Repo, len(p.NeedsManual)+len(p.DepBumps)),
+			"", manualWork(p))
+		return r
+	}
 
 	if url := existingVariantPR(p.Repo, req.Value); url != "" {
 		r.PRURL = url
@@ -94,10 +107,15 @@ func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insi
 	}
 	r.Files, r.Inserted, r.Skipped = out.Files, out.Inserted, out.Skipped
 
+	r.NeedsManual = append(r.NeedsManual, refusalNotes(out.Refused)...)
+
 	if r.Inserted == 0 {
-		// 이미 다 들어 있다. PR 을 열 이유가 없다.
+		// 넣은 것이 없으면 PR 을 열 이유가 없다. 다만 까닭이 둘이라 갈라 적는다 —
+		// 이미 다 들어 있는 것과, 넣으려다 되돌린 것은 다르다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_NOOP",
-			fmt.Sprintf("%s 에는 이미 다 들어 있다 (건너뜀 %d)", p.Repo, r.Skipped), "", "")
+			fmt.Sprintf("%s 에 넣은 것이 없다 (이미 있음 %d · 되돌림 %d)",
+				p.Repo, r.Skipped, len(out.Refused)),
+			"", strings.Join(refusalNotes(out.Refused), "\n"))
 		return r
 	}
 
@@ -119,10 +137,6 @@ func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insi
 		for _, m := range missing {
 			r.NeedsManual = append(r.NeedsManual, "아직 없는 이름이라 빌드가 안 된다: "+m)
 		}
-	}
-	for _, x := range out.Refused {
-		r.NeedsManual = append(r.NeedsManual,
-			fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s", x.File, x.Line, x.Why))
 	}
 
 	msg := variantCommitMessage(req, p)
@@ -170,8 +184,8 @@ func verifyRepo(path string, files, skip []string) string {
 				return "gofmt 가 읽지 못한다: " + firstLineOf(string(b))
 			}
 		case ".dart":
-			if !dartParses(path, f) {
-				return "Dart 로 읽히지 않는다: " + f
+			if msg := dartParses(filepath.Join(path, f)); msg != "" {
+				return msg
 			}
 		case ".ts", ".js", ".mjs", ".svelte":
 			if msg := nodeParses(filepath.Join(path, f)); msg != "" {
@@ -199,64 +213,11 @@ func braceBalance(path string) string {
 	return ""
 }
 
-func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.VariantRepoPlan) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s 더한다\n\n", korean.With(req.Label, "을", "를"))
-	fmt.Fprintf(&b, "%s 가 있는 자리마다 %s 몫을 나란히 넣는다.\n", req.Seed, req.Value)
-	if p.Note != "" {
-		fmt.Fprintf(&b, "\n%s\n", p.Note)
-	}
-	if p.AlreadyThere > 0 {
-		fmt.Fprintf(&b, "\n%d곳은 이미 값이 들어 있어 건드리지 않았다.\n", p.AlreadyThere)
-	}
-	if len(p.DepBumps) > 0 {
-		b.WriteString("\n이 변경이 컴파일되려면 먼저 갱신해야 한다:\n")
-		for _, d := range p.DepBumps {
-			fmt.Fprintf(&b, "  %s\n", depBumpLine(d))
-		}
-	}
-	if len(p.NeedsManual) > 0 {
-		fmt.Fprintf(&b, "\n저장소에 없는 이름이 있다 — 사람이 채워야 한다:\n")
-		for _, n := range p.NeedsManual {
-			fmt.Fprintf(&b, "  %s\n", n)
-		}
-	}
-	return b.String()
-}
-
-func planSummaryText(plans []insightclient.VariantRepoPlan) string {
-	var b strings.Builder
-	for _, p := range plans {
-		fmt.Fprintf(&b, "%d) %s — 자리 %d곳", p.Order, p.Repo, len(p.Changes))
-		if p.AlreadyThere > 0 {
-			fmt.Fprintf(&b, " (이미 있음 %d곳)", p.AlreadyThere)
-		}
-		if p.Blocks {
-			b.WriteString(" (이게 먼저 배포돼야 함)")
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
 func firstLineOf(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
 	}
 	return s
-}
-
-// depBumpLine 은 무엇을 어떻게 갱신해야 하는지 한 줄로 적는다.
-func depBumpLine(d insightclient.DepBump) string {
-	switch d.Kind {
-	case "go":
-		return fmt.Sprintf("%s — go get %s@<새 커밋> (%s 배포 뒤)", d.File, d.Module, d.From)
-	case "pubspec":
-		return fmt.Sprintf("%s — %s 의 ref 를 새 태그로 (%s 배포 뒤)", d.File, d.Module, d.From)
-	case "vendored":
-		return fmt.Sprintf("%s — %s 에서 다시 생성해 넣는다 (protogen 의 make)", d.File, d.Module)
-	}
-	return d.File + " — " + d.Module
 }
 
 // 확인할 수 있는 언어와, 그 도구가 있어야 확인이 되는 것.
@@ -297,4 +258,15 @@ func appendOnceStr(xs []string, x string) []string {
 		}
 	}
 	return append(xs, x)
+}
+
+// refusalNotes 는 되돌린 자리를 사람이 읽을 줄로 만든다.
+// 조용히 빼면 무엇이 빠졌는지 알 수 없다.
+func refusalNotes(refused []RefusedChange) []string {
+	var out []string
+	for _, x := range refused {
+		out = append(out, fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s",
+			x.File, x.Line, x.Why))
+	}
+	return out
 }

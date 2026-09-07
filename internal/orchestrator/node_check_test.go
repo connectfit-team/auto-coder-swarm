@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,21 @@ func TestNodeParserCatchesSyntaxOnly(t *testing.T) {
 	}
 	if nodeParses(badMarkup) == "" {
 		t.Error("닫히지 않은 태그를 통과시켰다")
+	}
+}
+
+// 파서가 파일을 못 찾은 것과 문법이 틀린 것은 다르다.
+// 못 찾은 것을 통과로 세면 검사가 조용히 사라지고, 문법 오류로 세면
+// 멀쩡한 PR 이 엉뚱한 까닭으로 막힌다.
+func TestNodeMissingFileIsNotSyntaxError(t *testing.T) {
+	if tsParserScript() == "" {
+		t.Skip("파서 없음")
+	}
+	msg := nodeParses(filepath.Join(t.TempDir(), "없는파일.ts"))
+	if msg == "" {
+		t.Fatal("없는 파일이 통과했다")
+	}
+	if !strings.Contains(msg, "검사할 파일이 없다") {
+		t.Fatalf("문법 오류로 잘못 읽었다: %s", msg)
 	}
 }

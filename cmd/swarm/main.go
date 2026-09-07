@@ -116,8 +116,8 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
 			sendToSlack(slackWebhook, fmt.Sprintf("⏳ *Task %s 검증 완료*: 승인이 필요합니다.", task.ID))
 		} else {
-			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task %s 성공!*\n📍 *Repo*: %s\n🔗 *PR*: %s", task.ID, res.RepoName, res.PRURL))
-			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.PRURL, "")
+			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task %s 성공!*\n📍 *Repo*: %s\n🔗 *결과*: %s", task.ID, res.RepoName, res.Result))
+			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.Result, "")
 
 			for _, chainReq := range res.ChainTasks {
 				b, _ := json.Marshal(chainReq)

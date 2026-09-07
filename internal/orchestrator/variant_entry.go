@@ -19,11 +19,18 @@ import (
 
 const variantAskTimeout = 5 * time.Minute
 
+// protoPublish 는 그 저장소가 PR 이 아니라 protogen 의 make 목표로 배포된다는 표시다.
+const protoPublish = "protogen-make"
+
+// clockio 는 같은 회사의 다른 서비스다. 낱말이 겹쳐도 gig 앱 요청에
+// 끌어들이면 안 된다.
+var reposOutOfScope = []string{"clockio"}
+
 // tryVariantAddition 은 값 추가 요청이면 그 길로 가고, 아니면 넘긴다.
 // 두 번째 값이 false 면 결함 흐름이 이어받는다.
 func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 	sub, cancel := context.WithTimeout(t.ctx, variantAskTimeout)
-	ask, err := t.orchestrator.insightClient.VariantAsk(sub, t.req.UserRequest, []string{"clockio"})
+	ask, err := t.orchestrator.insightClient.VariantAsk(sub, t.req.UserRequest, reposOutOfScope)
 	cancel()
 	if errors.Is(err, insightclient.ErrNotAuthorized) {
 		// 열쇠가 틀린 것을 "값 추가가 아니다" 로 넘기면, 설정 문제가 판단
@@ -74,20 +81,15 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 		Seed: ask.Seed, Value: ask.Value, Label: ask.Label,
 	})
 
-	res := RunResult{RepoName: firstRepo(ask.Plans)}
-	var urls []string
-	for _, r := range results {
-		if r.PRURL != "" {
-			urls = append(urls, r.Repo+": "+r.PRURL)
-		}
+	// 결과 글이 비면 아무것도 못 한 것이다. proto 만 고칠 것이 있는 요청은
+	// PR 이 없어도 성공이다 — PR 수로만 재면 올바른 결과가 실패로 보고된다.
+	res := RunResult{RepoName: firstRepo(ask.Plans), Result: outcomeText(results)}
+	if res.Result == "" {
+		return res, true, fmt.Errorf("PR 을 하나도 못 열었다: %s", whyNoPR(results))
 	}
-	if len(urls) == 0 {
-		return res, true, fmt.Errorf("PR 을 하나도 못 열었다: %s", firstError(results))
-	}
-	res.PRURL = strings.Join(urls, "\n")
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_DONE",
-		fmt.Sprintf("PR %d개를 열었다", len(urls)), "", resultSummary(results))
+		doneHeadline(results), "", resultSummary(results))
 	return res, true, nil
 }
 
@@ -104,7 +106,7 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 	pending := PendingSymbols(plans)
 
 	for _, p := range plans {
-		if p.Publish == "protogen-make" {
+		if p.Publish == protoPublish {
 			// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다.
 			// 그것이 컴파일·커밋·push 를 한다. 여기서 PR 을 열면 안 된다.
 			out = append(out, t.recordProtoPublish(p))
@@ -113,7 +115,7 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 			continue
 		}
 
-		r := t.applyOneRepoWith(p, req, blockers, pending)
+		r := t.applyOneRepo(p, req, blockers, pending)
 		out = append(out, r)
 
 		if r.Err != "" {
@@ -131,55 +133,18 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 	return out
 }
 
-// blockerNote 는 먼저 머지돼야 하는 PR 을 본문 맨 앞에 적는다.
-func blockerNote(blockers []string) string {
-	if len(blockers) == 0 {
-		return ""
+// recordProtoPublish 는 proto 를 어떻게 배포해야 하는지 남긴다.
+// 실제 배포는 사람이 protogen 에서 make 로 한다 — 그것이 main 에 바로 민다.
+func (t *taskContext) recordProtoPublish(p insightclient.VariantRepoPlan) VariantResult {
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PROTO_PUBLISH",
+		fmt.Sprintf("%s 는 make %s 로 배포한다 — PR 이 아니다", p.Repo, p.MakeTarget),
+		"", protoPublishSteps(p))
+	return VariantResult{
+		Repo:        p.Repo,
+		MakeTarget:  p.MakeTarget,
+		NeedsManual: p.NeedsManual,
+		Inserted:    len(p.Changes),
 	}
-	var b strings.Builder
-	b.WriteString("> 먼저 머지·배포돼야 이 PR 이 빌드된다:\n>\n")
-	for _, x := range blockers {
-		fmt.Fprintf(&b, "> - %s\n", x)
-	}
-	b.WriteString(">\n> 그때까지 초안으로 둔다.\n\n")
-	return b.String()
-}
-
-func askSummary(ask insightclient.VariantAskResult) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "씨앗 %s · 더할 값 %s (%s)\n", ask.Seed, ask.Value, ask.Label)
-	for _, p := range ask.Plans {
-		fmt.Fprintf(&b, "%d) %s — 자리 %d곳", p.Order, p.Repo, len(p.Changes))
-		if p.AlreadyThere > 0 {
-			fmt.Fprintf(&b, " (이미 있음 %d곳)", p.AlreadyThere)
-		}
-		if p.Blocks {
-			b.WriteString(" (이게 먼저 배포돼야 함)")
-		}
-		if len(p.NeedsManual) > 0 {
-			fmt.Fprintf(&b, " · 없는 이름: %s", strings.Join(p.NeedsManual, ", "))
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
-func resultSummary(rs []VariantResult) string {
-	var b strings.Builder
-	for _, r := range rs {
-		fmt.Fprintf(&b, "%s — 넣음 %d · 건너뜀 %d", r.Repo, r.Inserted, r.Skipped)
-		if len(r.Unverified) > 0 {
-			fmt.Fprintf(&b, " · 문법 확인 못 함: %s", strings.Join(r.Unverified, " "))
-		}
-		if r.PRURL != "" {
-			fmt.Fprintf(&b, " · %s", r.PRURL)
-		}
-		if r.Err != "" {
-			fmt.Fprintf(&b, " · 실패: %s", r.Err)
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
 }
 
 func firstRepo(plans []insightclient.VariantRepoPlan) string {
@@ -187,48 +152,4 @@ func firstRepo(plans []insightclient.VariantRepoPlan) string {
 		return plans[0].Repo
 	}
 	return ""
-}
-
-func firstError(rs []VariantResult) string {
-	for _, r := range rs {
-		if r.Err != "" {
-			return r.Err
-		}
-	}
-	return "넣을 것이 하나도 없었다"
-}
-
-// recordProtoPublish 는 proto 를 어떻게 배포해야 하는지 남긴다.
-// 실제 배포는 사람이 protogen 에서 make 로 한다 — 그것이 main 에 바로 민다.
-func (t *taskContext) recordProtoPublish(p insightclient.VariantRepoPlan) VariantResult {
-	var b strings.Builder
-	fmt.Fprintf(&b, "protogen 에서 `make %s` 을 돌린다. 그것이 컴파일·커밋·push 를 한다.\n", p.MakeTarget)
-	b.WriteString("넣을 것:\n")
-	for _, c := range p.Changes {
-		fmt.Fprintf(&b, "  %s:%d 다음에\n", c.File, c.InsertAfter)
-		for _, l := range c.Block {
-			fmt.Fprintf(&b, "    %s\n", l)
-		}
-	}
-	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_PROTO_PUBLISH",
-		fmt.Sprintf("%s 는 make %s 로 배포한다 — PR 이 아니다", p.Repo, p.MakeTarget),
-		"", b.String())
-	return VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual, Inserted: len(p.Changes)}
-}
-
-// coverageTable 은 저장소마다 담았는지, 뺐으면 왜인지 적는다.
-// 뺀 것을 보여 주지 않으면 놓친 것인지 사람이 알 수 없다.
-func coverageTable(vs []insightclient.RepoVerdict) string {
-	var b strings.Builder
-	for _, v := range vs {
-		if v.Planned > 0 {
-			fmt.Fprintf(&b, "담음  %-24s %d곳 (낱말 %d회)\n", v.Repo, v.Planned, v.Hits)
-			continue
-		}
-		fmt.Fprintf(&b, "뺌    %-24s 낱말 %d회 — %s\n", v.Repo, v.Hits, v.Reason)
-		if v.Evidence != "" {
-			fmt.Fprintf(&b, "        %s\n", v.Evidence)
-		}
-	}
-	return b.String()
 }

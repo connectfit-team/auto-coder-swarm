@@ -88,8 +88,9 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 			// 예전에는 파일을 다 고친 뒤에 한 번 검사해서, 삼항 연산자 한 자리
 			// 때문에 gig_mobile 의 멀쩡한 13곳까지 통째로 날아갔다.
 			// 깨진 자리만 빼고 나머지를 살린다.
+			now := strings.Join(lines, "\n")
 			next := append(lines[:at:at], append(append([]string{}, c.Block...), lines[at:]...)...)
-			if msg := lineBreaksSyntax(path, rel, string(b), next, parsedBefore); msg != "" {
+			if msg := insertBreaksSyntax(path, rel, now, next, parsedBefore); msg != "" {
 				out.Refused = append(out.Refused, RefusedChange{
 					File: rel, Line: at, Why: msg,
 				})
@@ -220,11 +221,14 @@ func goFileIsFormatted(path, rel string) bool {
 	return len(strings.TrimSpace(string(b))) == 0
 }
 
-// lineBreaksSyntax 는 그 자리를 넣으면 문법이 깨지는지 본다.
+// insertBreaksSyntax 는 그 자리를 넣으면 문법이 깨지는지 본다.
 // 깨지지 않으면 빈 문자열이다.
 //
 // 괄호 균형은 언어를 몰라도 듣는다. 그 위에 파서가 있는 언어는 파서로도 본다.
-func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore bool) string {
+//
+// before 는 원본이 아니라 지금까지 쌓인 내용이다. 원본과 견주면 앞 자리가
+// 만든 차이가 뒤 자리에 덧씌워져 엉뚱한 자리를 되돌린다.
+func insertBreaksSyntax(path, rel, before string, after []string, parsedBefore bool) string {
 	text := strings.Join(after, "\n")
 	if msg := balanceShift(before, text); msg != "" {
 		return msg
@@ -232,13 +236,12 @@ func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore boo
 	if !parsedBefore {
 		return ""
 	}
-	// 확장자를 지켜야 한다. .variant-probe 로 끝내면 파서가 언어를 못 알아보고
-	// Svelte 를 TypeScript 로 읽거나, dart format 이 파일을 그냥 건너뛴다.
-	tmp := filepath.Join(filepath.Dir(path), ".variant-probe."+filepath.Base(path))
-	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
-		return ""
+	tmp, err := writeProbe(path, text)
+	if err != nil {
+		// 사본을 못 만들면 검사가 돌지 않았다. 통과로 세지 않는다.
+		return "문법을 확인할 사본을 못 만들었다: " + err.Error()
 	}
-	defer os.Remove(tmp)
+	defer os.RemoveAll(filepath.Dir(tmp))
 
 	switch filepath.Ext(rel) {
 	case ".go":
@@ -248,8 +251,8 @@ func lineBreaksSyntax(path, rel, before string, after []string, parsedBefore boo
 			return "Go 로 읽히지 않는다: " + firstLineOf(string(b))
 		}
 	case ".dart":
-		if !dartParsesFile(tmp) {
-			return "Dart 로 읽히지 않는다"
+		if msg := dartParses(tmp); msg != "" {
+			return msg
 		}
 	case ".ts", ".js", ".mjs", ".svelte":
 		if msg := nodeParses(tmp); msg != "" {
@@ -267,9 +270,29 @@ func fileParses(path, rel string) bool {
 		b, _ := exec.Command("gofmt", "-e", "-l", path).CombinedOutput()
 		return !(strings.Contains(string(b), path) && strings.Contains(string(b), ":"))
 	case ".dart":
-		return dartParsesFile(path)
+		return dartParses(path) == ""
 	case ".ts", ".js", ".mjs", ".svelte":
 		return nodeParses(path) == ""
 	}
 	return true
+}
+
+// writeProbe 는 검사용 사본을 저장소 밖에 쓴다.
+//
+// 저장소 안에 쓰면 그것이 그 패키지의 파일이 된다 — git add . 가 도는 흐름이라
+// 남으면 PR 에 딸려 들어가고, 빌드가 그 파일을 함께 읽는다.
+//
+// 확장자는 지켜야 한다. 확장자가 없으면 파서가 언어를 못 알아보고 Svelte 를
+// TypeScript 로 읽거나, dart format 이 파일을 그냥 건너뛴다.
+func writeProbe(path, text string) (string, error) {
+	dir, err := os.MkdirTemp("", "variant-probe-")
+	if err != nil {
+		return "", err
+	}
+	tmp := filepath.Join(dir, filepath.Base(path))
+	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return tmp, nil
 }

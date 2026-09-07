@@ -37,7 +37,6 @@ Thumbs.db
 
 # Go
 vendor/
-go.sum
 
 # Secrets
 .env
@@ -54,3 +53,6 @@ go.sum
 *.tmp
 /tmp/swarm_ws_*
 last_prompt.log
+
+# 검사기 의존성 — scripts/install-checkers.sh 가 ~/tools 에 깐다
+tools/tsparse/node_modules/
