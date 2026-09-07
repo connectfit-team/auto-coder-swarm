@@ -29,6 +29,7 @@ func TestApplyDry(t *testing.T) {
 
 	root := os.Getenv("HOME") + "/cie-repos"
 	base := t.TempDir()
+	pending := PendingSymbols(plans)
 
 	for _, p := range plans {
 		if len(p.Changes) == 0 {
@@ -49,11 +50,23 @@ func TestApplyDry(t *testing.T) {
 			continue
 		}
 
+		// 원래 빌드가 안 되던 저장소는 견줄 것이 없다.
+		builtBefore := GoRepo(dst) && len(goBuildErrors(dst)) == 0
+
 		res, err := applyVariantPlan(dst, p)
 		if err != nil {
 			fmt.Printf("\n##### %s — 적용 실패: %v\n", p.Repo, err)
 		} else {
 			msg := verifyRepo(dst, res.Files, res.Unformatted)
+			if builtBefore {
+				missing, wrong := SplitBuildErrors(UnexpectedBuildErrors(goBuildErrors(dst), pending))
+				if msg == "" && len(wrong) > 0 {
+					msg = "빌드 틀림: " + wrong[0]
+				}
+				for _, m := range missing {
+					fmt.Printf("  ~~ 아직 없는 이름: %s\n", m)
+				}
+			}
 			fmt.Printf("\n##### %s — 넣음 %d · 건너뜀 %d · 검증 %s\n",
 				p.Repo, res.Inserted, res.Skipped, orOK(msg))
 			for _, x := range res.Refused {
