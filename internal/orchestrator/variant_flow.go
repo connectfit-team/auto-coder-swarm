@@ -92,7 +92,7 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 
-	if msg := verifyRepo(repoPath, r.Files); msg != "" {
+	if msg := verifyRepo(repoPath, r.Files, out.Unformatted); msg != "" {
 		r.Err = fmt.Sprintf("검증 실패: %s", msg)
 		return r
 	}
@@ -122,8 +122,15 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 // 함정: gofmt 는 문법 오류가 있으면 종료 코드가 0이 아니다. 그것을 "검증
 // 못 함" 으로 보고 넘기면, 잡으라고 만든 경우가 정확히 빠진다.
 // 종료 코드가 아니라 출력이 있는지로 판단한다.
-func verifyRepo(path string, files []string) string {
+func verifyRepo(path string, files, skip []string) string {
+	skipSet := map[string]bool{}
+	for _, f := range skip {
+		skipSet[f] = true
+	}
 	for _, f := range files {
+		if skipSet[f] {
+			continue
+		}
 		switch filepath.Ext(f) {
 		case ".go":
 			if _, err := exec.LookPath("gofmt"); err != nil {

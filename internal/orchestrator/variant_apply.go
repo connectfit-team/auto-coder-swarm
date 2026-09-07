@@ -23,6 +23,9 @@ type ApplyOutcome struct {
 	Files    []string
 	Inserted int
 	Skipped  int // 이미 들어 있어 건너뛴 곳
+	// 원래부터 gofmt 를 안 지키던 파일. 우리가 만든 어긋남이 아니므로
+	// 다시 정렬하지도, 검증으로 막지도 않는다.
+	Unformatted []string
 }
 
 // applyVariantPlan 은 한 저장소의 변경을 작업공간에 적용한다.
@@ -47,6 +50,7 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 			return out, fmt.Errorf("%s 를 못 읽었다: %w", rel, err)
 		}
 		lines := strings.Split(string(b), "\n")
+		wasClean := goFileIsFormatted(path, rel)
 
 		cs := byFile[name]
 		sort.Slice(cs, func(i, j int) bool { return cs[i].InsertAfter > cs[j].InsertAfter })
@@ -80,8 +84,16 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 			}
 			// 정렬된 var·const 묶음에 한 줄을 끼우면 정렬이 깨진다.
 			// 검증이 gofmt 로 막기 전에 여기서 맞춘다.
+			//
+			// 다만 원래 어긋나 있던 파일은 건드리지 않는다. gofmt 를 돌리면
+			// 우리와 무관한 줄까지 다시 정렬돼 PR 에 딸려 들어간다.
+			// 그런 파일은 검증에서도 뺀다 — 우리가 만든 어긋남이 아니다.
 			if strings.HasSuffix(rel, ".go") {
-				exec.Command("gofmt", "-w", path).Run()
+				if wasClean {
+					exec.Command("gofmt", "-w", path).Run()
+				} else {
+					out.Unformatted = append(out.Unformatted, rel)
+				}
 			}
 			out.Files = append(out.Files, rel)
 		}
@@ -172,4 +184,17 @@ func balanceShift(before, after string) string {
 		}
 	}
 	return ""
+}
+
+// goFileIsFormatted 는 그 Go 파일이 이미 gofmt 를 지키는지 본다.
+// Go 파일이 아니거나 gofmt 가 없으면 true 로 본다 — 손대지 않는 쪽이다.
+func goFileIsFormatted(path, rel string) bool {
+	if !strings.HasSuffix(rel, ".go") {
+		return true
+	}
+	if _, err := exec.LookPath("gofmt"); err != nil {
+		return true
+	}
+	b, _ := exec.Command("gofmt", "-l", path).CombinedOutput()
+	return len(strings.TrimSpace(string(b))) == 0
 }
