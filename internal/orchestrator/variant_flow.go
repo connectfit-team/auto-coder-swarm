@@ -23,8 +23,11 @@ import (
 
 // VariantResult 는 저장소 하나의 결과다.
 type VariantResult struct {
-	Repo        string
-	PRURL       string
+	Repo  string
+	PRURL string
+	// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다 — 그 목표 이름.
+	// 비어 있지 않으면 PR 주소가 없는 것이 정상이다.
+	MakeTarget  string
 	Files       []string
 	Inserted    int
 	Skipped     int
@@ -60,6 +63,14 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 // 우리 탓이 아니다.
 func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
+
+	if len(p.Changes) == 0 {
+		// 넣을 자리가 없는 계획도 온다 — protogen 처럼 생성된 파일만 든
+		// 저장소가 그렇다. 사본을 만들 이유가 없다. 사람이 볼 것만 남긴다.
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_NO_SITE",
+			fmt.Sprintf("%s 에는 넣을 자리가 없다", p.Repo), "", strings.Join(p.NeedsManual, "\n"))
+		return r
+	}
 
 	if url := existingVariantPR(p.Repo, req.Value); url != "" {
 		r.PRURL = url
@@ -197,64 +208,11 @@ func braceBalance(path string) string {
 	return ""
 }
 
-func variantCommitMessage(req insightclient.VariantPlanRequest, p insightclient.VariantRepoPlan) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s 더한다\n\n", korean.With(req.Label, "을", "를"))
-	fmt.Fprintf(&b, "%s 가 있는 자리마다 %s 몫을 나란히 넣는다.\n", req.Seed, req.Value)
-	if p.Note != "" {
-		fmt.Fprintf(&b, "\n%s\n", p.Note)
-	}
-	if p.AlreadyThere > 0 {
-		fmt.Fprintf(&b, "\n%d곳은 이미 값이 들어 있어 건드리지 않았다.\n", p.AlreadyThere)
-	}
-	if len(p.DepBumps) > 0 {
-		b.WriteString("\n이 변경이 컴파일되려면 먼저 갱신해야 한다:\n")
-		for _, d := range p.DepBumps {
-			fmt.Fprintf(&b, "  %s\n", depBumpLine(d))
-		}
-	}
-	if len(p.NeedsManual) > 0 {
-		fmt.Fprintf(&b, "\n저장소에 없는 이름이 있다 — 사람이 채워야 한다:\n")
-		for _, n := range p.NeedsManual {
-			fmt.Fprintf(&b, "  %s\n", n)
-		}
-	}
-	return b.String()
-}
-
-func planSummaryText(plans []insightclient.VariantRepoPlan) string {
-	var b strings.Builder
-	for _, p := range plans {
-		fmt.Fprintf(&b, "%d) %s — 자리 %d곳", p.Order, p.Repo, len(p.Changes))
-		if p.AlreadyThere > 0 {
-			fmt.Fprintf(&b, " (이미 있음 %d곳)", p.AlreadyThere)
-		}
-		if p.Blocks {
-			b.WriteString(" (이게 먼저 배포돼야 함)")
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
 func firstLineOf(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
 	}
 	return s
-}
-
-// depBumpLine 은 무엇을 어떻게 갱신해야 하는지 한 줄로 적는다.
-func depBumpLine(d insightclient.DepBump) string {
-	switch d.Kind {
-	case "go":
-		return fmt.Sprintf("%s — go get %s@<새 커밋> (%s 배포 뒤)", d.File, d.Module, d.From)
-	case "pubspec":
-		return fmt.Sprintf("%s — %s 의 ref 를 새 태그로 (%s 배포 뒤)", d.File, d.Module, d.From)
-	case "vendored":
-		return fmt.Sprintf("%s — %s 에서 다시 생성해 넣는다 (protogen 의 make)", d.File, d.Module)
-	}
-	return d.File + " — " + d.Module
 }
 
 // 확인할 수 있는 언어와, 그 도구가 있어야 확인이 되는 것.

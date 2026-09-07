@@ -186,7 +186,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	} else {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMPLETED", "성공", prURL, "")
 	}
-	return true, RunResult{RepoName: t.targetRepo, PRURL: prURL}, nil
+	return true, RunResult{RepoName: t.targetRepo, Result: prURL}, nil
 }
 
 // commitMessageFor 는 요청문에서 커밋 제목을 만든다.
