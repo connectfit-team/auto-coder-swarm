@@ -97,6 +97,10 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 	r.Unverified = unverifiedKinds(r.Files)
+	for _, x := range out.Refused {
+		r.NeedsManual = append(r.NeedsManual,
+			fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s", x.File, x.Line, x.Why))
+	}
 
 	msg := variantCommitMessage(req, p)
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
