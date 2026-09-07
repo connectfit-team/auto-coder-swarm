@@ -101,6 +101,7 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest) []VariantResult {
 	var out []VariantResult
 	var blockers []string
+	pending := PendingSymbols(plans)
 
 	for _, p := range plans {
 		if p.Publish == "protogen-make" {
@@ -112,7 +113,7 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 			continue
 		}
 
-		r := t.applyOneRepo(p, req, blockers)
+		r := t.applyOneRepoWith(p, req, blockers, pending)
 		out = append(out, r)
 
 		if r.Err != "" {

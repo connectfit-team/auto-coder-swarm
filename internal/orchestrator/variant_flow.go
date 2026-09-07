@@ -56,6 +56,12 @@ func (t *taskContext) runVariantAddition(req insightclient.VariantPlanRequest) (
 }
 
 func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers []string) VariantResult {
+	return t.applyOneRepoWith(p, req, blockers, nil)
+}
+
+// applyOneRepoWith 는 아직 배포되지 않은 이름들을 함께 받는다.
+// 그 이름을 말하는 빌드 오류는 우리 탓이 아니다.
+func (t *taskContext) applyOneRepoWith(p insightclient.VariantRepoPlan, req insightclient.VariantPlanRequest, blockers, pending []string) VariantResult {
 	r := VariantResult{Repo: p.Repo, NeedsManual: p.NeedsManual}
 
 	if url := existingVariantPR(p.Repo, req.Value); url != "" {
@@ -78,6 +84,9 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 
+	// 우리 편집 전에 빌드가 됐는지 먼저 본다. 안 됐으면 뒤에 견줄 것이 없다.
+	builtBefore := GoRepo(repoPath) && len(goBuildErrors(repoPath)) == 0
+
 	out, err := applyVariantPlan(repoPath, p)
 	if err != nil {
 		r.Err = fmt.Sprintf("적용 실패: %v", err)
@@ -97,6 +106,20 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		return r
 	}
 	r.Unverified = unverifiedKinds(r.Files)
+
+	// 문법이 맞아도 뜻이 안 맞는 편집이 있다 — 없는 필드에 값을 더하거나
+	// 없는 메서드를 부르는 코드는 파서를 통과한다. 타입까지 빌드로 본다.
+	// 원래 빌드가 안 되던 저장소는 우리 탓이 아니므로 보지 않는다.
+	if GoRepo(repoPath) && builtBefore {
+		missing, wrong := SplitBuildErrors(UnexpectedBuildErrors(goBuildErrors(repoPath), pending))
+		if len(wrong) > 0 {
+			r.Err = "빌드가 깨졌다: " + firstLineOf(strings.Join(wrong, "\n"))
+			return r
+		}
+		for _, m := range missing {
+			r.NeedsManual = append(r.NeedsManual, "아직 없는 이름이라 빌드가 안 된다: "+m)
+		}
+	}
 	for _, x := range out.Refused {
 		r.NeedsManual = append(r.NeedsManual,
 			fmt.Sprintf("%s:%d — 넣으면 문법이 깨져 되돌렸다: %s", x.File, x.Line, x.Why))
