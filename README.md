@@ -1,62 +1,76 @@
-# 🐝 Auto-Coder Swarm (Hands)
+# Auto-Coder Swarm (ACS)
 
-`Auto-Coder Swarm`은 `code-insight-engine` (CIE, Eyes)의 분석 결과와 LLM의 지능형 실행력을 결합하여, **코드 분석-수정-검증-PR 생성** 전 과정을 자동화하는 엔터프라이즈급 자율형 멀티 에이전트 시스템입니다.
+요청 하나를 받아 **필요한 저장소를 모두 고치고 PR 을 여는** 서비스다.
+어디를 고쳐야 하는지는 code-insight-engine(CIE)이 찾고, ACS 가 적용한다.
 
----
+- 들어오는 곳: `POST /api/v1/tasks`, `POST /api/v1/chat` (`X-API-Key`) — 명세는 [API_SPEC.md](./API_SPEC.md)
+- 도는 곳: systemd `auto-coder-swarm.service`, 포트 8006, 작업자 3
+- 저장소 사본: `MASTER_REPOS_PATH`(기본 `/home/cnf/cie-repos`) → 작업마다 `/tmp/swarm_ws_*` 아래 워크트리
 
-## 🛠️ 핵심 아키텍처 (4-Stage Pipeline)
+## 두 갈래
 
-ACS은 CIE와 상호작용하며 다음 4단계 워크플로우를 통해 작업을 완수합니다.
+작업을 집으면 먼저 CIE 에 "이미 있는 값 옆에 값 하나를 더하는 요청인가" 를 묻는다
+(`internal/orchestrator/variant_entry.go`). 그 답에 따라 길이 갈린다.
 
-1.  **INSPECTION (Intelligence-First)**: 대상 범위의 파일 목록과 규모를 지능적으로 파악합니다.
-2.  **STRATEGY (Architect)**: 분석 결과를 바탕으로 최적의 작업 전략과 정밀 질의문을 생성합니다.
-3.  **ANALYSIS (Eyes - CIE)**: CIE를 통해 코드의 논리적 구조를 완벽히 이해합니다.
-4.  **IMPLEMENTATION (Hands - ACS)**: Planner와 Coder 에이전트가 실제 코드를 수정하고 실증 검증을 수행합니다.
+### 값 추가 흐름 — 여러 저장소 (`variant_*.go`)
 
----
+1. CIE 가 씨앗값이 나오는 저장소를 모두 훑어 **저장소마다 넣을 자리**를 준다
+2. 저장소마다 워크트리를 만들고 **아래에서 위로** 넣는다 — 위부터 넣으면 뒤 자리의 줄 번호가 밀린다
+3. 자리마다 넣기 전후를 견줘 문법이 깨지면 **그 자리만** 되돌리고 까닭을 남긴다
+4. 브랜치 `feat/add-<값>-<작업번호>` 로 PR 을 연다
+5. proto 저장소는 PR 이 아니라 protogen 의 `make push-*apis` 로 배포한다 — 사람이 돌린다
+6. 먼저 머지·배포돼야 하는 것이 있으면 뒤따르는 PR 은 **초안**으로 열고 본문 맨 앞에 무엇을 기다리는지 적는다
 
-## 🛡️ 시스템 무결성 5대 원칙 (Mandates)
+한 저장소가 실패해도 나머지는 계속한다. 요청의 전부는 "**어느 저장소를 고쳐야 하는지 다 보여 주는 것**" 이기 때문이다.
 
-1.  **Pre-Task 목적 명확화**: 모든 작업 시작 전 목적을 재확인합니다.
-2.  **Zero-Mock 원칙**: 프로덕션 코드에 빈 껍데기 코드 주입을 전면 금지합니다.
-3.  **Mandatory 실증 검증**: 컴파일 및 빌드 테스트를 거쳐야만 작업을 종료합니다.
-4.  **완벽한 추적성**: 모든 변경 사항은 `SESSION_LOG.md`와 Git Log에 기록됩니다.
-5.  **실시간 원격 동기화 (Continuous Sync)**: 모든 수정 사항은 즉시 커밋 및 푸시됩니다.
+### 결함 흐름 — 한 저장소 (`flow_*.go`)
 
----
+분석 → 계획 → 수정 → 검증 → 검토를 최대 세 번 돈다(`flow.go`).
 
-## 📂 프로젝트 가이드 문서 (Master Docs)
+- 검토자가 반대해도 고친 것을 버리지 않는다. 남아 있으면 반대 의견을 붙여 **승인 대기**로 사람에게 넘긴다
+- 승인은 "본 것을 그대로 올린다" 는 뜻이라, 승인 뒤에는 다시 분석하지 않는다 — 사람이 본 diff 와 올라가는 diff 가 달라지면 검토의 뜻이 사라진다
 
-상세한 운영 및 개발 지침은 아래 문서를 참조하십시오.
+## 검증 — 무엇으로 막는가
 
-*   [**PROJECTS.md**](./PROJECTS.md): 마스터 사양 및 중장기 로드맵.
-*   [**PROGRESS.md**](./PROGRESS.md): 현재 진행 단계 및 운영(Systemd) 지침.
-*   [**CLAUDE.md**](./CLAUDE.md): 에이전트 행동 강령 및 무결성 보장 원칙.
-*   [**API_SPEC.md**](./API_SPEC.md): 외부 연동을 위한 REST API 명세.
-*   [**SESSION_LOG.md**](./SESSION_LOG.md): 최신 작업 이력 및 의사결정 기록.
+| 언어 | 도구 | 도구가 없으면 |
+|---|---|---|
+| Go | `gofmt -e` + `go build ./...` | Go 는 이 기계에 늘 있다 |
+| Dart | `dart format --output=none` (`DART_BIN`) | "문법 확인 못 함" 으로 PR 에 적는다 |
+| TS·JS·Svelte | `tools/tsparse/parse.js` (`TS_PARSER`) | 같다 |
+| proto | 중괄호 짝 | `protoc` 은 두지 않는다 |
+| 전부 | 넣기 전후의 괄호 균형 차이 | — |
 
----
+원칙은 하나다. **검사가 돌지 않은 것을 통과로 세지 않는다.**
+도구가 없거나 파서가 파일을 못 읽은 것은 통과가 아니라 "확인 못 함" 이고, 그대로 PR 에 적는다.
+`scripts/install-checkers.sh` 가 검사기를 깔고 **일부러 틀린 파일이 걸리는지** 확인한다 — 검사기가 죽으면 조용히 통과로 보이기 때문이다.
 
-## ⚙️ 시작하기 (Quick Start)
+우리가 고친 파일만 본다. 저장소 전체를 보면 원래 포맷이 안 맞던 남의 파일 때문에 멀쩡한 PR 이 막힌다.
 
-### 1. 환경 설정
-`.env` 파일을 생성하고 필요한 API Key 및 경로를 설정합니다.
+## 규칙
+
+- `master` 에 직접 밀지 않는다. 브랜치 → PR → 사람이 머지한다
+- proto 는 `protoc` 을 직접 돌리거나 `*.pb.go` 를 손으로 커밋하지 않는다 — protogen 의 make 만 쓴다
+- 빈 껍데기(`TODO`, `return nil`)를 넣지 않는다
+- 사람에게 보이는 글에 거짓을 적지 않는다. 못 한 것은 못 했다고 적는다
+- 파일 하나는 500줄 아래로, 한 가지 몫만 진다
+
+## 시작하기
+
 ```bash
-cp .env.example .env
+cp .env.example .env      # 설정값은 DEPLOYMENT.md 의 표를 본다
+bash scripts/install-checkers.sh
+go build -o bin/swarm ./cmd/swarm/main.go && ./bin/swarm
 ```
 
-### 2. 빌드 및 실행
 ```bash
-go build -o bin/swarm cmd/swarm/main.go
-./bin/swarm
+curl -X POST http://localhost:8006/api/v1/chat \
+     -H "X-API-Key: $SWARM_API_KEY" \
+     -d '{"message":"소셜로그인 타입에 instagram 을 더해줘"}'
 ```
 
-### 3. API 테스트
-```bash
-curl -X POST http://localhost:8006/api/v1/tasks \
-     -H "X-API-Key: secret" \
-     -d '{"user_request": "repo_name 경로의 코드를 분석해줘"}'
-```
+## 문서
 
----
-*Last Updated: 2026-05-21 (High-Precision Introspection & Modularization Applied)*
+* [DEPLOYMENT.md](./DEPLOYMENT.md) — 설치, 설정값, 의존 서비스, 배포
+* [API_SPEC.md](./API_SPEC.md) — REST·SSE·NATS 명세
+* [CLAUDE.md](./CLAUDE.md) — 이 저장소에서 일하는 규칙
+* [PROJECTS.md](./PROJECTS.md) · [PROGRESS.md](./PROGRESS.md) — 사양과 진행
