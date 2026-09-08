@@ -194,6 +194,13 @@ func replaceLoosely(src, search, replace string) (string, error) {
 //
 // 이어지는 몇 줄을 붙여 공백을 접은 것이 찾는 내용과 같으면 그 줄들을
 // 통째로 바꾼다. 여러 군데면 — 복사된 코드라는 뜻이므로 — 전부 바꾼다.
+// appendedNote 는 마지막으로 붙인 선언에 대한 말이다. 로그에 남기려고
+// 둔다 — 붙인 것을 바꾼 것처럼 보고하면 사람이 diff 를 잘못 읽는다.
+var appendedNote string
+
+// AppendedNote 는 방금 붙인 선언에 대한 말을 준다.
+func AppendedNote() string { return appendedNote }
+
 func replaceFlattened(srcLines []string, search, replace string) (string, error) {
 	want := flattenCode(search)
 	if want == "" {
@@ -221,6 +228,15 @@ func replaceFlattened(srcLines []string, search, replace string) (string, error)
 
 	switch {
 	case len(at) == 0:
+		// **새 선언은 찾을 것이 아니라 붙일 것이다.**
+		//
+		// 없는 기능을 만들 때 코더는 "// X 메서드를 구현합니다" 를 찾으라고
+		// 한다. 원문에 있을 수가 없다. 형제 옆에 붙이면 되는 일이다
+		// (실측 W-57730 이 이것으로 세 시도를 태웠다).
+		if out, why, ok := appendBesideSibling(srcLines, search, replace); ok {
+			appendedNote = why
+			return out, nil
+		}
 		// 원문에 무엇이 있는지 함께 준다. 없다고만 말하면 다시 계획해도
 		// 같은 것을 지어낸다(실측 W-70980: 세 시도가 같은 자리에서 죽었다).
 		msg := fmt.Sprintf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
