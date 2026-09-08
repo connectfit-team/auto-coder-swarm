@@ -103,6 +103,8 @@ func (h *SwarmHandler) routes() map[string]http.HandlerFunc {
 		"GET /api/v1/report/daily": h.HandleGenerateReport,
 		"POST /api/v1/chat":        h.HandleChatSubmission,
 		"POST /api/v1/approve":     h.HandleApproveTask,
+		// 도는 도중에 방향을 더한다. 끝난 작업에는 409.
+		"POST /api/v1/tasks/steer": h.HandleSteerTask,
 	}
 }
 

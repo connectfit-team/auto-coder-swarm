@@ -44,7 +44,9 @@ type taskContext struct {
 	wsPath           string
 	// 요청이 지목한 저장소. 비어 있으면 지목하지 않았다.
 	// 비정렬 감시가 이것으로 "시킨 저장소인가" 를 본다.
-	namedRepos    []string
+	namedRepos []string
+	// 도중에 사람이 보낸 말. PR 본문에 그대로 싣는다 — 삼키지 않는다.
+	steerNotes    []string
 	repoPath      string
 	targetRepo    string
 	currentBranch string

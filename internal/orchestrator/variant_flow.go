@@ -160,7 +160,7 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
 		gitmgr.PushOptions{
 			Title:    fmt.Sprintf("%s %s 더한다", p.Repo, korean.With(req.Label, "을", "를")),
-			BodyLead: blockerNote(blockers),
+			BodyLead: blockerNote(blockers) + steerNote(t.steerNotes),
 			Draft:    len(blockers) > 0,
 		})
 	if err != nil {

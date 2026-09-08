@@ -42,6 +42,22 @@ type SwarmTask struct {
 	CIEWorkID     string `gorm:"index"`
 }
 
+// TaskSteer 는 작업이 도는 도중에 사람이 보낸 지시다.
+//
+// **DB 에 남긴다.** 이 기계는 하루 세 번 다시 뜨고 작업은 몇 분씩 돈다 —
+// 메모리에만 두면 그 사이에 사라진다. 사라진 지시는 없는 것과 같은데, 사람은
+// 말했다고 여긴다. 그것이 가장 나쁘다.
+//
+// AppliedAt 은 흐름이 그것을 집어 간 시각이다. 집어 갔다는 것이 "그대로
+// 반영했다" 는 뜻은 아니다 — 무엇을 했는지는 로그에 적는다.
+type TaskSteer struct {
+	ID        uint   `gorm:"primaryKey"`
+	TaskID    string `gorm:"index"`
+	Message   string `gorm:"type:text"`
+	CreatedAt time.Time
+	AppliedAt *time.Time
+}
+
 type RepoLock struct {
 	RepoName string `gorm:"primaryKey"`
 	LockedAt time.Time

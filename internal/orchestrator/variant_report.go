@@ -222,3 +222,40 @@ func manualWork(p insightclient.VariantRepoPlan) string {
 	}
 	return b.String()
 }
+
+// steerNote 는 도중에 사람이 한 말을 PR 본문 앞에 적는다.
+//
+// 코드로 처리한 것(멈춰라·이 저장소만)은 그대로 했지만, 나머지는 계획을 다시
+// 세우지 않는다. 그러니 무엇을 들었는지 사람이 볼 수 있어야 한다 — 삼키면
+// 말한 사람은 반영된 줄 안다.
+func steerNote(notes []string) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("> 도중에 이렇게 말했다:\n>\n")
+	for _, n := range notes {
+		fmt.Fprintf(&b, "> - %s\n", n)
+	}
+	b.WriteString(">\n> 저장소를 가리는 말은 그대로 따랐다. 그 밖의 말은 이 PR 에\n")
+	b.WriteString("> 반영되지 않았을 수 있다 — 계획을 다시 세우지는 않았다.\n\n")
+	return b.String()
+}
+
+// steerSummary 는 집어 온 말을 어떻게 읽었는지 적는다.
+func steerSummary(act SteerAction, notes []string) string {
+	var b strings.Builder
+	if act.Stop {
+		b.WriteString("멈추라고 읽었다\n")
+	}
+	if len(act.Only) > 0 {
+		fmt.Fprintf(&b, "이 저장소만: %s\n", strings.Join(act.Only, ", "))
+	}
+	if len(act.Exclude) > 0 {
+		fmt.Fprintf(&b, "이 저장소는 뺀다: %s\n", strings.Join(act.Exclude, ", "))
+	}
+	for _, n := range notes {
+		fmt.Fprintf(&b, "말한 것: %s\n", n)
+	}
+	return b.String()
+}

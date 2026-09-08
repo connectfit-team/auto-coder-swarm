@@ -107,6 +107,22 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 	pending := PendingSymbols(plans)
 
 	for _, p := range plans {
+		// 걸음마다 사람의 말을 듣는다. 이미 나간 것은 되돌리지 않는다 —
+		// 열린 PR 은 열린 채로 남고, 다음 저장소부터 반영한다.
+		if act, ok := t.takeSteers(remainingRepos(plans, out)); ok {
+			if act.Stop {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STEER_STOP",
+					"사람이 멈추라고 했다 — 남은 저장소는 건드리지 않는다", "",
+					strings.Join(t.steerNotes, "\n"))
+				break
+			}
+			if !keepRepo(p.Repo, act) {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STEER_SKIP",
+					fmt.Sprintf("사람이 %s 는 하지 말라고 했다", p.Repo), "",
+					strings.Join(t.steerNotes, "\n"))
+				continue
+			}
+		}
 		if p.Publish == protoPublish {
 			// proto 는 PR 이 아니라 protogen 의 make 목표로 배포한다.
 			// 그것이 컴파일·커밋·push 를 한다. 여기서 PR 을 열면 안 된다.
@@ -153,4 +169,51 @@ func firstRepo(plans []insightclient.VariantRepoPlan) string {
 		return plans[0].Repo
 	}
 	return ""
+}
+
+// takeSteers 는 큐에 들어온 사람의 말을 집어 온다.
+// 집어 온 것이 있으면 두 번째 값이 true 다.
+func (t *taskContext) takeSteers(repos []string) (SteerAction, bool) {
+	pending, err := t.orchestrator.store.PendingSteers(t.taskID)
+	if err != nil || len(pending) == 0 {
+		return SteerAction{}, false
+	}
+	var ids []uint
+	var merged SteerAction
+	for _, s := range pending {
+		act := ParseSteer(s.Message, repos)
+		merged.Stop = merged.Stop || act.Stop
+		merged.Only = append(merged.Only, act.Only...)
+		merged.Exclude = append(merged.Exclude, act.Exclude...)
+		t.steerNotes = appendOnceStr(t.steerNotes, act.Note)
+		ids = append(ids, s.ID)
+	}
+	_ = t.orchestrator.store.MarkSteersApplied(ids)
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STEER_TAKEN",
+		fmt.Sprintf("도중에 들어온 말 %d개를 집었다", len(pending)), "",
+		steerSummary(merged, t.steerNotes))
+	return merged, true
+}
+
+// remainingRepos 는 아직 손대지 않은 저장소 이름을 준다.
+// 사람의 말에서 저장소 이름을 찾을 때 이것과 견준다.
+func remainingRepos(plans []insightclient.VariantRepoPlan, done []VariantResult) []string {
+	var out []string
+	for _, p := range plans {
+		seen := false
+		for _, d := range done {
+			if d.Repo == p.Repo {
+				seen = true
+			}
+		}
+		if !seen {
+			out = appendOnceStr(out, p.Repo)
+		}
+	}
+	return out
+}
+
+// keepRepo 는 사람의 말대로 이 저장소를 계속할지 본다.
+func keepRepo(repo string, act SteerAction) bool {
+	return len(KeepSteered([]string{repo}, act)) == 1
 }
