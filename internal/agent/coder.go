@@ -91,6 +91,16 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 			filepath.Base(filePath), strings.Join(lost, ", "))
 	}
 
+	// **문법이 깨진 것을 저장하지 않는다.**
+	//
+	// 사라진 export 는 위에서 막지만 글자가 뭉개진 것은 아무도 안 봤다.
+	// 실측으로 RecordNotFound 가 cordNotFound 로 잘린 파일이 그대로
+	// 저장됐고(W-77855), 자가치유가 그 위에서 또 고치려 들었다.
+	// 파싱은 빌드보다 싸다 — 쓰기 전에 본다.
+	if err := CheckSyntax(filePath, updated); err != nil {
+		return "", err
+	}
+
 	if err := os.WriteFile(filePath, []byte(updated), 0644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
