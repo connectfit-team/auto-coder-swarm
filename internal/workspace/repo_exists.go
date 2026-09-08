@@ -28,6 +28,14 @@ func (m *LocalManager) HasRepo(name string) bool {
 	return err == nil && st.IsDir()
 }
 
+// RepoPath 는 그 저장소 사본의 경로다. 없으면 빈 문자열이다.
+func (m *LocalManager) RepoPath(name string) string {
+	if !m.HasRepo(name) {
+		return ""
+	}
+	return filepath.Join(m.masterRepos, name)
+}
+
 // Repos 는 사본이 있는 저장소 이름을 준다.
 func (m *LocalManager) Repos() []string {
 	es, err := os.ReadDir(m.masterRepos)

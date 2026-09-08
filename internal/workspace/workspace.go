@@ -18,6 +18,8 @@ type Manager interface {
 	// HasRepo 는 그 이름의 사본이 실제로 있는지 본다. 모델이 준 이름을
 	// 확인 없이 쓰면 빈 폴더에서 일하게 된다.
 	HasRepo(name string) bool
+	// RepoPath 는 그 사본의 경로다. 없으면 빈 문자열.
+	RepoPath(name string) string
 	Repos() []string
 }
 
