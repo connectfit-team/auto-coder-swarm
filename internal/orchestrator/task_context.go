@@ -54,6 +54,8 @@ type taskContext struct {
 	targetRepo    string
 	currentBranch string
 	lastFeedback  string
+	// 없는 기능을 새로 만드는 일인가. 계획·PR 이 이것을 알아야 한다.
+	newFeature bool
 	// 사내지식을 못 받은 까닭. 비어 있으면 받았다는 뜻이다.
 	// PR 에 적어야 한다 — 지식 없이 쓴 코드라는 것을 사람이 알아야 한다.
 	knowledgeMissing string

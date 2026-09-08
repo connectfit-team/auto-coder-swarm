@@ -279,9 +279,19 @@ func (t *taskContext) prepareAnalysis() error {
 	// 조용히 지어내면 있지도 않은 함수를 찾으라고 하는 계획이 나온다
 	// (W-70980). 사람에게 넘기는 것이 맞다.
 	if why, notFound := AnalysisSaysNotFound(res); notFound {
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ANALYSIS_NOT_FOUND",
-			"분석이 그 기능을 못 찾았다고 했다 — 지어내지 않고 멈춘다", "", why)
-		return fmt.Errorf("이 저장소에서 그 기능을 찾지 못했다 — 새로 만드는 일이라면 설계를 사람이 정해야 한다:\n%s", why)
+		// **새로 만들라는 요청에는 "못 찾았다" 가 당연하다.** 없으니까
+		// 만드는 것이다. 거기서 멈추면 시킨 일을 아예 못 한다.
+		if IsNewFeatureRequest(t.req.UserRequest) {
+			t.newFeature = true
+			brief := NewFeatureBrief(t.req.UserRequest, t.ckhKnowledge, t.actionablePath)
+			t.analysis = brief + "\n[분석이 확인한 것]\n" + res
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NEW_FEATURE",
+				"없는 기능을 새로 만드는 일이다 — 이웃 코드를 본떠 만든다", "", brief)
+		} else {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ANALYSIS_NOT_FOUND",
+				"분석이 그 기능을 못 찾았다고 했다 — 고칠 것이 없다", "", why)
+			return fmt.Errorf("이 저장소에서 그 기능을 찾지 못했다 — 고칠 자리가 없다:\n%s", why)
+		}
 	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "INIT", "분석 완료", "", t.analysis)
 	return nil
