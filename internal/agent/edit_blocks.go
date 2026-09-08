@@ -48,9 +48,14 @@ func applyEditBlocks(original, raw string) (string, error) {
 		if strings.TrimSpace(search) == "" {
 			return "", fmt.Errorf("찾을 내용이 비었다")
 		}
-		switch n := strings.Count(out, search); {
+		// **줄 경계에 맞는 자리만 센다.**
+		//
+		// 글자 단위로 바꾸면 낱말 가운데가 잘린다 — 실측으로 buffers 가
+		// ffers 로, new 가 ew 로 남은 파일이 나왔고 오류가 234개였다
+		// (W-43067 · W-91980). 안 맞으면 아래의 줄 단위 길로 넘긴다.
+		switch n := lineAlignedCount(out, search); {
 		case n == 1:
-			out = strings.Replace(out, search, replace, 1)
+			out = replaceLineAligned(out, search, replace, false)
 			applied++
 			continue
 		case n > 1 && isSubstantial(search):
@@ -59,7 +64,7 @@ func applyEditBlocks(original, raw string) (string, error) {
 			// 찾는 내용이 글자 그대로 같은 자리들이라 한 곳만 고치면 나머지는
 			// 그대로 남는다. 실제로 workplace.ts 의 말일 경계 버그가 29행과
 			// 133행 두 곳에 복사돼 있었고, 한 곳만 고치면 반만 고친 것이다.
-			out = strings.ReplaceAll(out, search, replace)
+			out = replaceLineAligned(out, search, replace, true)
 			applied++
 			continue
 		case n > 1:
