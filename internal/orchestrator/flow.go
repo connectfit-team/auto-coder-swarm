@@ -223,7 +223,7 @@ func (t *taskContext) shipReviewedDiff() (RunResult, bool, error) {
 
 	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChangesOpt(
 		t.repoPath, repo, t.currentBranch, commitMessageFor(t.req.UserRequest),
-		gitmgr.PushOptions{BodyLead: steppedDownNote(t.steppedDown) + steerNote(t.steerNotes)})
+		gitmgr.PushOptions{BodyLead: knowledgeNote(t.knowledgeMissing) + steppedDownNote(t.steppedDown) + steerNote(t.steerNotes)})
 	if prErr != nil {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PR_MANUAL",
 			"PR 은 못 열었지만 브랜치는 올라갔습니다", prURL, prErr.Error())

@@ -54,6 +54,9 @@ type taskContext struct {
 	targetRepo    string
 	currentBranch string
 	lastFeedback  string
+	// 사내지식을 못 받은 까닭. 비어 있으면 받았다는 뜻이다.
+	// PR 에 적어야 한다 — 지식 없이 쓴 코드라는 것을 사람이 알아야 한다.
+	knowledgeMissing string
 	// 엄한 검증 명령이 기준선부터 깨져 있어 한 칸 물러섰다는 말.
 	// PR 에 적어야 한다 — 사람이 무엇이 안 검사됐는지 알아야 한다.
 	steppedDown string
