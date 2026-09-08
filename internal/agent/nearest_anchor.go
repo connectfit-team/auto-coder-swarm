@@ -22,6 +22,29 @@ const (
 	anchorShow   = 4 // 사람·모델에게 보여 줄 줄 수
 )
 
+// bestSibling 은 가장 많이 겹치는 원문 조각의 자리를 준다.
+// (시작 줄, 줄 수, 겹친 수, 찾던 이름 수). 없으면 시작 줄이 -1 이다.
+//
+// nearestAnchor 는 이것을 사람이 읽는 글로 만들고, 새 선언을 붙일 자리를
+// 고를 때도 같은 셈을 쓴다 — 두 곳이 다른 눈으로 보면 설명과 동작이 갈린다.
+func bestSibling(srcLines []string, search string) (at, n, hit, want int) {
+	set := identSet(search)
+	if len(set) == 0 {
+		return -1, 0, 0, 0
+	}
+	best, bestAt, bestN := 0, -1, 0
+	for i := 0; i < len(srcLines); i++ {
+		for k := 1; k <= anchorWindow && i+k <= len(srcLines); k++ {
+			got := identSet(strings.Join(srcLines[i:i+k], "\n"))
+			h := overlap(set, got)
+			if h > best || (h == best && bestAt >= 0 && k < bestN) {
+				best, bestAt, bestN = h, i, k
+			}
+		}
+	}
+	return bestAt, bestN, best, len(set)
+}
+
 // nearestAnchor 는 찾는 내용과 가장 많이 겹치는 원문 조각을 준다.
 // 아무것도 안 겹치면 빈 문자열이다.
 func nearestAnchor(srcLines []string, search string) string {
