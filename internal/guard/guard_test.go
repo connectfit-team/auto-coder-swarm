@@ -92,6 +92,26 @@ func TestInsertOnly(t *testing.T) {
 	if bad := InsertOnly(fmted); len(bad) > 0 {
 		t.Errorf("정렬만 바뀐 줄을 막았다: %s", Note(bad))
 	}
+	// 한 줄로 적힌 열거를 늘린 것은 지운 것이 아니다.
+	grown := `--- a/lib/model/user_profile.dart
++++ b/lib/model/user_profile.dart
+@@
+-enum CEOJobType { notSet, fullTime, daily, freelance, notYet }
++enum CEOJobType { notSet, fullTime, daily, freelance, contract, notYet }
+`
+	if bad := InsertOnly(grown); len(bad) > 0 {
+		t.Errorf("줄을 늘린 것을 막았다: %s", Note(bad))
+	}
+	// 줄이 짧아지면 무언가 사라진 것이다.
+	shrunk := `--- a/t.dart
++++ b/t.dart
+@@
+-enum T { a, b, c }
++enum T { a, b }
+`
+	if bad := InsertOnly(shrunk); len(bad) == 0 {
+		t.Error("줄이 짧아진 것을 안 막았다")
+	}
 	if bad := InsertOnly(plainDiff); len(bad) > 0 {
 		t.Errorf("더하기만 한 편집을 막았다: %s", Note(bad))
 	}
