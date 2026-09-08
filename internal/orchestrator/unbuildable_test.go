@@ -16,10 +16,10 @@ func TestUnbuildableNote(t *testing.T) {
 		"internal/validator/setup.go:259:13: checkInfo.Ble undefined",
 	})
 	for _, must := range []string{
-		"초안",              // 사람이 제목만 보고 머지하지 않게
-		"빌드되지 않는다",        // 무엇이 문제인지
+		"초안",       // 사람이 제목만 보고 머지하지 않게
+		"빌드되지 않는다", // 무엇이 문제인지
 		"배포해도 저절로 생기지 않는다", // 낙관하지 않게
-		"atdv2.BLE",       // 무엇이 없는지
+		"atdv2.BLE", // 무엇이 없는지
 	} {
 		if !strings.Contains(note, must) {
 			t.Errorf("PR 머리말에 %q 가 없다:\n%s", must, note)
