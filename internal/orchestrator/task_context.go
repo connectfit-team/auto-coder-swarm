@@ -54,10 +54,13 @@ type taskContext struct {
 	targetRepo    string
 	currentBranch string
 	lastFeedback  string
-	finalDiff     string
-	preBench      string
-	postBench     string
-	meta          ProjectMetadata
+	// 엄한 검증 명령이 기준선부터 깨져 있어 한 칸 물러섰다는 말.
+	// PR 에 적어야 한다 — 사람이 무엇이 안 검사됐는지 알아야 한다.
+	steppedDown string
+	finalDiff   string
+	preBench    string
+	postBench   string
+	meta        ProjectMetadata
 }
 
 func (o *SwarmOrchestrator) newTaskContext(ctx context.Context, taskID string, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) *taskContext {
