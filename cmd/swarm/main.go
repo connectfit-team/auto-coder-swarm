@@ -60,6 +60,12 @@ func sendToSlack(webhookURL, message string) {
 
 func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Storage, wm *worker.Manager, slackWebhook string) {
 	for {
+		// 딸린 것이 안 떴으면 집지 않는다. 이 기계는 하루 세 번 다시 뜨고,
+		// 그때 되살아난 작업이 지식 없이 도는 것을 실측했다(W-43067).
+		if !depsReady() {
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		task, err := store.ClaimNextTask()
 		if err != nil {
 			time.Sleep(2 * time.Second)
