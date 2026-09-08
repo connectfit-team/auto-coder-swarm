@@ -160,8 +160,14 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 	//
 	// 앞에 두었더니 9B 가 코드를 읽는 동안 잊고 코드 리뷰 에세이를 썼다.
 	// 모델은 끝에 있는 말을 더 잘 지킨다. 시작 글자까지 못 박는다.
-	prompt := fmt.Sprintf("%s%s\n%s\n\n[고쳐야 할 것]\n%s\n\n%s",
-		a.conventions,
+	// **파일의 뼈대를 함께 준다.**
+	//
+	// 관련 부분만 보여 주면 그 창에 구조체 선언과 이미 있는 메서드가 안
+	// 들어온다. 그래서 없는 필드(c.repo)와 이미 있는 이름을 지어낸다
+	// (실측 W-49301). 뼈대는 짧고, 그것만 있으면 지어낼 이유가 없다.
+	outline := FileOutline(filePath, original)
+	prompt := fmt.Sprintf("%s%s%s\n%s\n\n[고쳐야 할 것]\n%s\n\n%s",
+		a.conventions, outline,
 		note, shown, instructions, editBlockRules)
 
 	raw, err := CallLLM(ctx, a.llm, a.Name(), prompt)
@@ -171,8 +177,8 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 
 	// 형식을 안 지키면 짧게 한 번 더 묻는다. 긴 프롬프트에서 잊은 것뿐인 경우가 많다.
 	if !editBlockRe.MatchString(raw) {
-		retry := fmt.Sprintf("%s\n%s\n\n[고쳐야 할 것]\n%s\n\n%s",
-			note, shown, instructions,
+		retry := fmt.Sprintf("%s%s\n%s\n\n[고쳐야 할 것]\n%s\n\n%s",
+			outline, note, shown, instructions,
 			"설명하지 마라. 아래 형식만 내라. 첫 글자는 < 여야 한다.\n"+editBlockFormat)
 		if r2, e2 := CallLLM(ctx, a.llm, a.Name(), retry); e2 == nil && editBlockRe.MatchString(r2) {
 			raw = r2
