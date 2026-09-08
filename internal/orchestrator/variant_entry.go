@@ -85,6 +85,13 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 	// 결과 글이 비면 아무것도 못 한 것이다. proto 만 고칠 것이 있는 요청은
 	// PR 이 없어도 성공이다 — PR 수로만 재면 올바른 결과가 실패로 보고된다.
 	res := RunResult{RepoName: firstRepo(ask.Plans), Result: outcomeText(results)}
+	if t.steerStopped {
+		// 멈춘 것을 완료로 보이게 하면 안 된다. 무엇을 안 했는지 적는다.
+		res.Result = strings.TrimSpace(res.Result + "\n(도중에 멈추라고 해서 남은 저장소는 하지 않았다)")
+	}
+	if strings.TrimSpace(res.Result) == "(도중에 멈추라고 해서 남은 저장소는 하지 않았다)" {
+		return res, true, fmt.Errorf("사람이 멈춰서 아무것도 올리지 않았다")
+	}
 	if res.Result == "" {
 		return res, true, fmt.Errorf("PR 을 하나도 못 열었다: %s", whyNoPR(results))
 	}
@@ -111,6 +118,7 @@ func (t *taskContext) applyPlans(plans []insightclient.VariantRepoPlan, req insi
 		// 열린 PR 은 열린 채로 남고, 다음 저장소부터 반영한다.
 		if act, ok := t.takeSteers(remainingRepos(plans, out)); ok {
 			if act.Stop {
+				t.steerStopped = true
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STEER_STOP",
 					"사람이 멈추라고 했다 — 남은 저장소는 건드리지 않는다", "",
 					strings.Join(t.steerNotes, "\n"))

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 	"github.com/connectfit-team/auto-coder-swarm/internal/observability"
 )
 
@@ -52,6 +53,15 @@ func (t *taskContext) execute() (RunResult, error) {
 		log.Printf("🔄 [ACS] Task %s: Execution Attempt %d/3", t.taskID, attempt)
 		if t.ctx.Err() != nil {
 			return RunResult{}, t.ctx.Err()
+		}
+		// 시도마다 사람의 말을 듣는다. 결함 흐름은 몇 분씩 도므로 도중에
+		// 방향을 더할 데가 여기다. 이미 나간 것은 되돌리지 않는다.
+		if act, ok := t.takeSteers(nil); ok && act.Stop {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STEER_STOP",
+				"사람이 멈추라고 했다 — 더 시도하지 않는다", "",
+				strings.Join(t.steerNotes, "\n"))
+			return RunResult{RepoName: t.targetRepo},
+				fmt.Errorf("사람이 멈춰서 그만두었다")
 		}
 
 		startPlan := time.Now()
@@ -205,8 +215,9 @@ func (t *taskContext) shipReviewedDiff() (RunResult, bool, error) {
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SHIP_REVIEWED",
 		"사람이 본 변경을 그대로 올립니다 (다시 만들지 않음)", "", "")
 
-	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChanges(
-		t.repoPath, repo, t.currentBranch, commitMessageFor(t.req.UserRequest))
+	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChangesOpt(
+		t.repoPath, repo, t.currentBranch, commitMessageFor(t.req.UserRequest),
+		gitmgr.PushOptions{BodyLead: steerNote(t.steerNotes)})
 	if prErr != nil {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PR_MANUAL",
 			"PR 은 못 열었지만 브랜치는 올라갔습니다", prURL, prErr.Error())

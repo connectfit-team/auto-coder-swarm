@@ -46,7 +46,10 @@ type taskContext struct {
 	// 비정렬 감시가 이것으로 "시킨 저장소인가" 를 본다.
 	namedRepos []string
 	// 도중에 사람이 보낸 말. PR 본문에 그대로 싣는다 — 삼키지 않는다.
-	steerNotes    []string
+	steerNotes []string
+	// 사람이 도중에 멈추라고 했다. 결과 글이 이것을 말해야 한다 —
+	// 남은 저장소를 안 했는데 "완료" 로만 보이면 거짓이다.
+	steerStopped  bool
 	repoPath      string
 	targetRepo    string
 	currentBranch string

@@ -33,6 +33,38 @@ func TestParseSteerReadsWhatItCan(t *testing.T) {
 	}
 }
 
+// 반만 읽고 계획을 바꾸는 것이 가만히 있는 것보다 나쁘다.
+func TestParseSteerDoesNotGuess(t *testing.T) {
+	repos := []string{"cms", "worker", "gig_mobile"}
+
+	// 이름만 말한 것은 "그것만" 이 아니다.
+	act := ParseSteer("worker 에서 빌드 깨질 것 같은데 확인해줘", repos)
+	if len(act.Only) > 0 || len(act.Exclude) > 0 {
+		t.Errorf("이름만 말한 것을 가리는 말로 읽었다: %+v", act)
+	}
+	if act.Note == "" {
+		t.Error("그 말을 되돌리지 않았다")
+	}
+
+	// 뒤집는 말이 붙으면 멈추는 것이 아니다.
+	for _, m := range []string{
+		"중지하지 말고 계속해",
+		"멈추지 마",
+		"취소하지 않아도 돼",
+	} {
+		if ParseSteer(m, repos).Stop {
+			t.Errorf("%q 를 멈추라고 읽었다", m)
+		}
+	}
+
+	// 그래도 멈추라는 말은 멈춘다.
+	for _, m := range []string{"일단 멈춰줘", "그만", "stop"} {
+		if !ParseSteer(m, repos).Stop {
+			t.Errorf("%q 를 못 읽었다", m)
+		}
+	}
+}
+
 func TestKeepSteeredFilters(t *testing.T) {
 	repos := []string{"cms", "worker", "gig_mobile"}
 
