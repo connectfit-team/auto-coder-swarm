@@ -116,8 +116,20 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 
 		t.repoPath = filepath.Join(t.wsPath, "repo")
 		t.currentBranch = fmt.Sprintf("acs-fix-%s", time.Now().Format("0102150405"))
-		t.orchestrator.wsMgr.CreateWorktree(t.targetRepo, t.repoPath, t.currentBranch)
+		// 워크트리를 못 만들었으면 여기서 멈춘다. 그냥 지나가면 빈 폴더에서
+		// 빌드를 돌리고, 그 실패가 "환경 문제" 로 보고된다(W-82668).
+		if err := t.orchestrator.wsMgr.CreateWorktree(t.targetRepo, t.repoPath, t.currentBranch); err != nil {
+			return fmt.Errorf("%s 의 작업 사본을 만들지 못했다: %w", t.targetRepo, err)
+		}
 		t.meta = t.orchestrator.detectProjectTypeLLM(t.ctx, t.taskID, t.repoPath)
+		// 모델은 "N/A"·"none" 같은 말을 빌드 명령으로 낸다. 그것을 그대로
+		// 돌리면 sh 가 못 찾아 실패하고, 코드 탓으로 보고된다.
+		if isNoCommand(t.meta.BuildCommand) {
+			t.meta.BuildCommand = ""
+		}
+		if isNoCommand(t.meta.BenchCommand) {
+			t.meta.BenchCommand = ""
+		}
 
 		// **표식 파일이 있으면 그쪽을 믿는다.**
 		//
