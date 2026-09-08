@@ -210,6 +210,20 @@ func (t *taskContext) prepareAnalysis() error {
 	// 그동안 이 목록은 "할 만한 일인가" 를 판단하는 데만 쓰고 버렸다. 그래서
 	// 전략이 server/workplace/workplace.ts 를 제대로 짚어 놓고도 계획은
 	// reward_new_point_dashboard.ts 를 골랐다.
+	// **전략이 짚은 경로가 그 저장소에 있는지 본다.**
+	//
+	// "추가 검색" · "팀원과의 커뮤니케이션" 같은 사람 행동을 적고도 가능=true
+	// 를 낸 적이 있고, 짚은 파일 셋 가운데 둘은 다른 저장소의 것이었다
+	// (W-82668). 여기서 걸러야 계획이 없는 자리에 새 파일을 만들지 않는다.
+	if root := t.orchestrator.wsMgr.RepoPath(t.targetRepo); root != "" {
+		kept, dropped := realPaths(root, t.targetRepo, strategy.ActionablePath)
+		if len(dropped) > 0 {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STRATEGY_TRIMMED",
+				fmt.Sprintf("%s 에 없는 경로 %d개를 뺐습니다", t.targetRepo, len(dropped)),
+				"", strings.Join(dropped, "\n"))
+		}
+		strategy.ActionablePath = kept
+	}
 	t.actionablePath = strategy.ActionablePath
 
 	if len(strategy.ActionablePath) == 0 && strategy.TotalFiles == 0 {
