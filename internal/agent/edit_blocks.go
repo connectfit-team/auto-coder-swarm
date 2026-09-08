@@ -221,7 +221,15 @@ func replaceFlattened(srcLines []string, search, replace string) (string, error)
 
 	switch {
 	case len(at) == 0:
-		return "", fmt.Errorf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
+		// 원문에 무엇이 있는지 함께 준다. 없다고만 말하면 다시 계획해도
+		// 같은 것을 지어낸다(실측 W-70980: 세 시도가 같은 자리에서 죽었다).
+		msg := fmt.Sprintf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
+		if near := nearestAnchor(srcLines, search); near != "" {
+			msg += "\n" + near
+		} else {
+			msg += "\n겹치는 이름이 거의 없다 — 이 파일이 아닐 수 있다."
+		}
+		return "", fmt.Errorf("%s", msg)
 	case len(at) > 1 && !isSubstantial(search):
 		return "", fmt.Errorf("줄바꿈을 무시하면 %d군데가 맞는데 너무 짧아 어디인지 알 수 없다:\n%s",
 			len(at), clipRunes(search, 200))
