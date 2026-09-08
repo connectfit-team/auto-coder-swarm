@@ -15,6 +15,10 @@ type Manager interface {
 	CreateWorkspace() (string, error)
 	Cleanup(path string) error
 	CreateWorktree(repoName, targetPath, branchName string) error
+	// HasRepo 는 그 이름의 사본이 실제로 있는지 본다. 모델이 준 이름을
+	// 확인 없이 쓰면 빈 폴더에서 일하게 된다.
+	HasRepo(name string) bool
+	Repos() []string
 }
 
 type LocalManager struct {

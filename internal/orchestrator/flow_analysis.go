@@ -46,6 +46,19 @@ func (t *taskContext) prepareAnalysis() error {
 	if scope.Repo == "" {
 		scope.Repo = t.req.TargetRepo
 	}
+
+	// **모델이 준 저장소 이름은 확인하고 쓴다.**
+	//
+	// 범위 추출이 "고용주웹" 을 냈다. 그것은 제품 이름이고 저장소가 아니다.
+	// 그대로 쓰면 없는 사본에서 워크트리를 만들려다 빈 폴더에서 일하게 되고,
+	// 사람에게는 "환경 문제" 로 보고된다(W-82668). 없는 이름이면 버리고
+	// 아래의 저장소 고르기로 내려간다 — 그것은 색인에 있는 것만 준다.
+	if scope.Repo != "" && !t.orchestrator.wsMgr.HasRepo(scope.Repo) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_UNKNOWN_REPO",
+			fmt.Sprintf("%q 라는 저장소는 없다 — 요청문으로 다시 고른다", scope.Repo),
+			"", strings.Join(t.orchestrator.wsMgr.Repos(), " "))
+		scope.Repo = ""
+	}
 	if scope.Path == "" {
 		scope.Path = "전체"
 	}
