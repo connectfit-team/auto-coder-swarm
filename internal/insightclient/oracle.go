@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -62,7 +64,11 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 				return "", workID, ctx.Err()
 			case <-sigChan:
 				log.Printf("[CIE] Event received! Fetching result for %s", workID)
-				return c.fetchResult(ctx, workID)
+				res, id, err := c.fetchResult(ctx, workID)
+				if err == nil || errors.Is(err, ErrAnalysisFailed) {
+					return res, id, err
+				}
+				log.Printf("[CIE] 신호는 왔는데 결과가 없다 (%v). 다시 물어본다", err)
 			case <-time.After(15 * time.Minute): // Safety timeout for NATS signal
 				log.Printf("[CIE] NATS signal timeout for %s. Falling back to polling...", workID)
 			}
@@ -83,6 +89,9 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 			if err == nil {
 				return res, workID, nil
 			}
+			if errors.Is(err, ErrAnalysisFailed) {
+				return "", workID, err
+			}
 			if delay < 15*time.Second {
 				delay += 1 * time.Second
 			}
@@ -90,6 +99,10 @@ func (c *Client) QueryOracle(ctx context.Context, query, sessionID string, onWor
 	}
 	return "", workID, fmt.Errorf("oracle timeout for %s", workID)
 }
+
+// ErrAnalysisFailed 는 CIE 가 그 작업을 실패로 끝냈다는 뜻이다.
+// 다시 물어봐야 소용없다 — 기다리지 말고 까닭을 그대로 올린다.
+var ErrAnalysisFailed = errors.New("분석 실패")
 
 func (c *Client) fetchResult(ctx context.Context, workID string) (string, string, error) {
 	resURL := fmt.Sprintf("%s/api/tasks/result?id=%s", c.baseURL, workID)
@@ -107,6 +120,19 @@ func (c *Client) fetchResult(ctx context.Context, workID string) (string, string
 		if err := json.NewDecoder(rResp.Body).Decode(&result); err == nil && result.Response != "" {
 			return result.Response, workID, nil
 		}
+	}
+	// 409 는 "끝났는데 실패했다" 다. 되풀이해 물어도 답이 바뀌지 않는다.
+	if rResp.StatusCode == http.StatusConflict {
+		var f struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		json.NewDecoder(rResp.Body).Decode(&f)
+		reason := strings.TrimSpace(f.Error)
+		if reason == "" {
+			reason = f.Status
+		}
+		return "", workID, fmt.Errorf("%w: %s", ErrAnalysisFailed, reason)
 	}
 	return "", "", fmt.Errorf("result not ready (status: %d)", rResp.StatusCode)
 }
