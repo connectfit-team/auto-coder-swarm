@@ -80,10 +80,13 @@ func BeforePush(diff, branch string) []Violation {
 // 띄어쓰기만 바뀐 줄은 뺀다: gofmt 가 정렬을 다시 하면 지운 줄과 더한 줄이
 // 짝으로 나온다.
 func InsertOnly(diff string) []Violation {
+	var addedLines []string
 	added := map[string]bool{}
 	for _, l := range strings.Split(diff, "\n") {
 		if strings.HasPrefix(l, "+") && !strings.HasPrefix(l, "+++") {
-			added[squeeze(l[1:])] = true
+			sq := squeeze(l[1:])
+			added[sq] = true
+			addedLines = append(addedLines, sq)
 		}
 	}
 	var removed []string
@@ -97,7 +100,8 @@ func InsertOnly(diff string) []Violation {
 			continue
 		}
 		body := l[1:]
-		if strings.TrimSpace(body) == "" || added[squeeze(body)] {
+		sq := squeeze(body)
+		if strings.TrimSpace(body) == "" || added[sq] || extendedIn(addedLines, sq) {
 			continue
 		}
 		removed = appendOnce(removed, file+": "+strings.TrimSpace(body))
@@ -176,4 +180,40 @@ func appendOnce(xs []string, x string) []string {
 		}
 	}
 	return append(xs, x)
+}
+
+// extendedIn 은 지운 줄이 **한 군데만 늘어난** 채 더한 줄로 다시 나왔는지 본다.
+//
+// 한 줄로 적힌 열거에 값을 더하면 그 줄을 늘려야 한다:
+//
+//	enum T { a, b, notYet }  →  enum T { a, b, c, notYet }
+//
+// 지운 것이 아니라 늘린 것이다. 앞뒤가 그대로면(가운데 한 군데만 끼워졌으면)
+// 늘린 것으로 본다. 그 밖의 바뀜은 무언가 사라진 것이므로 막는다.
+func extendedIn(addedLines []string, removed string) bool {
+	if len(removed) < 4 {
+		return false
+	}
+	for _, a := range addedLines {
+		if singleInsertion(removed, a) {
+			return true
+		}
+	}
+	return false
+}
+
+// singleInsertion 은 b 가 a 에 한 군데만 끼워 넣은 것인지 본다.
+func singleInsertion(a, b string) bool {
+	if len(b) <= len(a) {
+		return false
+	}
+	p := 0
+	for p < len(a) && a[p] == b[p] {
+		p++
+	}
+	s := 0
+	for s < len(a)-p && a[len(a)-1-s] == b[len(b)-1-s] {
+		s++
+	}
+	return p+s == len(a)
 }

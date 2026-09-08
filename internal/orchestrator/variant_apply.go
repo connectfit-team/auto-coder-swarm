@@ -75,6 +75,10 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 				return out, fmt.Errorf("%s: %w", rel, err)
 			}
 			at := c.InsertAfter + shift
+			if c.ReplaceLines > 0 {
+				// 갈아 끼우기는 그 줄 **자신**을 가리킨다. 넣기는 그 줄 다음이다.
+				at--
+			}
 			if at < 0 || at > len(lines) {
 				return out, fmt.Errorf("%s:%d 는 파일 범위 밖이다(%d줄)", rel, at, len(lines))
 			}
@@ -89,7 +93,14 @@ func applyVariantPlan(repoRoot string, plan insightclient.VariantRepoPlan) (Appl
 			// 때문에 gig_mobile 의 멀쩡한 13곳까지 통째로 날아갔다.
 			// 깨진 자리만 빼고 나머지를 살린다.
 			now := strings.Join(lines, "\n")
-			next := append(lines[:at:at], append(append([]string{}, c.Block...), lines[at:]...)...)
+			// 갈아 끼우는 자리는 그 줄들을 빼고 넣는다. 넣기만 하면 한 줄로
+			// 적힌 열거가 두 개가 된다.
+			drop := c.ReplaceLines
+			if drop < 0 || at+drop > len(lines) {
+				drop = 0
+			}
+			next := append(lines[:at:at],
+				append(append([]string{}, c.Block...), lines[at+drop:]...)...)
 			if msg := insertBreaksSyntax(path, rel, now, next, parsedBefore); msg != "" {
 				out.Refused = append(out.Refused, RefusedChange{
 					File: rel, Line: at, Why: msg,

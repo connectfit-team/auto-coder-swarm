@@ -15,11 +15,16 @@ import (
 
 // VariantChange 는 파일 한 곳에 넣을 것이다.
 type VariantChange struct {
-	File        string   `json:"file"`         // 저장소 이름을 포함한 경로
-	InsertAfter int      `json:"insert_after"` // 이 줄 다음에 넣는다(1부터)
-	Block       []string `json:"block"`
-	Anchor      string   `json:"anchor"`
-	AnchorLine  int      `json:"anchor_line"` // 계획을 세울 때 그 줄의 번호(1부터)
+	File        string `json:"file"`         // 저장소 이름을 포함한 경로
+	InsertAfter int    `json:"insert_after"` // 이 줄 다음에 넣는다(1부터)
+	// 0 이면 넣기다. 1 이상이면 그 줄부터 그만큼을 **갈아 끼운다**.
+	//
+	// 한 줄로 적힌 열거가 그렇다 — enum CEOJobType { notSet, freelance } 에
+	// 새 값을 넣으려면 줄을 늘려야 한다. 줄을 베껴 넣으면 열거가 두 개 된다.
+	ReplaceLines int      `json:"replace_lines,omitempty"`
+	Block        []string `json:"block"`
+	Anchor       string   `json:"anchor"`
+	AnchorLine   int      `json:"anchor_line"` // 계획을 세울 때 그 줄의 번호(1부터)
 }
 
 // VariantRepoPlan 은 저장소 하나의 작업이다.
