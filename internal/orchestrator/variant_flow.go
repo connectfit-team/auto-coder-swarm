@@ -287,18 +287,3 @@ func refusalNotes(refused []RefusedChange) []string {
 	}
 	return out
 }
-
-// stagedDiff 는 지금 워크트리의 편집을 준다.
-//
-// 새로 만든 파일도 봐야 하므로 먼저 담는다(git add -A). 바로 다음 단계가
-// 어차피 담아서 커밋하고, 어긋나 멈추면 이 워크트리는 지워진다.
-func stagedDiff(path string) string {
-	if err := exec.Command("git", "-C", path, "add", "-A").Run(); err != nil {
-		return ""
-	}
-	out, err := exec.Command("git", "-C", path, "diff", "--cached", "HEAD").Output()
-	if err != nil {
-		return ""
-	}
-	return string(out)
-}

@@ -1,11 +1,14 @@
 package gitmgr
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/guard"
 )
 
 type GitManager struct{}
@@ -44,6 +47,19 @@ type PushOptions struct {
 	Draft bool
 }
 
+// ErrMisaligned 는 시킨 일과 어긋나 밀지 않았다는 뜻이다.
+// 다시 시도해서 될 일이 아니다 — 사람이 봐야 한다.
+var ErrMisaligned = errors.New("요청과 어긋나 밀지 않았다")
+
+// stagedDiff 는 담아 둔 편집을 준다. 막을지 판단할 재료다.
+func stagedDiff(path string) string {
+	out, err := exec.Command("git", "-C", path, "diff", "--cached", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
 func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message string) (string, error) {
 	return m.PushApprovedChangesOpt(path, repoName, branchName, message, PushOptions{})
 }
@@ -69,6 +85,17 @@ func (m *GitManager) PushApprovedChangesOpt(path, repoName, branchName, message 
 	if len(strings.TrimSpace(string(statusOut))) == 0 {
 		log.Printf("[GitMgr] [%s] No changes detected. Skipping commit and PR.", path)
 		return "No changes made", nil
+	}
+
+	// **미는 자리에서 막는다.**
+	//
+	// 흐름마다 검사를 두면 새 흐름이 그것을 빠뜨린다 — 값 추가 흐름에만
+	// 붙였다가 결함 흐름 두 자리가 그대로 열려 있었다(실측). 미는 것은
+	// 여기 하나뿐이므로 여기서 봐야 다 걸린다.
+	if bad := guard.BeforePush(stagedDiff(path), branchName); len(bad) > 0 {
+		note := guard.Note(bad)
+		log.Printf("[GitMgr] [BLOCKED] %s: %s", repoName, guard.FirstLine(note))
+		return "", fmt.Errorf("%w: %s", ErrMisaligned, strings.TrimRight(note, "\n"))
 	}
 
 	commitCmd := exec.Command("git", "-C", path, "commit", "-m", message)

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
 )
 
 func (t *taskContext) stepReview() (bool, RunResult, error) {
@@ -176,8 +178,9 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	//
 	// 무엇을 왜 바꿨는지 아무것도 안 남으므로, 나중에 이 커밋을 만난 사람이
 	// 다시 diff 를 읽어야 한다. 요청한 말을 그대로 쓴다.
-	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChanges(
-		t.repoPath, t.targetRepo, t.currentBranch, commitMessageFor(t.req.UserRequest))
+	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChangesOpt(
+		t.repoPath, t.targetRepo, t.currentBranch, commitMessageFor(t.req.UserRequest),
+		gitmgr.PushOptions{BodyLead: steerNote(t.steerNotes)})
 	if prErr != nil {
 		// PR 을 못 열어도 브랜치는 올라가 있다. 그 주소를 남긴다 —
 		// 버리면 사람은 브랜치 이름조차 못 듣는다.
