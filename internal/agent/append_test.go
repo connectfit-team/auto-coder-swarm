@@ -102,3 +102,38 @@ func (r *repo) CEOWorkConnectCreate(ctx context.Context, conn *domain.CEOWorkCon
 		t.Errorf("중괄호가 안 맞는다:\n%s", got)
 	}
 }
+
+// 새 값·새 종류를 더하는 일이 곧 type 과 const 다. 그것을 못 붙이면
+// 정작 시킨 일을 못 한다 (W-91980).
+func TestAppendsTypeAndConstBlock(t *testing.T) {
+	src := `package domain
+
+type CEOWorkConnect struct {
+	ID    string
+	State string
+}
+`
+	newDecl := `type CEOWorkConnectState string
+
+const (
+	CEOWorkConnectStatePending  CEOWorkConnectState = "PENDING"
+	CEOWorkConnectStateAccepted CEOWorkConnectState = "ACCEPTED"
+	CEOWorkConnectStateHeld     CEOWorkConnectState = "HELD"
+)`
+	got, err := replaceLoosely(src, "type CEOWorkConnectState string\n\nconst (\n\tCEOWorkConnectStatePending", newDecl)
+	if err != nil {
+		t.Fatalf("붙이지 못했다: %v", err)
+	}
+	if !strings.Contains(got, "CEOWorkConnectStateHeld") {
+		t.Errorf("새 종류가 안 들어갔다:\n%s", got)
+	}
+	if strings.Count(got, "{") != strings.Count(got, "}") ||
+		strings.Count(got, "(") != strings.Count(got, ")") {
+		t.Errorf("괄호가 안 맞는다:\n%s", got)
+	}
+
+	// 반쪽 묶음은 붙이지 않는다 — 괄호가 안 닫혔다.
+	if _, err := replaceLoosely(src, "없는 것", "const (\n\tA X = \"a\""); err == nil {
+		t.Error("괄호가 안 닫힌 묶음을 붙였다")
+	}
+}

@@ -29,8 +29,15 @@ import (
 //   - 이미 그 이름이 있으면 붙이지 않는다 — 두 번 선언된다.
 
 var (
-	funcDeclRe       = regexp.MustCompile(`^\s*func\s+(\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(`)
-	ifaceMethodRe    = regexp.MustCompile(`^\s*([A-Z]\w*)\s*\([^)]*\)\s*(\(?[\w\[\]\*\., ]*\)?)?\s*$`)
+	funcDeclRe    = regexp.MustCompile(`^\s*func\s+(\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(`)
+	ifaceMethodRe = regexp.MustCompile(`^\s*([A-Z]\w*)\s*\([^)]*\)\s*(\(?[\w\[\]\*\., ]*\)?)?\s*$`)
+	// 새 값·새 종류를 더하는 일이 곧 `type` 과 `const` 다. 실측으로
+	// "연결보류 상태를 추가" 가 이 모양이었는데 붙일 수 없다고 거절했다
+	// (W-91980) — 정작 그것이 시킨 일이었다.
+	typeDeclRe  = regexp.MustCompile(`^\s*type\s+([A-Za-z_]\w*)\s`)
+	groupDeclRe = regexp.MustCompile(`^\s*(const|var)\s*\(\s*$`)
+	oneDeclRe   = regexp.MustCompile(`^\s*(const|var)\s+([A-Za-z_]\w*)\s`)
+
 	appendMinOverlap = 2
 )
 
@@ -47,6 +54,23 @@ func declaredName(block string) string {
 		return "" // 주석만 있는 것은 선언이 아니다
 	}
 	head := lines[i]
+	// `type X …` — 여러 줄이면 중괄호가 닫혀야 온전하다.
+	if m := typeDeclRe.FindStringSubmatch(head); m != nil {
+		if balancedBraces(block) {
+			return m[1]
+		}
+		return ""
+	}
+	// `const (` · `var (` 묶음 — 괄호가 닫혀야 온전하다.
+	if groupDeclRe.MatchString(head) {
+		if strings.Count(block, "(") == strings.Count(block, ")") {
+			return firstIdentIn(lines[i+1:])
+		}
+		return ""
+	}
+	if m := oneDeclRe.FindStringSubmatch(head); m != nil && len(lines)-i == 1 {
+		return m[2]
+	}
 	if m := funcDeclRe.FindStringSubmatch(head); m != nil {
 		// 여러 줄 함수는 중괄호가 닫혀야 온전하다.
 		if strings.Count(block, "{") > 0 && strings.Count(block, "{") == strings.Count(block, "}") {
@@ -73,6 +97,9 @@ func appendBesideSibling(srcLines []string, search, replace string) (string, str
 	// 이미 있으면 붙이면 안 된다. 두 번 선언된다.
 	for _, l := range srcLines {
 		if m := funcDeclRe.FindStringSubmatch(l); m != nil && m[2] == name {
+			return "", name + " 는 이미 있다", false
+		}
+		if m := typeDeclRe.FindStringSubmatch(l); m != nil && m[1] == name {
 			return "", name + " 는 이미 있다", false
 		}
 	}
@@ -186,4 +213,31 @@ func reindentTo(sibling string, block []string) []string {
 		out[i] = pad + strings.TrimPrefix(l, base)
 	}
 	return out
+}
+
+// balancedBraces 는 중괄호가 짝이 맞는지 본다. 중괄호가 아예 없는
+// 한 줄 선언(`type X string`)도 온전한 것으로 본다.
+func balancedBraces(block string) bool {
+	d := 0
+	for _, l := range strings.Split(block, "\n") {
+		d += braceDelta(l)
+	}
+	return d == 0
+}
+
+// firstIdentIn 은 묶음 안의 첫 이름이다. 그것으로 중복을 가린다.
+func firstIdentIn(lines []string) string {
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "//") || t == ")" {
+			continue
+		}
+		f := strings.FieldsFunc(t, func(r rune) bool {
+			return !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+		})
+		if len(f) > 0 {
+			return f[0]
+		}
+	}
+	return ""
 }
