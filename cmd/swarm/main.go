@@ -121,8 +121,13 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.Result, "")
 
 			for _, chainReq := range res.ChainTasks {
+				if chainReq.ParentTaskID == "" {
+					chainReq.ParentTaskID = task.ID
+				}
 				b, _ := json.Marshal(chainReq)
 				newToken, _ := store.CreateTask(string(b))
+				// 형제 작업을 한 줄에 묶어 보여 주려면 뿌리를 저장해야 한다.
+				store.SetParentTask(newToken.ID, chainReq.ParentTaskID)
 				sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (%s): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
 			}
 		}

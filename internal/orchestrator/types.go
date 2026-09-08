@@ -29,6 +29,8 @@ type StatelessRequest struct {
 	Constraints     []string `json:"constraints,omitempty"`
 	Depth           int      `json:"depth"`
 	ParentRepos     []string `json:"parent_repos,omitempty"` // To prevent cycles in chain reactions
+	// 이 요청을 낳은 작업. 화면이 형제 작업과 그 PR 들을 함께 보여 주는 데 쓴다.
+	ParentTaskID string `json:"parent_task_id,omitempty"`
 }
 
 type TaskStrategy struct {

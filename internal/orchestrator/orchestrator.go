@@ -32,6 +32,9 @@ func NewSwarmOrchestrator(ic *insightclient.Client, cc *ckhclient.Client, ws wor
 }
 
 func (o *SwarmOrchestrator) RunStatelessTask(ctx context.Context, taskID string, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) (RunResult, error) {
+	// 화면은 깊이를 안 보낸다. 그러면 연쇄가 아예 돌지 않아 결함 흐름이
+	// 늘 한 저장소만 고친다 — 여러 저장소에 걸친 요청은 답이 될 수 없다.
+	req.Depth = chainDepth(req.Depth)
 	tc := o.newTaskContext(ctx, taskID, req, isApproved, repoLockFunc)
 	return tc.execute()
 }
