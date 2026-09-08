@@ -92,23 +92,80 @@ func appendBesideSibling(srcLines []string, search, replace string) (string, str
 		fmt.Sprintf("%s 를 %d줄의 형제 뒤에 붙였다 (겹침 %d/%d)", name, at+1, hit, want), true
 }
 
-// declEnd 는 형제 선언이 끝나는 줄이다. 함수라면 중괄호가 닫히는 줄까지.
+// declEnd 는 붙여도 되는 자리, 곧 **바깥 선언이 끝나는 줄**이다.
+//
+// 형제가 인터페이스나 구조체 **안**의 한 줄일 때가 함정이다. 그 줄 바로
+// 뒤에 함수를 붙이면 인터페이스 안에 함수가 들어가
+// `non-declaration statement outside function body` 로 깨진다
+// (실측 W-24350: mariadb/connect.go:160).
+//
+// 그래서 형제가 블록 안에 있으면 그 블록이 닫히는 줄까지 내려간다.
 func declEnd(srcLines []string, at, n int) int {
+	// 파일 머리부터 형제까지 중괄호 깊이를 센다. 0 보다 크면 블록 안이다.
 	depth := 0
-	started := false
+	for i := 0; i < at && i < len(srcLines); i++ {
+		depth += braceDelta(srcLines[i])
+	}
+
+	if depth > 0 {
+		// 블록 안이다. 그 블록이 닫히는 줄까지 내려간다.
+		for i := at; i < len(srcLines); i++ {
+			depth += braceDelta(srcLines[i])
+			if depth <= 0 {
+				return i
+			}
+		}
+		return len(srcLines) - 1
+	}
+
+	// 블록 밖이다. 형제가 함수면 그 함수가 닫히는 줄까지.
+	d, started := 0, false
 	for i := at; i < len(srcLines); i++ {
-		depth += strings.Count(srcLines[i], "{") - strings.Count(srcLines[i], "}")
+		d += braceDelta(srcLines[i])
 		if strings.Contains(srcLines[i], "{") {
 			started = true
 		}
-		if started && depth <= 0 {
+		if started && d <= 0 {
 			return i
 		}
 		if !started && i >= at+n-1 {
-			return i // 인터페이스 메서드처럼 몸통이 없는 것
+			return i
 		}
 	}
 	return min(len(srcLines)-1, at+n-1)
+}
+
+// braceDelta 는 그 줄이 중괄호 깊이를 얼마나 바꾸는지다.
+// 글자열과 주석 안의 중괄호는 세지 않는다.
+func braceDelta(line string) int {
+	var quote byte
+	d := 0
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if quote != 0 {
+			if c == 92 { // 역슬래시
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case 39, 34, 96: // ' " `
+			quote = c
+		case 47: // /
+			if i+1 < len(line) && (line[i+1] == 47 || line[i+1] == 42) {
+				return d
+			}
+		case 123: // {
+			d++
+		case 125: // }
+			d--
+		}
+	}
+	return d
 }
 
 // reindentTo 는 붙일 줄들을 형제의 들여쓰기에 맞춘다.
