@@ -14,7 +14,14 @@ import (
 )
 
 func (t *taskContext) stepVerification() (bool, error) {
-	for healAttempt := 1; healAttempt <= 3; healAttempt++ {
+	// **횟수로 끊지 않고 나아지는 동안 이어 간다.**
+	//
+	// 시도를 셋으로 묶어 두었더니 오류가 줄고 있는 도중에 "최대 시도 초과"
+	// 로 끝났다. 멈추는 조건은 횟수보다 강한 것으로 둔다 — 나아지지 않거나,
+	// 앞서 본 오류 묶음이 다시 나오면 멈춘다(그것이 고리다).
+	prog := &healProgress{}
+	stop := ""
+	for healAttempt := 1; ; healAttempt++ {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD", fmt.Sprintf("[%s] 검증 (%s) - 시도 %d", t.meta.Type, t.meta.BuildCommand, healAttempt), t.meta.BuildCommand, "")
 		bCmd := shellCmd(t.ctx, t.repoPath, t.meta.BuildCommand)
 		buildOut, err := bCmd.CombinedOutput()
@@ -50,7 +57,17 @@ func (t *taskContext) stepVerification() (bool, error) {
 		// 그대로 치유기에 들어가서, 8,192 토큰이 경고로 차고 진짜 오류는 잘려
 		// 나갔다. 기준 빌드는 같은 경고를 달고도 통과했으니 그건 원인이 아니다.
 		failure := distillBuildError(string(buildOut))
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS", fmt.Sprintf("빌드 실패, 자가 치유 가동 (%d/3)", healAttempt), failure, "")
+
+		// 이번 회차가 나아졌는지 센다. 나아지는 동안은 계속 간다.
+		goOn, why := prog.step(buildErrorLines(string(buildOut)))
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_PROGRESS",
+			prog.history[len(prog.history)-1], "", prog.Curve())
+		if !goOn {
+			stop = why
+			break
+		}
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_DIAGNOSIS",
+			fmt.Sprintf("빌드 실패, 자가 치유 가동 (%d회)", healAttempt), failure, "")
 
 		relevantFiles := make(map[string]string)
 		plan := t.ctx.Value("current_plan").(agent.Plan)
@@ -99,8 +116,13 @@ func (t *taskContext) stepVerification() (bool, error) {
 		}
 	}
 
-	// Exhausted all heal attempts
-	t.lastFeedback = "HEALER FAILED TO FIX BUILD AFTER 3 ATTEMPTS"
+	// **왜 멈췄는지 그대로 남긴다.** "최대 시도 초과" 는 아무것도 알려주지
+	// 않는다 — 나아지다 멈춘 것과 처음부터 못 고친 것이 같은 말이 된다.
+	if stop == "" {
+		stop = "까닭을 알 수 없다"
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_STOPPED", stop, "", prog.Curve())
+	t.lastFeedback = "HEALER STOPPED: " + stop + "\n" + prog.Curve()
 	exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 	return false, nil
 }
