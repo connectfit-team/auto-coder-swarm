@@ -101,7 +101,12 @@ func trimRunes(s string, max int) string {
 
 // 생성물은 사람도 기계도 손으로 고치지 않는다. 고쳐도 다음 생성 때 덮어써져
 // **조용히 사라지고**, 그 사이 소비하는 서비스만 깨진다.
-var generatedFile = regexp.MustCompile(`\.(pb|pb\.gw)\.go$|_grpc\.pb\.go$|\.g\.dart$|\.freezed\.dart$|\.pb\.dart$`)
+// **컴파일된 것도 생성물이다.** ceo 의 web_contents 에는 Dart 를 컴파일한
+// main.dart.js 가 들어 있는데, 그것을 계획에 넣고 코더가 고쳤다(W-65073).
+// 그 파일은 flutter build 가 다시 만들고, 사람이 읽을 수 있는 것도 아니다.
+var generatedFile = regexp.MustCompile(
+	`\.(pb|pb\.gw)\.go$|_grpc\.pb\.go$|\.g\.dart$|\.freezed\.dart$|\.pb\.dart$` +
+		`|\.dart\.js$|\.min\.(js|css)$|\.js\.map$|/(build|dist)/`)
 
 // diffFile 은 `+++ b/path` 줄에서 경로를 뽑는다.
 var diffFile = regexp.MustCompile(`(?m)^\+\+\+ b/(.+)$`)

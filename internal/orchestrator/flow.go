@@ -79,6 +79,12 @@ func (t *taskContext) execute() (RunResult, error) {
 		startExec := time.Now()
 		if err := t.stepExecution(attempt); err != nil {
 			observability.IncrementAgentOp("Coder", "failed")
+			// 계획 단계와 같은 되먹임 길을 쓴다. 이 갈래가 없어서 코더가
+			// 일부 파일을 못 고쳤을 때 "계획을 다시 세운다" 라는 오류 문구가
+			// 그대로 사람에게 갔다(W-65073) — 다시 세우지도 않았다.
+			if errors.Is(err, errRetryPlanning) && attempt < 3 {
+				continue
+			}
 			return RunResult{}, err
 		}
 		observability.RecordStepDuration("execution", t.targetRepo, time.Since(startExec).Seconds())
