@@ -52,6 +52,7 @@ func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 		return RunResult{}, false, nil
 	}
 
+	t.namedRepos = ask.NamedRepos
 	if len(ask.NamedRepos) > 0 {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "VARIANT_SCOPE",
 			fmt.Sprintf("요청이 저장소를 지목했다 — %s 만 고친다",
