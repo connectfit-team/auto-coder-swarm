@@ -67,3 +67,38 @@ func TestDoesNotAppendWhenUnrelated(t *testing.T) {
 		t.Error("아무 상관 없는 곳에 붙였다")
 	}
 }
+
+// 형제가 인터페이스 **안**의 한 줄이면, 함수는 그 블록이 닫힌 뒤에 붙어야 한다.
+//
+// 그 줄 바로 뒤에 붙이면 인터페이스 안에 함수가 들어가
+// `non-declaration statement outside function body` 로 깨진다
+// (실측 W-24350: mariadb/connect.go:160).
+func TestAppendsAfterEnclosingBlock(t *testing.T) {
+	src := `package mariadb
+
+type ConnectRepository interface {
+	CEOWorkConnectCreate(ctx context.Context, conn *domain.CEOWorkConnect) error
+	CEOWorkConnectGet(ctx context.Context, id, userID string) (*domain.CEOWorkConnect, error)
+}
+
+func (r *repo) CEOWorkConnectCreate(ctx context.Context, conn *domain.CEOWorkConnect) error {
+	return r.WithContext(ctx).Create(conn).Error
+}
+`
+	newFn := `func (r *repo) CEOWorkConnectHold(ctx context.Context, conn *domain.CEOWorkConnect) error {
+	return r.WithContext(ctx).Save(conn).Error
+}`
+	got, err := replaceLoosely(src, "// CEOWorkConnectHold 를 구현합니다", newFn)
+	if err != nil {
+		t.Fatalf("붙이지 못했다: %v", err)
+	}
+	// 인터페이스가 온전해야 한다 — 그 안에 func 이 들어가면 안 된다.
+	iface := got[strings.Index(got, "type ConnectRepository interface {"):]
+	iface = iface[:strings.Index(iface, "\n}")]
+	if strings.Contains(iface, "func (r *repo)") {
+		t.Errorf("인터페이스 안에 함수를 붙였다:\n%s", got)
+	}
+	if strings.Count(got, "{") != strings.Count(got, "}") {
+		t.Errorf("중괄호가 안 맞는다:\n%s", got)
+	}
+}
