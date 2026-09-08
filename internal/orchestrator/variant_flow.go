@@ -139,11 +139,28 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		}
 	}
 
+	// **밖으로 나가기 전에 시킨 일인지 본다.**
+	//
+	// 검증은 "코드가 성립하나" 를 보고, 이것은 "시킨 일인가" 를 본다. 문법이
+	// 맞고 빌드도 되는데 시키지 않은 파일을 고치는 것이 가장 위험하다 —
+	// 사람은 PR 제목을 보고 통과시킨다. 어긋나면 멈추고 다시 시도하지 않는다.
+	if bad := CheckAlignment(AlignmentInput{
+		Repo: p.Repo, Value: req.Value, Diff: stagedDiff(repoPath),
+		Named: t.namedRepos, Blocker: p.Blocks || p.Publish == protoPublish,
+	}); len(bad) > 0 {
+		note := AlignmentNote(bad)
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",
+			fmt.Sprintf("%s 의 편집이 요청과 어긋난다 — PR 을 열지 않는다", p.Repo), "", note)
+		r.Err = "요청과 어긋나 멈췄다: " + firstLineOf(note)
+		r.NeedsManual = append(r.NeedsManual, strings.Split(strings.TrimRight(note, "\n"), "\n")...)
+		return r
+	}
+
 	msg := variantCommitMessage(req, p)
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
 		gitmgr.PushOptions{
 			Title:    fmt.Sprintf("%s %s 더한다", p.Repo, korean.With(req.Label, "을", "를")),
-			BodyLead: blockerNote(blockers),
+			BodyLead: blockerNote(blockers) + steerNote(t.steerNotes),
 			Draft:    len(blockers) > 0,
 		})
 	if err != nil {
@@ -269,4 +286,19 @@ func refusalNotes(refused []RefusedChange) []string {
 			x.File, x.Line, x.Why))
 	}
 	return out
+}
+
+// stagedDiff 는 지금 워크트리의 편집을 준다.
+//
+// 새로 만든 파일도 봐야 하므로 먼저 담는다(git add -A). 바로 다음 단계가
+// 어차피 담아서 커밋하고, 어긋나 멈추면 이 워크트리는 지워진다.
+func stagedDiff(path string) string {
+	if err := exec.Command("git", "-C", path, "add", "-A").Run(); err != nil {
+		return ""
+	}
+	out, err := exec.Command("git", "-C", path, "diff", "--cached", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }

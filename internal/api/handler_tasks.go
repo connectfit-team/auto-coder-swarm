@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/orchestrator"
 	"github.com/connectfit-team/auto-coder-swarm/internal/storage"
@@ -94,4 +95,59 @@ func (h *SwarmHandler) HandleApproveTask(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	fmt.Fprintf(w, "Task %s approved", id)
+}
+
+// HandleSteerTask 는 도는 도중에 사람이 보낸 지시를 큐에 넣는다.
+//
+// **받았다는 것이 반영했다는 뜻은 아니다.** 이미 열린 PR 은 열린 채로 남고,
+// 시작된 검사는 멈추지 않는다. 다음 걸음부터 반영한다. 그래서 202 를 준다 —
+// 200 은 "했다" 로 읽힌다.
+//
+// 지시는 DB 에 남긴다. 이 기계는 하루 세 번 다시 뜨고 작업은 몇 분씩 도는데,
+// 메모리에만 두면 그 사이 사라진다. 사라진 지시는 없는 것과 같은데 사람은
+// 말했다고 여긴다.
+func (h *SwarmHandler) HandleSteerTask(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	msg := strings.TrimSpace(body.Message)
+	if id == "" || msg == "" {
+		http.Error(w, "id 와 message 가 있어야 합니다", http.StatusBadRequest)
+		return
+	}
+
+	t, err := h.store.GetTaskByID(id)
+	if err != nil {
+		http.Error(w, "그런 작업이 없습니다", http.StatusNotFound)
+		return
+	}
+	if finishedStatus(t.Status) {
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(w, "작업 %s 는 이미 %s 입니다 — 끝난 작업에는 방향을 더할 수 없습니다", id, t.Status)
+		return
+	}
+
+	st, err := h.store.AddSteer(id, msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"queued":   true,
+		"steer_id": st.ID,
+		"note":     "다음 걸음부터 반영합니다. 이미 열린 PR 은 그대로 남습니다.",
+	})
+}
+
+// finishedStatus 는 더 이상 도는 중이 아닌 상태인지 본다.
+func finishedStatus(s storage.TaskStatus) bool {
+	switch s {
+	case storage.StatusCompleted, storage.StatusFailed, storage.StatusCancelled:
+		return true
+	}
+	return false
 }

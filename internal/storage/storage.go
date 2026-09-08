@@ -38,7 +38,7 @@ func NewStorage(dsn, dbPath string, rdb *redis.Client) (*Storage, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{}, &Setting{})
+	db.AutoMigrate(&SwarmTask{}, &RepoLock{}, &TaskLog{}, &ThoughtLog{}, &Setting{}, &TaskSteer{})
 
 	s := &Storage{
 		DB:           db,
