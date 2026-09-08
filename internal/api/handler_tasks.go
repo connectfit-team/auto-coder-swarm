@@ -32,10 +32,26 @@ func (h *SwarmHandler) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 	logs, _ := h.store.GetLogs(id)
 	thoughts, _ := h.store.GetThoughts(id)
 
+	// 한 요청이 저장소 여럿에 걸치면 저장소마다 작업이 하나씩 생긴다.
+	// 그것들을 함께 줘야 화면이 PR 단추를 여럿 띄울 수 있다 — 그러지 않아
+	// 지금까지 단추가 하나뿐이었다.
+	root := id
+	if task.ParentTaskID != "" {
+		root = task.ParentTaskID
+	}
+	family, _ := h.store.ChildTasks(root)
+	if root != id {
+		if p, err := h.store.GetTaskByID(root); err == nil {
+			family = append([]storage.SwarmTask{*p}, family...)
+		}
+	}
+
 	response := map[string]interface{}{
 		"task":     task,
 		"logs":     logs,
 		"thoughts": thoughts,
+		// 이 작업과 형제 작업들. 저장소마다 하나씩이고 PR 도 저마다 있다.
+		"family": family,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

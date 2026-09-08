@@ -40,6 +40,11 @@ type SwarmTask struct {
 	HumanFeedback string `gorm:"type:text"`
 	ContextState  string `gorm:"type:text"`
 	CIEWorkID     string `gorm:"index"`
+	// 이 작업을 낳은 작업. 한 요청이 저장소 여럿에 걸치면 저장소마다 작업이
+	// 하나씩 생기는데, 그것들을 묶어 보여 주려면 이름이 필요하다.
+	// 화면이 "PR 열기" 단추를 하나만 띄우던 까닭이 이것이었다 — 작업 하나에
+	// PR 하나이고, 형제 작업이 어디 있는지 아무도 몰랐다.
+	ParentTaskID string `gorm:"index"`
 }
 
 // TaskSteer 는 작업이 도는 도중에 사람이 보낸 지시다.

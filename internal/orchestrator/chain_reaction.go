@@ -4,6 +4,14 @@ import (
 	"fmt"
 )
 
+// rootTaskID 는 이 연쇄의 뿌리 작업이다. 손자까지 한 줄에 묶는다.
+func rootTaskID(t *taskContext) string {
+	if t.req.ParentTaskID != "" {
+		return t.req.ParentTaskID
+	}
+	return t.taskID
+}
+
 func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 	if t.req.Depth <= 0 {
 		return nil, nil
@@ -61,6 +69,8 @@ func (t *taskContext) triggerChainReaction() ([]StatelessRequest, error) {
 			TargetRepo:  impacted.RepoName,
 			Depth:       t.req.Depth - 1,
 			ParentRepos: newParents,
+			// 형제 작업을 한 줄에 묶어 보여 주려면 뿌리를 알아야 한다.
+			ParentTaskID: rootTaskID(t),
 		}
 		triggeredTasks = append(triggeredTasks, newReq)
 
