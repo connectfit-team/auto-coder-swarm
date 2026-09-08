@@ -39,3 +39,17 @@ func unbuildableNote(missing []string) string {
 	b.WriteString(">\n> 값을 더한 자리 자체는 검증을 지났다 — 없는 이름만 채우면 된다.\n\n")
 	return b.String()
 }
+
+// knowledgeNote 는 사내지식 없이 쓴 코드라는 것을 PR 머리에 적는다.
+//
+// 지식이 없어도 작업은 이어 가는 것이 맞다. 그러나 그 사실이 안 보이면
+// 사람은 "정책까지 보고 쓴 코드" 로 읽는다 — 실제로는 404 를 받고 지식 없이
+// 돌던 것이 계속이었다.
+func knowledgeNote(why string) string {
+	if why == "" {
+		return ""
+	}
+	return "> **사내지식 없이 썼다.** " + why + "\n>\n" +
+		"> 정책·과거 결정을 못 보고 코드만 보고 쓴 것이다. 그 값이나 규칙이\n" +
+		"> 정책 표에 있는 것이라면 사람이 대조해야 한다.\n\n"
+}

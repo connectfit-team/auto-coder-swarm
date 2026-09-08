@@ -88,14 +88,30 @@ func (t *taskContext) prepareAnalysis() error {
 	// [Team Skills: 작업 절차] 전략·계획 프롬프트가 이걸 타고 간다.
 	t.fetchSkills(scope.Repo, extsFromRequest(t.req.UserRequest))
 
-	// [CKH Integration: Corporate Policy Retrieval]
+	// **사내지식을 못 받았으면 그 사실을 남긴다.**
+	//
+	// 그동안 없는 길(`/api/v1/context/report`)을 불러 404 를 받고, 그것을
+	// 조용히 넘겼다. 그래서 **모든 작업이 지식 없이 돌았고 아무도 몰랐다.**
+	// 실측으로 "고용주웹 연결보류" 를 물으면 CKH 는 이렇게 답한다 —
+	// "근로자에서 고용주 연결하는 건 일단 보류하기로 했는데"(2020-12-14).
+	// 「연결보류」는 기능 이름이 아니라 연결을 보류한 결정이다. 그것을
+	// 알았다면 코드를 쓰기 전에 사람에게 물었을 것이다.
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "KNOWLEDGE_RETRIEVAL", "사내 정책 및 관련 지식 조회 중 (CKH)", "", "")
-	ckhRes, err := t.orchestrator.ckhClient.GetContextReport(t.ctx, t.taskID, t.req.UserRequest, t.targetRepo)
-	if err == nil && ckhRes != nil {
-		t.ckhKnowledge = ckhRes.Summary
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "KNOWLEDGE_FOUND", "사내 지식 확보 완료", "", t.ckhKnowledge)
-	} else {
-		log.Printf("[Orchestrator] Failed to fetch CKH report: %v", err)
+	report, kErr := t.orchestrator.ckhClient.Ask(t.ctx, t.req.UserRequest, "low")
+	switch {
+	case kErr == nil && strings.TrimSpace(report) != "":
+		t.ckhKnowledge = report
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "KNOWLEDGE_FOUND", "사내 지식 확보 완료", "", report)
+	default:
+		// 지식이 없어도 작업은 이어 간다. 다만 **보이게** 남긴다.
+		why := "빈 답이 왔다"
+		if kErr != nil {
+			why = kErr.Error()
+		}
+		t.knowledgeMissing = why
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "KNOWLEDGE_MISSING",
+			"사내지식 없이 진행한다 — "+why, "", "")
+		log.Printf("⚠️ [Orchestrator] 사내지식 없이 진행: %v", kErr)
 	}
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_RESOLVED", fmt.Sprintf("탐색 대상 확정 - Repo: %s, Path: %s", scope.Repo, scope.Path), "", "")
@@ -256,6 +272,17 @@ func (t *taskContext) prepareAnalysis() error {
 	}
 
 	t.analysis = res
+
+	// **눈이 "못 찾았다" 고 하면 손이 멈춘다.**
+	//
+	// 없는 기능을 새로 만드는 것은 「고쳐라」 가 아니라 「설계해라」 다.
+	// 조용히 지어내면 있지도 않은 함수를 찾으라고 하는 계획이 나온다
+	// (W-70980). 사람에게 넘기는 것이 맞다.
+	if why, notFound := AnalysisSaysNotFound(res); notFound {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ANALYSIS_NOT_FOUND",
+			"분석이 그 기능을 못 찾았다고 했다 — 지어내지 않고 멈춘다", "", why)
+		return fmt.Errorf("이 저장소에서 그 기능을 찾지 못했다 — 새로 만드는 일이라면 설계를 사람이 정해야 한다:\n%s", why)
+	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "INIT", "분석 완료", "", t.analysis)
 	return nil
 }

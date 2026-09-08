@@ -180,7 +180,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	// 다시 diff 를 읽어야 한다. 요청한 말을 그대로 쓴다.
 	prURL, prErr := t.orchestrator.gitMgr.PushApprovedChangesOpt(
 		t.repoPath, t.targetRepo, t.currentBranch, commitMessageFor(t.req.UserRequest),
-		gitmgr.PushOptions{BodyLead: steppedDownNote(t.steppedDown) + steerNote(t.steerNotes)})
+		gitmgr.PushOptions{BodyLead: knowledgeNote(t.knowledgeMissing) + steppedDownNote(t.steppedDown) + steerNote(t.steerNotes)})
 	if prErr != nil {
 		// PR 을 못 열어도 브랜치는 올라가 있다. 그 주소를 남긴다 —
 		// 버리면 사람은 브랜치 이름조차 못 듣는다.
