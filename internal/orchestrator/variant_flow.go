@@ -128,6 +128,7 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 	// 문법이 맞아도 뜻이 안 맞는 편집이 있다 — 없는 필드에 값을 더하거나
 	// 없는 메서드를 부르는 코드는 파서를 통과한다. 타입까지 빌드로 본다.
 	// 원래 빌드가 안 되던 저장소는 우리 탓이 아니므로 보지 않는다.
+	var unbuildable []string
 	if GoRepo(repoPath) && builtBefore {
 		missing, wrong := SplitBuildErrors(UnexpectedBuildErrors(goBuildErrors(repoPath), pending))
 		if len(wrong) > 0 {
@@ -137,6 +138,7 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 		for _, m := range missing {
 			r.NeedsManual = append(r.NeedsManual, "아직 없는 이름이라 빌드가 안 된다: "+m)
 		}
+		unbuildable = missing
 	}
 
 	// **밖으로 나가기 전에 시킨 일인지 본다.**
@@ -160,8 +162,13 @@ func (t *taskContext) applyOneRepo(p insightclient.VariantRepoPlan, req insightc
 	url, err := t.orchestrator.gitMgr.PushApprovedChangesOpt(repoPath, p.Repo, branch, msg,
 		gitmgr.PushOptions{
 			Title:    fmt.Sprintf("%s %s 더한다", p.Repo, korean.With(req.Label, "을", "를")),
-			BodyLead: blockerNote(blockers) + steerNote(t.steerNotes),
-			Draft:    len(blockers) > 0,
+			BodyLead: blockerNote(blockers) + unbuildableNote(unbuildable) + steerNote(t.steerNotes),
+			// **빌드가 안 되는 PR 은 초안으로 연다.**
+			//
+			// 없는 이름(새 proto 메시지·필드·메서드가 필요한 것)은 사람이
+			// 만들어야 한다. 그런데 그것을 알림으로만 적고 PR 은 보통 PR 로
+			// 열었다. 사람은 제목을 보고 통과시킨다 — 머지하면 빌드가 깨진다.
+			Draft: len(blockers) > 0 || len(unbuildable) > 0,
 		})
 	if err != nil {
 		r.Err = fmt.Sprintf("PR 을 못 열었다: %v", err)
