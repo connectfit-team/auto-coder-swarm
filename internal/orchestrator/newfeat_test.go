@@ -39,10 +39,10 @@ func TestNewFeatureBrief(t *testing.T) {
 	b := NewFeatureBrief("연결보류 기능 추가", "연결하는 건 일단 보류하기로 했는데", []string{"internal_v2/business/connect.go"})
 	for _, must := range []string{
 		"새로 만드는 일이다",
-		"본떠",              // 무에서 지어내지 말라는 것이 핵심
+		"본떠",             // 무에서 지어내지 말라는 것이 핵심
 		"원문에 있는 코드만 닻으로", // 없는 함수를 찾으라고 하지 말라
 		"사내지식",
-		"보류하기로 했는데",              // 지식이 실제로 실렸나
+		"보류하기로 했는데", // 지식이 실제로 실렸나
 		"internal_v2/business/connect.go",
 	} {
 		if !strings.Contains(b, must) {

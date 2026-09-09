@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -28,7 +29,26 @@ func (t *taskContext) stepExecution(attempt int) error {
 		// 그동안 이 오류를 버렸다. 그래서 파일이 안 바뀐 채로 빌드로 넘어가고,
 		// 실패가 "빌드 오류" 로 둔갑했다. 무엇이 왜 안 됐는지가 다음 계획의
 		// 되먹임이 된다.
-		if _, err := t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, change.FilePath), change.Instructions); err != nil {
+		full := filepath.Join(t.repoPath, change.FilePath)
+
+		// **없는 파일이면 새로 만든다.**
+		//
+		// 계획은 이미 새 파일을 허용한다(폴더가 있으면 살린다). 그런데 손은
+		// 읽기부터 해서 첫 줄에서 죽었다 — 없는 기능을 만들라는 요청에
+		// 새 파일을 못 만드는 것은 앞뒤가 안 맞는다(W-44018).
+		if _, statErr := os.Stat(full); statErr != nil {
+			if _, err := t.coder.CreateFile(t.ctx, full, change.Instructions, ""); err != nil {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
+					fmt.Sprintf("[%s] 새로 만들지 못했습니다", change.FilePath), "", err.Error())
+				failures = append(failures, err.Error())
+			} else {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_CREATED",
+					fmt.Sprintf("[%s] 새로 만들었습니다", change.FilePath), "", "")
+			}
+			continue
+		}
+
+		if _, err := t.coder.ModifyFile(t.ctx, full, change.Instructions); err != nil {
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
 				fmt.Sprintf("[%s] 고치지 못했습니다", change.FilePath), "", err.Error())
 			failures = append(failures, err.Error())
