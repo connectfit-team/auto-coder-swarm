@@ -23,7 +23,13 @@ func (t *taskContext) stepExecution(attempt int) error {
 				change.FilePath)
 			continue
 		}
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), change.Instructions, "")
+		// 새로 만드는 일이면 코더에게도 그것을 알린다. 계획에만 붙이면
+		// 코더는 여전히 "고치기 전" 코드를 지어낸다(실측 W-34685).
+		instr := change.Instructions
+		if t.newFeature {
+			instr = CoderNewFeatureHint() + instr
+		}
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
 		// 그동안 이 오류를 버렸다. 그래서 파일이 안 바뀐 채로 빌드로 넘어가고,
@@ -37,7 +43,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 		// 읽기부터 해서 첫 줄에서 죽었다 — 없는 기능을 만들라는 요청에
 		// 새 파일을 못 만드는 것은 앞뒤가 안 맞는다(W-44018).
 		if _, statErr := os.Stat(full); statErr != nil {
-			if _, err := t.coder.CreateFile(t.ctx, full, change.Instructions, ""); err != nil {
+			if _, err := t.coder.CreateFile(t.ctx, full, instr, ""); err != nil {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
 					fmt.Sprintf("[%s] 새로 만들지 못했습니다", change.FilePath), "", err.Error())
 				failures = append(failures, err.Error())
@@ -48,7 +54,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 			continue
 		}
 
-		if _, err := t.coder.ModifyFile(t.ctx, full, change.Instructions); err != nil {
+		if _, err := t.coder.ModifyFile(t.ctx, full, instr); err != nil {
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
 				fmt.Sprintf("[%s] 고치지 못했습니다", change.FilePath), "", err.Error())
 			failures = append(failures, err.Error())
