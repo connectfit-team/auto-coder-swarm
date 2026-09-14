@@ -53,7 +53,7 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 		return "", err
 	}
 
-	if err := os.WriteFile(filePath, []byte(CleanCodeOutput(raw)), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(CleanCodeOutput(raw))), 0644); err != nil {
 		return "", err
 	}
 	TidyFile(ctx, filePath)
@@ -101,7 +101,7 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 		return "", err
 	}
 
-	if err := os.WriteFile(filePath, []byte(updated), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(updated)), 0644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 	// import 는 기계가 고친다. 모델에게 세 번 더 물어볼 일이 아니다.
@@ -233,7 +233,7 @@ func (a *CoderAgent) GenerateTestFile(ctx context.Context, sourcePath string) (s
 		return "", err
 	}
 
-	if err := os.WriteFile(testPath, []byte(CleanCodeOutput(testCode)), 0644); err != nil {
+	if err := os.WriteFile(testPath, []byte(ensureFinalNewline(CleanCodeOutput(testCode))), 0644); err != nil {
 		return "", err
 	}
 	TidyFile(ctx, testPath)
