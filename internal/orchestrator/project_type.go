@@ -55,13 +55,17 @@ var projectDefaults = []projectDefault{
 	{"build.gradle", "Java", "./gradlew assemble", nil},
 	{"pyproject.toml", "Python", "python -m compileall -q .", nil},
 	{"requirements.txt", "Python", "python -m compileall -q .", nil},
+	// 잘못을 삼키지 않는다. `2>&1` 로 함께 버렸더니 npm ci 가 실패했을 때
+	// **출력이 통째로 비었고**, 치유기는 "오류 0개" 를 받아 첫 회차에
+	// 멈췄다(W-33934). stdout 만 버린다.
+	//
 	// 새 워크트리에는 node_modules 가 없다 — 무슨 코드를 쓰든 `vite: not found`
 	// 로 끝난다(실측: gig_ceo_web). 그래서 의존성을 받는 것이 기준 명령이다.
 	// 받아 두면 다시 받는 데 1초다(npm 캐시).
 	//
 	// `npm run check` 는 사다리에 넣지 않는다 — 손대기 전부터 svelte-check 가
 	// 418 오류를 낸다(실측). 늘 실패하는 검사는 검사가 아니다.
-	{"package.json", "NodeJS", "npm ci --no-audit --no-fund >/dev/null 2>&1 && npm run build --if-present",
+	{"package.json", "NodeJS", "npm ci --no-audit --no-fund >/dev/null && npm run build --if-present",
 		// 그물이 끊겼거나 잠금 파일이 깨졌으면 있는 것으로라도 빌드해 본다.
 		[]string{"npm run build --if-present"}},
 }

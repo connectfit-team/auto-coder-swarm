@@ -75,8 +75,26 @@ func (t *taskContext) stepVerification() (bool, error) {
 		// 나갔다. 기준 빌드는 같은 경고를 달고도 통과했으니 그건 원인이 아니다.
 		failure := distillBuildError(string(buildOut))
 
+		// **실패했는데 읽을 오류가 한 줄도 없으면, 그건 못 읽은 것이다.**
+		//
+		// "오류 0개" 를 정상인 양 세면 두 회차 만에 "같은 오류로 돌고 있다"
+		// 가 되어 멈춘다 — 치유기는 아무것도 받지 못한 채였다(W-33934).
+		// 걸러 낸 것이 없으면 날것 그대로 준다. 사람에게도 그렇게 적는다.
+		lines := buildErrorLines(string(buildOut))
+		if len(lines) == 0 {
+			raw := strings.TrimSpace(string(buildOut))
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD_UNREADABLE",
+				"빌드가 실패했는데 오류로 읽을 줄이 없다 — 날것 그대로 넘긴다",
+				t.meta.BuildCommand, clip(raw, 1500))
+			if raw == "" {
+				raw = "빌드 명령이 아무 출력도 남기지 않고 실패했다: " + t.meta.BuildCommand
+			}
+			failure = raw
+			lines = []string{"(읽을 수 없는 실패) " + clip(raw, 200)}
+		}
+
 		// 이번 회차가 나아졌는지 센다. 나아지는 동안은 계속 간다.
-		goOn, why := prog.step(buildErrorLines(string(buildOut)))
+		goOn, why := prog.step(lines)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_PROGRESS",
 			prog.history[len(prog.history)-1], "", prog.Curve())
 		if !goOn {
