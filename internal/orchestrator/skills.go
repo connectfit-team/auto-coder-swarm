@@ -104,9 +104,13 @@ func trimRunes(s string, max int) string {
 // **컴파일된 것도 생성물이다.** ceo 의 web_contents 에는 Dart 를 컴파일한
 // main.dart.js 가 들어 있는데, 그것을 계획에 넣고 코더가 고쳤다(W-65073).
 // 그 파일은 flutter build 가 다시 만들고, 사람이 읽을 수 있는 것도 아니다.
+// **TypeScript 로 편 proto 도 생성물이다.** gig_ceo_web 은 계약을
+// `src/lib/server/protos/<apis>/<도메인>/v1/*.ts` 로 펴 두는데, 이 판정이
+// 그것을 몰라서 코더가 손으로 고칠 수 있었다. 고쳐도 다음 발행 때 덮어써져
+// 조용히 사라지고, 그 사이 그 계약을 쓰는 쪽만 깨진다.
 var generatedFile = regexp.MustCompile(
 	`\.(pb|pb\.gw)\.go$|_grpc\.pb\.go$|\.g\.dart$|\.freezed\.dart$|\.pb\.dart$` +
-		`|\.dart\.js$|\.min\.(js|css)$|\.js\.map$|/(build|dist)/`)
+		`|\.dart\.js$|\.min\.(js|css)$|\.js\.map$|/(build|dist)/|/protos?/`)
 
 // diffFile 은 `+++ b/path` 줄에서 경로를 뽑는다.
 var diffFile = regexp.MustCompile(`(?m)^\+\+\+ b/(.+)$`)
