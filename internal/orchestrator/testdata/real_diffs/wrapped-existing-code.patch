@@ -1,0 +1,76 @@
+diff --git a/src/lib/server/data/connection.ts b/src/lib/server/data/connection.ts
+index 68d49dc..f10212a 100644
+--- a/src/lib/server/data/connection.ts
++++ b/src/lib/server/data/connection.ts
+@@ -29,19 +29,24 @@ export async function getConnectionInfo(
+     session: Session,
+     workPlaceId: string
+ ): Promise<ConnectionResult> {
+-    const res = await getStaffClient().getStaffConnection({
+-        workPlaceId
+-    });
+-    const info = res.connection;
+-    if (!info) return { state: 'none' };
++    try {
++        const res = await getStaffClient().getStaffConnection({
++            workPlaceId
++        });
++        const info = res.connection;
++        if (!info) return { state: 'none' };
+ 
+-    return {
+-        state: 'found',
+-        info: {
+-            isConnected: info.isConnected,
+-            workerId: info.workerId,
+-            connectedAt: toDate(info.connectedAt),
+-            disconnectedAt: toDate(info.disconnectedAt)
+-        }
+-    };
+-}
++        return {
++            state: 'found',
++            info: {
++                isConnected: info.isConnected,
++                workerId: info.workerId,
++                connectedAt: toDate(info.connectedAt),
++                disconnectedAt: toDate(info.disconnectedAt)
++            }
++        };
++    } catch (error) {
++        console.error("Error fetching connection info:", error);
++        return { state: 'error' };
++    }
++}
+\ No newline at end of file
+diff --git a/src/lib/types/connectinvite.ts b/src/lib/types/connectinvite.ts
+index 66e4152..4c30d10 100644
+--- a/src/lib/types/connectinvite.ts
++++ b/src/lib/types/connectinvite.ts
+@@ -39,4 +39,4 @@ export const CONNECT_STEPS = [
+     },
+     { key: 'wait', title: '직원의 연결 요청 기다리기', body: '' },
+     { key: 'accept', title: '연결 요청 수락하기', body: '매장탭 - 직원 관리에서 확인하기' }
+-] as const;
++] as const;
+\ No newline at end of file
+diff --git a/src/lib/types/subscription.ts b/src/lib/types/subscription.ts
+index 5a873a8..56e0957 100644
+--- a/src/lib/types/subscription.ts
++++ b/src/lib/types/subscription.ts
+@@ -95,7 +95,7 @@ type CardLike = { cardName?: string | null; cardNumber?: string | null };
+  * `cardNumber.substring(0, 4)`).
+  *
+  * 운영 값은 4자리가 아니다 — 컬럼이 `varchar(20)` 이고 앱이 `length > 5` 를 확인한
+- * 뒤 자른다. 그대로 이으면 `신한 433012******1234` 가 되어 20px 한 줄에 들어가지
++ * 뒤 자른다. 그대로 이면 `신한 433012******1234` 가 되어 20px 한 줄에 들어가지
+  * 않고, 앱보다 카드번호를 더 많이 보여주는 쪽으로 갈린다.
+  */
+ export function cardLabel(item: CardLike | null | undefined): string {
+@@ -115,4 +115,4 @@ export function paymentMethodText(
+ ): string {
+     const kind = methodLabel(item?.method);
+     return [kind ? t(kind) : '', cardLabel(item)].filter(Boolean).join(' · ');
+-}
++}
+\ No newline at end of file
