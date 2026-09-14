@@ -29,6 +29,15 @@ func (t *taskContext) stepExecution(attempt int) error {
 		if t.newFeature {
 			instr = CoderNewFeatureHint() + instr
 		}
+		// **쓰기 전에 있는 이름을 보여 준다.**
+		//
+		// 사람은 이럴 때 grep 한 번 하고 나서 쓴다. 기계는 그 한 걸음을
+		// 건너뛰고 그럴듯한 이름을 지어냈다 — getConnectClient().updateInviteStatus
+		// 같은 것(W-19079). 이 파일이 들여오는 저장소 안 모듈의 내보낸 이름과,
+		// 그 공장에 저장소가 실제로 쓰는 메서드를 파일에서 세어 먼저 준다.
+		if sheet := AvailableNames(t.repoPath, change.FilePath); sheet != "" {
+			instr = sheet + instr
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
