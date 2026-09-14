@@ -33,6 +33,19 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 		}
 	}
 
+	// 새로 만드는 일인데 새로 생긴 이름이 하나도 없으면 만든 것이 아니다.
+	if t.newFeature {
+		if bad := CheckNewFeatureAddedSomething(diff); len(bad) > 0 {
+			note := AlignmentNote(bad)
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOTHING_NEW",
+				"새로 만들라고 했는데 새로 생긴 이름이 없다 — 넘기지 않는다", why, note)
+			t.lastFeedback = "ALIGNMENT: " + note +
+				"\n있던 코드를 감싸지 말고, 요청한 기능의 이름(함수·타입·열거 값)을 실제로 더해라."
+			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+			return RunResult{}, false
+		}
+	}
+
 	if bad := CheckToolLeak(diff); len(bad) > 0 {
 		note := AlignmentNote(bad)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",

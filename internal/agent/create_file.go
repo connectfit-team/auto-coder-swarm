@@ -54,7 +54,7 @@ func (a *CoderAgent) CreateFile(ctx context.Context, filePath, instructions, out
 	if err := CheckSyntax(filePath, content); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(content)), 0644); err != nil {
 		return "", fmt.Errorf("새 파일을 못 썼다: %w", err)
 	}
 	TidyFile(ctx, filePath)
