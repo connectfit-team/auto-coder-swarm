@@ -113,6 +113,9 @@ func calledMethods(repoPath, factory string) []string {
 // AvailableNames 는 이 파일을 고치는 코더에게 줄 "있는 이름" 쪽지다.
 // 캘 것이 없으면 빈 문자열 — 그때는 아무것도 붙이지 않는다.
 func AvailableNames(repoPath, file string) string {
+	if filepath.Ext(file) == ".go" {
+		return availableNamesGo(repoPath, file)
+	}
 	b, err := os.ReadFile(filepath.Join(repoPath, file))
 	if err != nil {
 		return ""
@@ -141,7 +144,7 @@ func AvailableNames(repoPath, file string) string {
 		if len(ex) == 0 {
 			continue
 		}
-		mods = append(mods, mod{spec, ex})
+		mods = append(mods, mod{spec, relevantFirst(ex, src)})
 
 		// 들여온 이름 가운데 이 파일에서 `X()` 꼴로 쓰이는 것은 공장이다.
 		names := m[1]
