@@ -10,7 +10,7 @@ func TestMissingTool(t *testing.T) {
 		"bash: go: command not found":              "go",
 		"/bin/sh: 1: vite: not found":              "vite",
 		"internal/a.go:1:1: undefined: Foo":        "",
-		"":                                        "",
+		"":                                         "",
 	}
 	for in, want := range cases {
 		if got := missingTool(in); got != want {

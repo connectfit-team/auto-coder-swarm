@@ -36,7 +36,11 @@ var projectDefaults = []projectDefault{
 		// 아무것도 안 보는 것보다 낫고, 물러섰다는 것은 PR 에 적힌다.
 		[]string{
 			"flutter pub get >/dev/null 2>&1 && flutter analyze",
-			"dart format --output=none --set-exit-if-changed .",
+			// `--set-exit-if-changed` 는 **서식**을 본다. 서식이 안 맞는
+			// 저장소는 늘 실패한다 — 실측으로 1694줄이 "Changed" 로 나왔고
+			// 문법과는 상관이 없었다. 그것 없이 돌리면 파싱만 본다(문법이
+			// 깨지면 65로 끝난다).
+			"dart format --output=none .",
 		}},
 	// **`go build` 는 _test.go 를 통째로 건너뛴다.** ACS 가 쓴 테스트 파일이
 	// 컴파일조차 안 되는데 "빌드 성공" 으로 지나갔다(실증). `go test` 로
