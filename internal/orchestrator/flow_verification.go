@@ -45,6 +45,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 		if err == nil && t.typeCmd != "" {
 			tOut, _ := shellCmd(t.ctx, t.repoPath, t.typeCmd).CombinedOutput()
 			if added := newTypeErrors(t.typeBaseline, parseTypeErrors(string(tOut))); len(added) > 0 {
+				t.lastMissing = added
 				note := typeErrorNote(added)
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "TYPE_REGRESSION",
 					fmt.Sprintf("타입 오류가 %d개 늘었다", len(added)), "", note)

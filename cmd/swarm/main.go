@@ -126,16 +126,23 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task %s 성공!*\n📍 *Repo*: %s\n🔗 *결과*: %s", task.ID, res.RepoName, res.Result))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.Result, "")
 
-			for _, chainReq := range res.ChainTasks {
-				if chainReq.ParentTaskID == "" {
-					chainReq.ParentTaskID = task.ID
-				}
-				b, _ := json.Marshal(chainReq)
-				newToken, _ := store.CreateTask(string(b))
-				// 형제 작업을 한 줄에 묶어 보여 주려면 뿌리를 저장해야 한다.
-				store.SetParentTask(newToken.ID, chainReq.ParentTaskID)
-				sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (%s): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
+		}
+
+		// **연쇄 작업은 실패했을 때도 만든다.**
+		//
+		// 여태 성공한 가지 안에만 있었다. 그런데 「이 저장소에 없는 이름
+		// 때문에 막혔다」 는 실패야말로 다른 저장소가 필요하다는 가장 분명한
+		// 신호다 — 연결보류가 그렇게 세 번 막히고 아무 일도 만들어지지 않은
+		// 채 끝났다.
+		for _, chainReq := range res.ChainTasks {
+			if chainReq.ParentTaskID == "" {
+				chainReq.ParentTaskID = task.ID
 			}
+			b, _ := json.Marshal(chainReq)
+			newToken, _ := store.CreateTask(string(b))
+			// 형제 작업을 한 줄에 묶어 보여 주려면 뿌리를 저장해야 한다.
+			store.SetParentTask(newToken.ID, chainReq.ParentTaskID)
+			sendToSlack(slackWebhook, fmt.Sprintf("🔗 *연쇄 작업 발견!* (%s): %s 레포지토리 수정 예약됨.", newToken.ID, chainReq.TargetRepo))
 		}
 	}
 }
