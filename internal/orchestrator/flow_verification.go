@@ -37,6 +37,22 @@ func (t *taskContext) stepVerification() (bool, error) {
 			}
 		}
 
+		// **빌드가 통과해도 타입은 안 본다.**
+		//
+		// W-19079 가 없는 RPC(`updateInviteStatus`)를 부르는 코드를 넣고도
+		// `vite build` 를 통과해 승인 대기까지 갔다. 손대기 전보다 늘었을
+		// 때만 막는다 — 원래 있던 418개는 이 일의 몫이 아니다.
+		if err == nil && t.typeCmd != "" {
+			tOut, _ := shellCmd(t.ctx, t.repoPath, t.typeCmd).CombinedOutput()
+			if added := newTypeErrors(t.typeBaseline, parseTypeErrors(string(tOut))); len(added) > 0 {
+				note := typeErrorNote(added)
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "TYPE_REGRESSION",
+					fmt.Sprintf("타입 오류가 %d개 늘었다", len(added)), "", note)
+				buildOut = []byte(note)
+				err = errNewTypeErrors
+			}
+		}
+
 		if err == nil {
 			// Build succeeded
 			if t.meta.BenchCommand != "" {
