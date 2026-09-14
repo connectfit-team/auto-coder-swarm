@@ -1,6 +1,10 @@
 package orchestrator
 
-import "os/exec"
+import (
+	"os/exec"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+)
 
 // 사람에게 넘기는 길은 하나여야 한다.
 //
@@ -16,6 +20,19 @@ import "os/exec"
 // handOver 는 고친 것을 사람 판단으로 넘긴다.
 // 넘길 수 없으면 false 다 — 부르는 쪽이 되먹임을 들고 다시 시도한다.
 func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
+	// 계획이 짚은 자리를 하나도 안 고쳤으면 한 일이 없는 것이다.
+	if plan, ok := t.ctx.Value("current_plan").(agent.Plan); ok {
+		if bad := CheckDidTheWork(plan, diff); len(bad) > 0 {
+			note := AlignmentNote(bad)
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOT_THE_WORK",
+				"시킨 일을 한 흔적이 없다 — 넘기지 않는다", why, note)
+			t.lastFeedback = "ALIGNMENT: " + note +
+				"\n계획이 짚은 파일을 고쳐라. 상관없는 정리만 남기지 마라."
+			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+			return RunResult{}, false
+		}
+	}
+
 	if bad := CheckToolLeak(diff); len(bad) > 0 {
 		note := AlignmentNote(bad)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",

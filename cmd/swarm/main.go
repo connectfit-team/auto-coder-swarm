@@ -184,6 +184,25 @@ func main() {
 	// 3. Orchestration Layer
 	ic := insightclient.ClientFromEnv(oracleURL, mb)
 	cc := ckhclient.ClientFromEnv(ckhURL) // Initialize CKH Client
+
+	// **말이 통하는지 시작할 때 한 번 본다.**
+	//
+	// 조용히 404 를 받는 것이 가장 나쁘다. 임팩트 분석이 줄곧 404 였고
+	// (경로가 어긋나 있었다) 다중 저장소 연쇄가 한 번도 돈 적이 없었는데
+	// 아무도 몰랐다. 사내지식 쪽에는 같은 검사가 있었는데 **아무도 부르지
+	// 않았다.** 여기서 둘 다 부른다.
+	//
+	// 죽이지는 않는다 — 한쪽이 막혀도 나머지 일은 된다. 대신 크게 적는다.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := ic.CheckContract(ctx); err != nil {
+			log.Printf("🚨 [계약] %v", err)
+		}
+		if err := cc.CheckContract(ctx); err != nil {
+			log.Printf("🚨 [계약] %v", err)
+		}
+	}()
 	wsMgr := workspace.NewLocalManager(workspaceBase, masterRepos)
 	gitSvc := gitmgr.NewGitManager()
 
