@@ -14,7 +14,7 @@ func TestDetectProjectFallback(t *testing.T) {
 		{"go.mod", "Go", "go build ./... && go test -run '^$' -count=1 -vet=off ./..."},
 		{"pubspec.yaml", "Flutter", "flutter analyze"},
 		// 새 워크트리에는 node_modules 가 없다 — 의존성을 받는 것이 기준이다.
-		{"package.json", "NodeJS", "npm ci --no-audit --no-fund >/dev/null 2>&1 && npm run build --if-present"},
+		{"package.json", "NodeJS", "npm ci --no-audit --no-fund >/dev/null && npm run build --if-present"},
 		{"Cargo.toml", "Rust", "cargo check"},
 	}
 	for _, c := range cases {
