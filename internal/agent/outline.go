@@ -65,16 +65,21 @@ func FileOutline(path, content string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("[이 파일의 뼈대 — 여기 없는 필드·메서드를 지어내지 마라]\n")
+	// **요약이 원문으로 오해되면 안 된다.**
+	//
+	// 줄머리를 `·` 로 찍고 그 사실을 못박는다. 안 그러면 모델이 이 요약 줄을
+	// 그대로 SEARCH 에 적는다 — 실측으로 `type Connect { DB }` 를 찾으라고
+	// 했고(원문은 `type Connect struct {` + `*gorm.DB`), 그 자리는 버려졌다.
+	b.WriteString("[이 파일에 있는 것 — 요약이다. 원문이 아니므로 SEARCH 에 적지 마라]\n")
 	for _, t := range sortedNames(types) {
 		if fs := types[t]; len(fs) > 0 {
-			fmt.Fprintf(&b, "type %s { %s }\n", t, strings.Join(fs, ", "))
+			fmt.Fprintf(&b, "· %s — %s\n", t, strings.Join(fs, ", "))
 		} else {
-			fmt.Fprintf(&b, "type %s\n", t)
+			fmt.Fprintf(&b, "· %s\n", t)
 		}
 		if ms := methods[t]; len(ms) > 0 {
 			sort.Strings(ms)
-			fmt.Fprintf(&b, "  메서드: %s\n", strings.Join(ms, ", "))
+			fmt.Fprintf(&b, "·   메서드: %s\n", strings.Join(ms, ", "))
 		}
 	}
 	// 받는이가 이 파일에 없는 타입의 메서드도 있다(다른 파일의 타입).
@@ -84,15 +89,15 @@ func FileOutline(path, content string) string {
 		}
 		ms := methods[t]
 		sort.Strings(ms)
-		fmt.Fprintf(&b, "%s 의 메서드: %s\n", t, strings.Join(ms, ", "))
+		fmt.Fprintf(&b, "· %s 의 메서드: %s\n", t, strings.Join(ms, ", "))
 	}
 	if len(funcs) > 0 {
 		sort.Strings(funcs)
-		fmt.Fprintf(&b, "함수: %s\n", strings.Join(funcs, ", "))
+		fmt.Fprintf(&b, "· 함수: %s\n", strings.Join(funcs, ", "))
 	}
 	if len(consts) > 0 {
 		sort.Strings(consts)
-		fmt.Fprintf(&b, "상수·변수: %s\n", strings.Join(consts, ", "))
+		fmt.Fprintf(&b, "· 상수·변수: %s\n", strings.Join(consts, ", "))
 	}
 
 	out := b.String()

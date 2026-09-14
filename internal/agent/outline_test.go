@@ -30,7 +30,7 @@ func New(r ConnectRepository) *Connect                                 { return 
 		"CEOWorkConnectUpdateState", // 이미 있는 메서드 (중복 선언을 안 하게)
 		"ConnectBusiness",           // 인터페이스
 		"StateHeld",                 // 상수
-		"지어내지 마라",
+		"SEARCH 에 적지 마라",
 	} {
 		if !strings.Contains(out, must) {
 			t.Errorf("뼈대에 %q 가 없다:\n%s", must, out)

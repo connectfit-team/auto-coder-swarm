@@ -82,5 +82,22 @@ func (t *taskContext) stepExecution(attempt int) error {
 	if attempt < 3 {
 		return errRetryPlanning
 	}
-	return fmt.Errorf("계획한 파일 %d개 가운데 %d개를 고치지 못했다", len(plan.Changes), len(failures))
+
+	// **마지막 시도에서는 고친 것을 버리지 않는다.**
+	//
+	// 못 고친 파일이 있으면 다시 계획하는 것이 맞다(반쪽 빌드는 까닭을
+	// 가린다). 그런데 시도를 다 쓰고도 못 고친 것이 남으면, 고친 것까지
+	// 함께 버려진다 — 실측으로 넷 가운데 셋을 고쳐 놓고 하나 때문에
+	// 통째로 실패했다(W-54920).
+	//
+	// 뭉개진 것은 이미 저장되지 않는다(문법 관문). 그러니 마지막에는
+	// 빌드에게 판정을 맡긴다. 빌드가 통과하면 그 변경은 성립한 것이고,
+	// 안 되면 진짜 오류가 나온다 — 둘 다 지금보다 낫다.
+	if len(failures) < len(plan.Changes) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_PARTIAL_KEPT",
+			fmt.Sprintf("%d개 가운데 %d개를 고쳤다 — 마지막 시도라 빌드에 맡긴다",
+				len(plan.Changes), len(plan.Changes)-len(failures)), "", strings.Join(failures, "\n"))
+		return nil
+	}
+	return fmt.Errorf("계획한 파일 %d개를 하나도 고치지 못했다", len(plan.Changes))
 }
