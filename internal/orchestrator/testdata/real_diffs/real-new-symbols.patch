@@ -1,0 +1,163 @@
+diff --git a/src/lib/server/data/connectcud.ts b/src/lib/server/data/connectcud.ts
+index c7c7806..473b2f0 100644
+--- a/src/lib/server/data/connectcud.ts
++++ b/src/lib/server/data/connectcud.ts
+@@ -48,6 +48,7 @@ export function connectFailureReason(e: unknown): ConnectFailure {
+ export type SentInvite = {
+     id: string; workplaceId: string; staffName: string;
+     phoneNumber: string; createdAt: string;
++    status: 'pending' | 'accepted' | 'rejected';
+ };
+ export type ReceivedRequest = {
+     id: string; workplaceId: string; workerName: string;
+@@ -119,8 +120,21 @@ export async function createInvites(
+     }
+ }
+ 
++export async function updateInviteStatus(
++    session: Session,
++    inviteId: string,
++    status: 'pending' | 'accepted' | 'rejected'
++): Promise<{ ok: true } | { ok: false; reason: ConnectFailure }> {
++    try {
++        await getConnectClient().updateInviteStatus({ inviteId, status });
++        return { ok: true };
++    } catch (e) {
++        return { ok: false, reason: connectFailureReason(e) };
++    }
++}
++
+ export async function deleteInvite(
+-    _session: Session, inviteId: string, requestId: string
++    _session: Session, inviteId: string, requestId: string, status: 'rejected' = 'rejected'
+ ): Promise<{ ok: true } | { ok: false; reason: ConnectFailure }> {
+     try {
+         await getConnectClient().deleteInvite({ inviteId, requestId });
+diff --git a/src/lib/types/connectactions.ts b/src/lib/types/connectactions.ts
+index ac628dd..e6cd241 100644
+--- a/src/lib/types/connectactions.ts
++++ b/src/lib/types/connectactions.ts
+@@ -12,6 +12,8 @@ export type ConnectActionContext = {
+     /** 구독이 확인되지 않았다. `null`(조회 실패)은 막지 않는다. */
+     noSubscription?: boolean;
+     readOnly?: boolean;
++    /** 연결 요청이 보류 상태인가. */
++    pending?: boolean;
+ };
+ 
+ /**
+@@ -24,14 +26,16 @@ export type ConnectActionContext = {
+  *   퇴사자        수락 대신 '직원 복귀' 다
+  *   구독 미확인   수락이 막힌다. 수락은 직원을 늘리는 경로다
+  *   읽기 전용     조회만 남는다
++ *   보류 상태     수락이 막힌다. 보류 상태를 해제해야 수락할 수 있다
+  *
+  * 설계는 `desktop/ConnectRowActionMenu`(변형 sent · received · blocked-connected ·
+- * blocked-resigned · readonly)다.
++ * blocked-resigned · readonly · blocked-pending)다.
+  */
+ export function connectActionGroups(ctx: ConnectActionContext): ActionItem[][] {
+     const {
+         kind, contractPending = false, existingConnection = 0,
+-        hasExistingWorkplace = false, noSubscription = false, readOnly = false
++        hasExistingWorkplace = false, noSubscription = false, readOnly = false,
++        pending = false
+     } = ctx;
+ 
+     const staff: ActionItem = {
+@@ -61,7 +65,9 @@ export function connectActionGroups(ctx: ConnectActionContext): ActionItem[][] {
+               ? '퇴사 처리된 직원이에요. 수락 대신 직원 복귀를 쓰세요'
+               : noSubscription
+                 ? '구독이 확인되지 않아 수락할 수 없어요'
+-                : ''
++                : pending
++                  ? '연결 요청이 보류 상태에 있어 수락할 수 없어요'
++                  : ''
+     };
+ 
+     const reject: ActionItem = {
+@@ -70,4 +76,4 @@ export function connectActionGroups(ctx: ConnectActionContext): ActionItem[][] {
+     };
+ 
+     return hasExistingWorkplace ? [[accept, reject], [staff]] : [[accept, reject]];
+-}
++}
+\ No newline at end of file
+diff --git a/src/routes/(auth)/store/connect/+page.server.ts b/src/routes/(auth)/store/connect/+page.server.ts
+index d2223bf..5c8d6e8 100644
+--- a/src/routes/(auth)/store/connect/+page.server.ts
++++ b/src/routes/(auth)/store/connect/+page.server.ts
+@@ -85,6 +85,7 @@ export const actions: Actions = {
+             String(form.get('requestId') ?? '')
+         );
+         if (!res.ok) return rejected('store.connect.invite', 400, { reason: res.reason });
++        if (res.pending) return { ok: true, pending: true };
+         return { ok: true, invited: true };
+     },
+ 
+diff --git a/src/routes/(auth)/store/connect/+page.svelte b/src/routes/(auth)/store/connect/+page.svelte
+index f776bc3..bf3b983 100644
+--- a/src/routes/(auth)/store/connect/+page.svelte
++++ b/src/routes/(auth)/store/connect/+page.svelte
+@@ -44,6 +44,7 @@
+     // 표가 잘린 것과 초대 후보 목록이 잘린 것은 다른 말이다. 한 문구로 묶으면
+     // 표 위에 뜬 '200건' 을 사장님이 연결 대기 목록이 잘린 것으로 읽는다.
+     $: truncated = data.sentTruncated || data.receivedTruncated;
++$: pending = data.pending;
+ 
+     // 앱은 연결 수락에서도 구독을 본다(APP_PARITY E). 조회 실패(null)는 '구독 없음' 이 아니다.
+     $: noPlan = data.subscribed === false;
+@@ -86,6 +87,7 @@
+               : ''
+     }));
+     $: sendable = bulkRows.filter((r) => !r.blockedReason);
++$: pendingRows = bulkRows.filter((r) => r.status === 'pending');
+ 
+     // 첫 직원을 그냥 고르면 이미 초대가 나간 번호가 채워져 **폼이 오류 상태로
+     // 열린다**. 아직 초대가 없는 직원을 먼저 고른다.
+@@ -500,6 +502,32 @@
+     }
+ 
+ </script>
++{#if pendingRows.length > 0}
++    <SectionTitle>{t('connect.pending')}</SectionTitle>
++    <Table>
++        <thead>
++            <tr>
++                <th>{t('connect.staffName')}</th>
++                <th>{t('connect.phoneNumber')}</th>
++                <th>{t('connect.status')}</th>
++                <th>{t('connect.actions')}</th>
++            </tr>
++        </thead>
++        <tbody>
++            {#each pendingRows as row}
++                <tr>
++                    <td>{row.staffName}</td>
++                    <td>{row.phoneNumber}</td>
++                    <td>{t('connect.statusPending')}</td>
++                    <td>
++                        <Button on:click={() => handleApprove(row.workplaceId)}>{t('connect.approve')}</Button>
++                        <Button on:click={() => handleReject(row.workplaceId)}>{t('connect.reject')}</Button>
++                    </td>
++                </tr>
++            {/each}
++        </tbody>
++    </Table>
++{/if}
+ 
+ <!-- 폼이 헤더까지 감싼다. 설계가 '초대 보내기' 를 페이지 헤더에 두므로, 그래야
+      버튼이 form 속성 없이 그대로 이 폼을 보낸다. 모드에 따라 보낼 곳만 바뀐다 —
+diff --git a/tests/pages.spec.ts b/tests/pages.spec.ts
+index 619ba0d..19b3502 100644
+--- a/tests/pages.spec.ts
++++ b/tests/pages.spec.ts
+@@ -108,6 +108,8 @@ const PAGES: [string, string][] = [
+ 	['게시판', '/store/board'],
+ 	['직원', '/store/staff'],
+ 	['연결', '/store/connect'],
++['연결 보류', '/store/connect/pending'],
++['연결 보류', '/store/connect/pending'],
+ 	['직원 상세 화면', '/store/staff/wp-1'],
+ 	['직원 복구', '/store/staff/recover'],
+ 	['근로계약서', '/store/contract'],

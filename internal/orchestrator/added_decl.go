@@ -21,16 +21,26 @@ import (
 //
 // 판단하지 않고 센다: 더한 줄에 새 선언이나 새 값이 하나라도 있는가.
 
+// **밖에서 부를 수 있는 이름**만 센다.
+//
+// 함수 안의 지역 변수 하나로는 기능이 생기지 않는다. 한 요청이 이 한 줄로
+// 모든 관문을 통과했다(W-80975).
+//
+//	const known = new Set((connectable?.staffs ?? []).map((s) => s.workplaceId ?? ''));
+//
+// 새 선언이긴 하다. 그런데 연결 보류와 아무 상관이 없다. 없는 기능을
+// 만들라고 했으면 **함수·타입·열거 값처럼 이름이 붙은 것**이 생겨야 한다.
 var addedDeclRe = []*regexp.Regexp{
-	// TS·JS — 선언
-	regexp.MustCompile(`^\s*(?:export\s+)?(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+\w+`),
-	// Go — 선언
-	regexp.MustCompile(`^\s*(?:func|type|const|var)\s+\(?[^)]*\)?\s*\w+`),
+	// 함수·타입·클래스 선언은 들여쓰기와 무관하게 센다.
+	regexp.MustCompile(`^\s*(?:export\s+)?(?:declare\s+)?(?:async\s+)?(?:function|class|interface|type|enum)\s+\w+`),
+	// 값 선언은 **내보낸 것만** 센다 — 지역 변수는 기능이 아니다.
+	regexp.MustCompile(`^\s*export\s+(?:const|let|var)\s+\w+`),
+	// Go 는 맨 왼쪽 선언만 센다.
+	regexp.MustCompile(`^(?:func|type)\s+\(?[^)]*\)?\s*\w+`),
+	regexp.MustCompile(`^(?:const|var)\s+\w+`),
 	// 열거·객체에 새 값 (HOLD = 'hold', · hold: true, · case 'hold':)
 	regexp.MustCompile(`^\s*\w+\s*[:=]\s*['"\x60][\w.-]+['"\x60]`),
 	regexp.MustCompile(`^\s*case\s+['"\x60][\w.-]+['"\x60]`),
-	// Dart·Svelte 속성 선언
-	regexp.MustCompile(`^\s*(?:final|late|var)\s+\w+\s+\w+`),
 }
 
 // addedDeclarations 는 diff 가 **새로 들인 이름**을 준다.

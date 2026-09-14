@@ -1,0 +1,13 @@
+diff --git a/src/routes/(auth)/store/connect/+page.server.ts b/src/routes/(auth)/store/connect/+page.server.ts
+index 3cdf81f..cf26f15 100644
+--- a/src/routes/(auth)/store/connect/+page.server.ts
++++ b/src/routes/(auth)/store/connect/+page.server.ts
+@@ -54,7 +54,7 @@ export const load: PageServerLoad = async ({ locals }) => {
+      *    부재는 '번호 없음' 이 아니라 '모름' 이다. 연결된 직원을 여기에 섞으면
+      *    이미 연결된 사람에게 초대를 보내라고 권하게 된다.
+      */
+-    const known = new Set((connectable?.staffs ?? []).map((s) => s.workplaceId));
++    const known = new Set((connectable?.staffs ?? []).map((s) => s.workplaceId ?? ''));
+     const missingPhone = connectable === null || connectable.truncated || staffs === null
+         ? []
+         : staffs
