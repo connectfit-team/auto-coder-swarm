@@ -25,6 +25,7 @@ var toolchainDirs = []string{
 	"/home/cnf/.nvm/versions",  // node (버전 디렉터리는 아래에서 펼친다)
 	"/home/cnf/.pub-cache/bin", // dart/flutter
 	"/opt/flutter/bin",
+	"/home/cnf/flutter/bin", // 이 기계의 flutter 는 여기 있다
 }
 
 // shellCmd 는 저장소 안에서 셸 한 줄을 돌린다. PATH 에 도구 경로를 얹는다.

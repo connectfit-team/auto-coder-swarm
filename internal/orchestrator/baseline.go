@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -48,7 +49,25 @@ func (t *taskContext) pickBaselineCommand(strict string, weaker []string) baseli
 		}
 		lastOut = string(out)
 	}
-	return baselineChoice{FailedOutput: clipLines(lastOut, baselineOutputLines)}
+	out := clipLines(lastOut, baselineOutputLines)
+	// **도구가 없는 것과 코드가 안 되는 것은 다르다.**
+	//
+	// `flutter: command not found` 를 "이 저장소는 빌드되지 않는다" 로
+	// 보고했다(W-58890). 사람이 고칠 것은 저장소가 아니라 PATH 다.
+	if tool := missingTool(lastOut); tool != "" {
+		out = tool + " 가 이 기계에 없다(PATH). 저장소 문제가 아니다.\n" + out
+	}
+	return baselineChoice{FailedOutput: out}
+}
+
+var notFoundRe = regexp.MustCompile(`([\w.\-/]+): (?:command not found|not found)`)
+
+// missingTool 은 "그런 명령이 없다" 는 출력에서 도구 이름을 뽑는다.
+func missingTool(out string) string {
+	if m := notFoundRe.FindStringSubmatch(out); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // clipLines 는 앞 n 줄만 남긴다. 사람이 읽을 만큼만 보여 준다.

@@ -30,7 +30,14 @@ type projectDefault struct {
 // 위에서부터 먼저 맞는 것을 쓴다. 여러 개가 섞인 저장소는 앞의 것이 이긴다
 // (예: Flutter 저장소 안의 node 도구).
 var projectDefaults = []projectDefault{
-	{"pubspec.yaml", "Flutter", "flutter analyze", nil},
+	{"pubspec.yaml", "Flutter", "flutter analyze",
+		// 새 워크트리에는 .dart_tool 이 없어 analyze 가 통째로 실패한다.
+		// 꾸러미를 받아 보고, 그래도 안 되면 문법만이라도 본다 —
+		// 아무것도 안 보는 것보다 낫고, 물러섰다는 것은 PR 에 적힌다.
+		[]string{
+			"flutter pub get >/dev/null 2>&1 && flutter analyze",
+			"dart format --output=none --set-exit-if-changed .",
+		}},
 	// **`go build` 는 _test.go 를 통째로 건너뛴다.** ACS 가 쓴 테스트 파일이
 	// 컴파일조차 안 되는데 "빌드 성공" 으로 지나갔다(실증). `go test` 로
 	// 컴파일까지 시키되 테스트는 돌리지 않는다(`-run ^$`) — 실행은 아래
