@@ -143,8 +143,9 @@ func (t *taskContext) execute() (RunResult, error) {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HANDOVER_TO_HUMAN",
 			"검토자가 반대했지만 고친 내용이 남아 있어 사람 판단으로 넘깁니다",
 			"", clip(t.lastFeedback, 1500))
-		t.orchestrator.store.UpdateTaskProposedDiff(t.taskID, diff)
-		return RunResult{RepoName: t.targetRepo, WaitingApproval: true}, nil
+		if res, ok := t.handOver(diff, "최대 시도 뒤 남은 수정"); ok {
+			return res, nil
+		}
 	}
 
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
