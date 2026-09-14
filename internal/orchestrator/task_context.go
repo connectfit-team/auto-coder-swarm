@@ -66,6 +66,7 @@ type taskContext struct {
 	preBench     string
 	typeCmd      string      // 타입 검사 명령. 빌드가 타입을 안 보는 저장소만 채운다
 	typeBaseline []typeError // 손대기 전에 이미 있던 타입 오류
+	lastMissing  []typeError // 마지막으로 늘어난 타입 오류. 막힌 까닭을 사람에게 말하는 데 쓴다
 	postBench    string
 	meta         ProjectMetadata
 }

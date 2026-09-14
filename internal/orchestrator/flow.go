@@ -148,6 +148,21 @@ func (t *taskContext) execute() (RunResult, error) {
 		}
 	}
 
+	// **막힌 까닭이 "이 저장소에 없는 이름" 이면 그 임자에게 넘긴다.**
+	//
+	// 연결보류가 세 번 연달아 막혔는데 늘어난 오류가 전부 없는 이름이었다
+	// (LaborContract.isPending 은 proto·백엔드에서 온다). 프런트 혼자서는
+	// 만들 수 없는 일인데 "최대 시도 초과" 라고만 했다 — 사람은 까닭을 알
+	// 수 없고 뒤쪽 저장소에 일이 만들어지지도 않는다.
+	if names := missingContractNames(t.lastMissing); len(names) > 0 {
+		res := RunResult{RepoName: t.targetRepo}
+		if chain := t.blockedByMissingContract(); len(chain) > 0 {
+			res.ChainTasks = chain
+		}
+		log.Printf("⛔ [ACS] Task %s: 이 저장소에 없는 이름 때문에 막혔다 (%d개)", t.taskID, len(names))
+		return res, fmt.Errorf("%s", missingContractNote(names))
+	}
+
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
 	return RunResult{RepoName: t.targetRepo}, fmt.Errorf("최대 시도 초과")
 }
