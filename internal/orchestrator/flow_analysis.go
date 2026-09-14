@@ -267,6 +267,13 @@ func (t *taskContext) prepareAnalysis() error {
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ORACLE", "CIE 고정밀 논리 분석 요청", oracleQuery, "")
 	res, _, err := t.orchestrator.insightClient.QueryOracle(t.ctx, oracleQuery, sessionID, onWorkID)
+	// 배포·재부팅으로 끊긴 것은 코드 문제가 아니다. 한 번만 다시 물어본다 —
+	// 정말로 안 되는 것이면 두 번째도 같은 답이 온다(W-36819).
+	if err != nil && isTransient(err) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ORACLE_RETRY",
+			"분석이 끊겼다 — 한 번 다시 물어본다", err.Error(), "")
+		res, _, err = t.orchestrator.insightClient.QueryOracle(t.ctx, oracleQuery, sessionID, onWorkID)
+	}
 	if err != nil {
 		return err
 	}
