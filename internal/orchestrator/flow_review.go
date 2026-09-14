@@ -170,6 +170,21 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		return false, RunResult{}, nil
 	}
 
+	// **사람에게 넘기기 전에 「시킨 일인가」 를 본다.**
+	//
+	// 값 추가 흐름에는 이 관문이 있는데 결함 흐름에는 없었다. 그래서
+	// 연결보류를 만들라는 요청에 vLLM 주소를 넣은 코드가 승인 대기까지
+	// 갔다(W-76095). 사람은 제목을 보고 통과시킨다.
+	if bad := CheckToolLeak(stagedDiff(t.repoPath)); len(bad) > 0 {
+		note := AlignmentNote(bad)
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",
+			"이 기계의 환경이 제품 코드에 새어 들어갔다 — 넘기지 않는다", "", note)
+		t.lastFeedback = "ALIGNMENT: " + note +
+			"\n이 기계의 주소·포트는 제품 코드에 넣지 마라. 요청한 것만 고쳐라."
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return false, RunResult{}, nil
+	}
+
 	if !t.isApproved {
 		return true, RunResult{RepoName: t.targetRepo, WaitingApproval: true}, nil
 	}
