@@ -1,13 +1,10 @@
 package orchestrator
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 // 이 저장소에 없는 이름 때문에 막혔으면, 그 이름이 있어야 할 저장소로 넘긴다.
@@ -58,50 +55,69 @@ func missingContractNames(es []typeError) []string {
 	return out
 }
 
-// blockedByMissingContract 는 막힌 까닭이 "없는 이름" 이면 그 이름의 임자
-// 저장소에 일을 만든다. 아니면 빈 목록이다.
+// blockedByMissingContract 는 막힌 까닭이 **남의 계약** 이면 그 임자에게
+// 일을 만든다. 이 저장소의 실수는 넘기지 않는다.
 func (t *taskContext) blockedByMissingContract() []StatelessRequest {
 	names := missingContractNames(t.lastMissing)
 	if len(names) == 0 || t.req.Depth <= 0 {
 		return nil
 	}
 
+	contract, local := splitMissing(t.repoPath, names)
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "MISSING_CONTRACT",
-		fmt.Sprintf("이 저장소에 없는 이름 %d개 때문에 막혔다", len(names)),
-		"", strings.Join(names, " · "))
+		fmt.Sprintf("없는 이름 %d개 — 남의 계약 %d, 이 저장소의 실수 %d",
+			len(names), countNames(contract), len(local)),
+		strings.Join(local, " · "), renderContract(contract))
 
-	// 이름 그대로 물어본다. 눈은 코드 색인에서 그 이름이 실제로 어디 있는지,
-	// 없으면 어느 저장소의 말인지를 준다.
-	q := fmt.Sprintf("%s 에 %s 이(가) 필요하다. %s",
-		t.targetRepo, strings.Join(names, ", "), strings.TrimSpace(t.req.UserRequest))
-
-	sub, cancel := context.WithTimeout(t.ctx, 30*time.Second)
-	defer cancel()
-	routed, err := t.orchestrator.insightClient.RouteRepos(sub, q)
-	if err != nil {
-		log.Printf("[Orchestrator] 없는 이름의 임자를 못 찾았다: %v", err)
-		return nil
-	}
-
-	for _, r := range routed {
-		if r.RepoName == t.targetRepo || hasRepo(t.req.ParentRepos, r.RepoName) {
+	var out []StatelessRequest
+	for owner, want := range contract {
+		if owner == t.targetRepo || hasRepo(t.req.ParentRepos, owner) {
 			continue
 		}
-		req := StatelessRequest{
+		// **없는 저장소에 일을 만들지 않는다.** 사본이 없으면 그 작업은
+		// 시작하자마자 죽고, 사람은 까닭 없는 실패 하나를 더 본다.
+		if !t.orchestrator.wsMgr.HasRepo(owner) {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "MISSING_CONTRACT",
+				fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다", owner),
+				"", strings.Join(want, " · "))
+			continue
+		}
+		sort.Strings(want)
+		out = append(out, StatelessRequest{
 			UserRequest: fmt.Sprintf(
-				"%s 에서 「%s」 를 만들려는데 이 이름들이 없어 막혔다: %s\n"+
-					"이 저장소에 먼저 있어야 한다. 계약(필드·RPC·함수)을 더해라.",
-				t.targetRepo, strings.TrimSpace(t.req.UserRequest), strings.Join(names, ", ")),
-			TargetRepo:   r.RepoName,
+				"%s 에서 「%s」 를 만들려는데 계약에 이것이 없어 막혔다: %s\n"+
+					"이 저장소가 그 계약의 임자다. 필드·RPC 를 더해라.",
+				t.targetRepo, strings.TrimSpace(t.req.UserRequest), strings.Join(want, ", ")),
+			TargetRepo:   owner,
 			Depth:        t.req.Depth - 1,
 			ParentRepos:  append(t.req.ParentRepos, t.targetRepo),
 			ParentTaskID: rootTaskID(t),
-		}
+		})
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_TRIGGERED",
-			fmt.Sprintf("없는 이름의 임자에게 넘긴다: %s", r.RepoName), "", strings.Join(names, " · "))
-		return []StatelessRequest{req}
+			fmt.Sprintf("계약의 임자에게 넘긴다: %s", owner), "", strings.Join(want, " · "))
 	}
-	return nil
+	return out
+}
+
+func countNames(m map[string][]string) int {
+	n := 0
+	for _, v := range m {
+		n += len(v)
+	}
+	return n
+}
+
+func renderContract(m map[string][]string) string {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k + ": " + strings.Join(m[k], ", ") + "\n")
+	}
+	return b.String()
 }
 
 // missingContractNote 는 사람이 읽을 실패 사유다.
