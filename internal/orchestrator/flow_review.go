@@ -139,7 +139,14 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 
 	// 검토자에게 요청문과 분석을 함께 준다 — 근거 없이 diff 만 보면
 	// 맞는 수정을 되돌리라고 한다.
-	reviewResp, rErr := t.reviewer.ProcessWithContext(t.ctx, reviewInput, t.req.UserRequest, t.analysis)
+	var planned []string
+	if plan, ok := t.ctx.Value("current_plan").(agent.Plan); ok {
+		for _, c := range plan.Changes {
+			planned = append(planned, c.FilePath)
+		}
+	}
+	reviewResp, rErr := t.reviewer.ProcessWithContext(t.ctx, reviewInput,
+		t.req.UserRequest, t.analysis, ReviewFacts(t.repoPath, planned, t.finalDiff))
 	if rErr != nil {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEW_ERROR", "리뷰어 호출 실패", "", rErr.Error())
 		return false, RunResult{}, fmt.Errorf("리뷰어를 부르지 못했다: %w", rErr)
@@ -147,7 +154,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	if strings.TrimSpace(reviewResp) == "" {
 		return false, RunResult{}, fmt.Errorf("리뷰어가 빈 응답을 냈다 (입력 %d자)", len(reviewInput))
 	}
-	rv := agent.ParseReviewerVerdict(reviewResp, t.finalDiff)
+	rv := agent.ParseReviewerVerdictWithPlan(reviewResp, t.finalDiff, planned)
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "REVIEWER", rv.Why, "", reviewResp)
 	if rv.Blocking {
 		// **분석이 처방한 수정이면 검토자의 반대는 자문이다.**

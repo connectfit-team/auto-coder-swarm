@@ -1,0 +1,15 @@
+{
+  "name": "요청과 상관없는 한 줄만 고쳤다",
+  "request": "한 웹 저장소에 연결 보류 기능을 추가할거야, 관련해서 PR을 올려",
+  "analysis": "이 저장소에는 연결 보류 상태가 없다. 이웃 코드를 본떠 새로 만든다.",
+  "diff": "diff --git a/src/routes/(auth)/store/connect/+page.svelte b/src/routes/(auth)/store/connect/+page.svelte\nindex f776bc3..ac48f0a 100644\n--- a/src/routes/(auth)/store/connect/+page.svelte\n+++ b/src/routes/(auth)/store/connect/+page.svelte\n@@ -108,7 +108,7 @@\n     let picked = new Set<string>();\n     const toggle = (id: string) => {\n         picked.has(id) ? picked.delete(id) : picked.add(id);\n-        picked = picked;\n+        picked = new Set([...picked]);\n     };\n     $: pickedSendable = [...picked].filter((id) => sendable.some((s) => s.workplaceId === id));\n     $: allPicked = sendable.length > 0 && pickedSendable.length === sendable.length;\n",
+  "want": "block",
+  "why": "Set 을 새로 만드는 정리일 뿐 연결 보류와 아무 관계가 없다. 시킨 일을 하지 않았다.",
+  "repo": "/home/cnf/cie-repos/gig_ceo_web",
+  "planned": [
+    "src/lib/server/data/connectcud.ts",
+    "src/lib/types/connectactions.ts",
+    "src/routes/(auth)/store/connect/+page.server.ts",
+    "src/routes/(auth)/store/connect/+page.svelte"
+  ]
+}

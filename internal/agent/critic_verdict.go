@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -35,6 +36,10 @@ type CriticVerdict struct {
 // ParseGateVerdict 는 검토 응답을 판정으로 바꾼다.
 // marker 가 없으면 통과, 있어도 **이번 diff 안의** 자리를 못 대면 통과다.
 func ParseGateVerdict(resp, diff, marker string) CriticVerdict {
+	return parseGate(resp, diff, marker, nil)
+}
+
+func parseGate(resp, diff, marker string, planned []string) CriticVerdict {
 	raw := strings.TrimSpace(resp)
 	upper := strings.ToUpper(raw)
 
@@ -56,10 +61,18 @@ func ParseGateVerdict(resp, diff, marker string) CriticVerdict {
 	// **이번 변경 안의 자리만 인정한다.** 모델이 diff 에 없는 파일을 들고
 	// 오는 일이 실제로 있었다.
 	changed := changedFileSet(diff)
+	// 계획이 짚은 자리는 diff 에 없어도 인정한다 — 없는 것이 문제인 경우다.
+	for _, p := range planned {
+		if p = strings.TrimSpace(p); p != "" {
+			changed[p] = true
+			changed[filepath.Base(p)] = true
+		}
+	}
 	if len(changed) > 0 {
 		var kept []string
 		for _, l := range locs {
-			if changed[strings.SplitN(l, ":", 2)[0]] {
+			f := strings.SplitN(l, ":", 2)[0]
+			if changed[f] || changed[filepath.Base(f)] {
 				kept = append(kept, l)
 			}
 		}
@@ -86,6 +99,16 @@ func ParseCriticVerdict(resp, diff string) CriticVerdict {
 
 func ParseReviewerVerdict(resp, diff string) CriticVerdict {
 	return ParseGateVerdict(resp, diff, "FEEDBACK")
+}
+
+// ParseReviewerVerdictWithPlan 은 **계획이 짚었는데 안 고친 자리**도 인정한다.
+//
+// "이번 변경 안의 자리만 인정한다" 는 규칙이 하나의 경우에 정확히 거꾸로
+// 작동했다. 검토자가 「계획이 짚은 자리를 하나도 안 고쳤다」 고 바르게
+// 지적했는데, 그 파일들이 diff 에 **없다는 것이 바로 문제**인데도 "이번
+// 변경에 없습니다 — 넘어갑니다" 로 버려졌다(라벨 문항 02).
+func ParseReviewerVerdictWithPlan(resp, diff string, planned []string) CriticVerdict {
+	return parseGate(resp, diff, "FEEDBACK", planned)
 }
 
 func changedFileSet(diff string) map[string]bool {
