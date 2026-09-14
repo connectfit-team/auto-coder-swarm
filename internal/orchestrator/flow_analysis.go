@@ -256,14 +256,7 @@ func (t *taskContext) prepareAnalysis() error {
 	// 말일이 빠진다" 가 표 질문으로 바뀌어 스키마 정의를 답으로 받았고, 그
 	// 답을 본 계획은 prisma 스키마를 고치려 들었다. CIE 는 고장 이야기를
 	// 그대로 주면 파일과 문제의 줄을 짚어 준다 — 다듬을 이유가 없다.
-	oracleQuery := strategy.AnalysisQuery
-	if looksLikeDefectRequest(t.req.UserRequest) {
-		oracleQuery = fmt.Sprintf("%s 저장소에서 %s 원인이 되는 코드를 찾아라.",
-			scope.Repo, strings.TrimSpace(t.req.UserRequest))
-	}
-	if strings.TrimSpace(oracleQuery) == "" {
-		oracleQuery = t.req.UserRequest
-	}
+	oracleQuery := oracleQueryFor(scope.Repo, t.req.UserRequest)
 
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ORACLE", "CIE 고정밀 논리 분석 요청", oracleQuery, "")
 	res, _, err := t.orchestrator.insightClient.QueryOracle(t.ctx, oracleQuery, sessionID, onWorkID)
@@ -357,6 +350,30 @@ var defectWords = []string{
 	"안 나오", "안나오", "안 나온", "안나온", "안 나옴", "안나옴",
 	"안 되", "안되", "안 뜨", "안뜨", "안 보", "안보",
 	"지 않", "못 한", "못한",
+}
+
+// oracleQueryFor 는 눈에게 보낼 질문을 만든다.
+//
+// **사람의 말과 저장소 이름은 언제나 남긴다.**
+//
+// 다듬은 질문(strategy.AnalysisQuery)을 쓰던 자리다. 결함 요청에서 이미
+// 한 번 데었다 — "월별 근무 조회에서 말일이 빠진다" 가 표 질문으로 바뀌어
+// 스키마 정의를 답으로 받았고, 그 답을 본 계획은 prisma 스키마를 고치려
+// 들었다. 그래서 결함 요청만 사람의 말로 되돌렸는데, 새 기능 요청에서
+// 똑같은 일이 났다.
+//
+//	"고용주웹에서 연결보류 기능을 추가"
+//	  → "'connection_status' 필드와 관련된 API 구현을 식별해주세요"
+//	  → cms/prisma/attendance.schema.prisma 의 표 정의 (W-48189)
+//
+// 물은 저장소는 gig_ceo_web 이었다. 답은 다른 저장소의 스키마였고 3초 만에
+// 왔다. 다듬은 질문은 버린다 — 저장소 이름이 빠지면 눈은 어디든 본다.
+func oracleQueryFor(repo, request string) string {
+	req := strings.TrimSpace(request)
+	if looksLikeDefectRequest(request) {
+		return fmt.Sprintf("%s 저장소에서 %s 원인이 되는 코드를 찾아라.", repo, req)
+	}
+	return fmt.Sprintf("%s 저장소에서 %s 와 관련된 코드를 찾아라.", repo, req)
 }
 
 func looksLikeDefectRequest(req string) bool {
