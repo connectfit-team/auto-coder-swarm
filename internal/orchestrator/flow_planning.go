@@ -172,6 +172,17 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 			}
 		}
 
+		// **빌드가 타입을 안 보는 저장소는 타입을 따로 잰다.**
+		//
+		// `vite build` 는 타입을 지워서 번들할 뿐이다. 손대기 전에 이미 몇
+		// 개가 있는지 세어 두고, 나중에 늘었는지만 본다(S-16).
+		if t.typeCmd = typeCheckCommand(t.repoPath); t.typeCmd != "" {
+			out, _ := shellCmd(t.ctx, t.repoPath, t.typeCmd).CombinedOutput()
+			t.typeBaseline = parseTypeErrors(string(out))
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "TYPE_BASELINE",
+				fmt.Sprintf("손대기 전 타입 오류 %d개 (%s)", len(t.typeBaseline), t.typeCmd), "", "")
+		}
+
 		if t.meta.BenchCommand != "" {
 			cmd := shellCmd(t.ctx, t.repoPath, t.meta.BenchCommand)
 			bOut, _ := cmd.CombinedOutput()

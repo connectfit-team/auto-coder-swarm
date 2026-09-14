@@ -26,6 +26,16 @@ func min(a, b int) int {
 // 테스트 실패를 빌드 실패와 같은 길로 보낸다 — 자가치유가 고칠 대상이다.
 var errChangedTestsFailed = &changedTestsError{}
 
+// 늘어난 타입 오류도 같은 길로 보낸다. 빌드가 타입을 안 보는 저장소에서는
+// 이것이 유일한 그물이다(W-19079 는 없는 RPC 를 부르고도 빌드를 통과했다).
+var errNewTypeErrors = &newTypeErrorsError{}
+
+type newTypeErrorsError struct{}
+
+func (*newTypeErrorsError) Error() string {
+	return "손대기 전에 없던 타입 오류가 생겼다"
+}
+
 type changedTestsError struct{}
 
 func (*changedTestsError) Error() string { return "바뀐 패키지의 테스트가 실패했다" }
