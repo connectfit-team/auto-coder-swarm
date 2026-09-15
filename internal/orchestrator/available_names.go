@@ -125,6 +125,8 @@ func AvailableNames(repoPath, file string) string {
 	type mod struct {
 		spec    string
 		exports []string
+		comp    string   // svelte 면 기본 내보내기 이름
+		props   []string // svelte 면 넘길 수 있는 속성
 	}
 	var mods []mod
 	var factories []string
@@ -140,11 +142,18 @@ func AvailableNames(repoPath, file string) string {
 		if p == "" {
 			continue
 		}
+		if strings.HasSuffix(p, ".svelte") {
+			mods = append(mods, mod{spec: spec, comp: componentName(p), props: svelteProps(p)})
+			if len(mods) >= 12 {
+				break
+			}
+			continue
+		}
 		ex := exportedNames(p)
 		if len(ex) == 0 {
 			continue
 		}
-		mods = append(mods, mod{spec, relevantFirst(ex, src)})
+		mods = append(mods, mod{spec: spec, exports: relevantFirst(ex, src)})
 
 		// 들여온 이름 가운데 이 파일에서 `X()` 꼴로 쓰이는 것은 공장이다.
 		names := m[1]
@@ -173,6 +182,15 @@ func AvailableNames(repoPath, file string) string {
 	var sb strings.Builder
 	sb.WriteString("[이 저장소에 실제로 있는 이름 — 파일을 읽어 센 것이다. 여기 없는 이름을 쓰면 빌드가 깨진다]\n")
 	for _, m := range mods {
+		if m.comp != "" {
+			sb.WriteString("  " + m.spec + " → 기본 내보내기 " + m.comp +
+				" 하나뿐이다 (import " + m.comp + " from '" + m.spec + "')\n")
+			if len(m.props) > 0 {
+				sb.WriteString("      넘길 수 있는 속성(가져오는 이름이 아니다): " +
+					strings.Join(clipNames(m.props, 20), ", ") + "\n")
+			}
+			continue
+		}
 		sb.WriteString("  " + m.spec + " → " + strings.Join(clipNames(m.exports, 40), ", ") + "\n")
 	}
 	for _, f := range factories {
@@ -199,4 +217,34 @@ func clipNames(xs []string, n int) []string {
 		return xs
 	}
 	return append(xs[:n:n], "…")
+}
+
+// **Svelte 파일의 `export let` 은 속성이지 가져올 이름이 아니다.**
+//
+// 이 쪽지가 그것을 "있는 이름" 으로 적었고, 코더가 그대로 가져왔다.
+//
+//	import { description, failed, title } from '$lib/components/web/EmptyState.svelte';
+//	import { description } from '$lib/components/web/SectionTitle.svelte';
+//	→ Identifier 'description' has already been declared
+//
+// 컴포넌트에서 가져올 수 있는 것은 **기본 내보내기 하나**, 곧 컴포넌트
+// 자신뿐이다. 속성은 넘기는 것이지 가져오는 것이 아니다. 둘을 갈라 적는다.
+// 이름은 파일 이름 그대로 쓴다 — pageheader 로 적어 파일을 못 찾은 적이 있다.
+var reSvelteProp = regexp.MustCompile(`(?m)^\s*export\s+let\s+(\w+)`)
+
+func svelteProps(path string) []string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, m := range reSvelteProp.FindAllStringSubmatch(string(b), -1) {
+		seen[m[1]] = true
+	}
+	return sortedKeys(seen)
+}
+
+// componentName 은 파일 이름 그대로의 컴포넌트 이름이다.
+func componentName(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".svelte")
 }
