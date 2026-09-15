@@ -133,9 +133,16 @@ func (t *taskContext) stepVerification() (bool, error) {
 						fmt.Sprintf("[%s] 계획에도 오류에도 없는 파일이라 건드리지 않습니다", step.TargetFile), "", "")
 					continue
 				}
-				if _, err := t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, step.TargetFile), step.Instruction); err != nil {
+				// 모델이 파일 이름만 적으면 폴더가 빠진다 — 계획과 오류에서 되찾는다.
+				target, ok := resolveHealTarget(t.repoPath, step.TargetFile, plan, failure)
+				if !ok {
+					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_BLOCKED",
+						fmt.Sprintf("[%s] 어느 파일인지 좁혀지지 않습니다", step.TargetFile), "", "")
+					continue
+				}
+				if _, err := t.coder.ModifyFile(t.ctx, filepath.Join(t.repoPath, target), step.Instruction); err != nil {
 					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_FAILED",
-						fmt.Sprintf("[%s] 치유가 파일을 못 고쳤습니다", step.TargetFile), "", err.Error())
+						fmt.Sprintf("[%s] 치유가 파일을 못 고쳤습니다", target), "", err.Error())
 				}
 			case healing.ActionRunCommand:
 				shellCmd(t.ctx, t.repoPath, step.Command).Run()
