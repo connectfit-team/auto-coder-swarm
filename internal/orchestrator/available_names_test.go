@@ -72,3 +72,38 @@ func TestAvailableNamesEmptyForExternalOnly(t *testing.T) {
 		t.Errorf("붙일 것이 없어야 한다: %q", got)
 	}
 }
+
+// Svelte 컴포넌트의 `export let` 은 속성이지 가져올 이름이 아니다.
+//
+// 이 쪽지가 그것을 "있는 이름" 으로 적어서 코더가 그대로 가져왔고, 빌드가
+// `Identifier 'description' has already been declared` 로 깨졌다(W-66081).
+func TestAvailableNamesSvelteProps(t *testing.T) {
+	dir := t.TempDir()
+	w := func(p, s string) {
+		full := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w("src/lib/components/web/PageHeader.svelte",
+		"<script lang=\"ts\">\n    export let title: string;\n    export let description = '';\n</script>\n")
+	w("src/routes/x/+page.svelte",
+		"<script lang=\"ts\">\n    import PageHeader from '$lib/components/web/PageHeader.svelte';\n</script>\n")
+
+	got := AvailableNames(dir, "src/routes/x/+page.svelte")
+	if !strings.Contains(got, "기본 내보내기 PageHeader") {
+		t.Errorf("기본 내보내기를 안 알려 줬다:\n%s", got)
+	}
+	if !strings.Contains(got, "가져오는 이름이 아니다") {
+		t.Errorf("속성과 가져올 이름을 안 갈랐다:\n%s", got)
+	}
+	// 속성이 "→" 뒤의 가져올 이름 자리에 오면 안 된다.
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "PageHeader.svelte →") && strings.Contains(line, "description") {
+			t.Errorf("속성을 가져올 이름처럼 적었다: %s", line)
+		}
+	}
+}
