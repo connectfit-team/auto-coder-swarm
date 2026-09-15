@@ -67,6 +67,12 @@ func (m *GitManager) PushApprovedChanges(path, repoName, branchName, message str
 func (m *GitManager) PushApprovedChangesOpt(path, repoName, branchName, message string, opt PushOptions) (string, error) {
 	log.Printf("[GitMgr] [%s] Finalizing changes for repo: %s, branch: %s", path, repoName, branchName)
 
+	// **밀어도 되는 저장소인지 먼저 본다.** 기본값은 아무 데도 안 미는 것이다.
+	if ok, why := pushAllowed(repoName); !ok {
+		log.Printf("[GitMgr] [BLOCKED] %s 로 밀지 않는다 — %s", repoName, why)
+		return "", fmt.Errorf("이 저장소로는 밀지 않는다 — %s", why)
+	}
+
 	githubURL := fmt.Sprintf("https://github.com/connectfit-team/%s.git", repoName)
 	log.Printf("[GitMgr] [%s] Setting remote URL to: %s", path, githubURL)
 	remoteCmd := exec.Command("git", "-C", path, "remote", "set-url", "origin", githubURL)
