@@ -14,6 +14,9 @@ import (
 // 결함 흐름 두 자리가 그대로 열려 있었다. 이 시험은 흐름을 거치지 않고
 // 미는 함수를 직접 부른다. 여기서 막히면 어느 흐름에서도 막힌다.
 func TestPushBlocksMisalignedChange(t *testing.T) {
+	// 이 시험이 보는 것은 **비정렬 문**이다. 밀기 허용 문(pushAllowed)은
+	// 그보다 앞에 있으므로 열어 두고 재야 뒤엣것이 시험된다.
+	t.Setenv("SWARM_PUSH_ALLOW", "*")
 	work := newRepo(t)
 
 	// 생성물을 손으로 고친다.
@@ -34,6 +37,9 @@ func TestPushBlocksMisalignedChange(t *testing.T) {
 
 // 사람이 지키는 가지로는 바로 밀지 않는다.
 func TestPushBlocksProtectedBranch(t *testing.T) {
+	// 이 시험이 보는 것은 **비정렬 문**이다. 밀기 허용 문(pushAllowed)은
+	// 그보다 앞에 있으므로 열어 두고 재야 뒤엣것이 시험된다.
+	t.Setenv("SWARM_PUSH_ALLOW", "*")
 	work := newRepo(t)
 	mustWrite(t, filepath.Join(work, "internal", "domain", "t.go"), "package domain\n")
 
