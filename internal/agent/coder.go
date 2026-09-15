@@ -101,6 +101,16 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 		return "", err
 	}
 
+	// **같은 이름을 두 번 선언하지 않는다.**
+	//
+	// 고쳐 쓰는 자리에 이미 있는 이름을 다시 넣어 빌드가 깨졌다(W-71948).
+	// 치유기가 같은 것을 또 넣기도 하는데, 그러면 회차마다 같은 오류가 나고
+	// 두 번 만에 멈춘다. 쓰기 전에 보면 되먹임으로 돌려줄 수 있다.
+	if dup := duplicateDecls(filePath, updated); len(dup) > 0 {
+		return "", fmt.Errorf("%s: 같은 이름을 두 번 선언했다 — %s. 이미 있는 것을 쓰고, 새로 만들지 마라",
+			filepath.Base(filePath), strings.Join(dup, ", "))
+	}
+
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(updated)), 0644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
