@@ -199,6 +199,13 @@ func AvailableNames(repoPath, file string) string {
 				f, strings.Join(clipNames(ms, 60), ", ")))
 		}
 	}
+	var cand []string
+	for _, m := range mods {
+		cand = append(cand, m.exports...)
+	}
+	if fields := typeFieldSheetFor(repoPath, cand, 6); fields != "" {
+		sb.WriteString(fields)
+	}
 	sb.WriteString("없는 이름이 필요하면 지어내지 마라 — 무엇이 없어서 못 했는지 적어라.\n\n")
 	return sb.String()
 }
