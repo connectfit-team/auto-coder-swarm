@@ -57,10 +57,10 @@ func missingContractNames(es []typeError) []string {
 
 // blockedByMissingContract 는 막힌 까닭이 **남의 계약** 이면 그 임자에게
 // 일을 만든다. 이 저장소의 실수는 넘기지 않는다.
-func (t *taskContext) blockedByMissingContract() []StatelessRequest {
+func (t *taskContext) blockedByMissingContract() ([]StatelessRequest, string) {
 	names := missingContractNames(t.lastMissing)
-	if len(names) == 0 || t.req.Depth <= 0 {
-		return nil
+	if len(names) == 0 {
+		return nil, ""
 	}
 
 	contract, local := splitMissing(t.repoPath, names)
@@ -96,7 +96,10 @@ func (t *taskContext) blockedByMissingContract() []StatelessRequest {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_TRIGGERED",
 			fmt.Sprintf("계약의 임자에게 넘긴다: %s", owner), "", strings.Join(want, " · "))
 	}
-	return out
+	if t.req.Depth <= 0 {
+		out = nil
+	}
+	return out, missingNote(contract, local)
 }
 
 func countNames(m map[string][]string) int {
@@ -120,8 +123,26 @@ func renderContract(m map[string][]string) string {
 	return b.String()
 }
 
-// missingContractNote 는 사람이 읽을 실패 사유다.
-func missingContractNote(names []string) string {
-	return "이 저장소에 없는 이름 때문에 막혔다 — 뒤쪽 저장소에 먼저 있어야 한다:\n  " +
-		strings.Join(names, "\n  ")
+// missingNote 는 사람이 읽을 실패 사유다.
+//
+// 계약 구멍이 하나도 없는데 "뒤쪽 저장소에 먼저 있어야 한다" 고 하면 사람은
+// 엉뚱한 곳을 본다. 실제로 그렇게 적혀 나갔다(W-72062 — 남의 계약 0,
+// 이 저장소의 실수 3).
+func missingNote(contract map[string][]string, local []string) string {
+	var b strings.Builder
+	if n := countNames(contract); n > 0 {
+		b.WriteString("이 저장소에 없는 이름 때문에 막혔다 — 계약의 임자에게 먼저 있어야 한다:\n")
+		b.WriteString(renderContract(contract))
+	}
+	if len(local) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("이 저장소 안에서 없는 이름을 불렀다 — 여기서 고칠 일이다:\n  " +
+			strings.Join(clipList(local), "\n  ") + "\n")
+	}
+	if b.Len() == 0 {
+		return "없는 이름 때문에 막혔다"
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
