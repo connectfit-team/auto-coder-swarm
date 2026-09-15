@@ -156,11 +156,13 @@ func (t *taskContext) execute() (RunResult, error) {
 	// 수 없고 뒤쪽 저장소에 일이 만들어지지도 않는다.
 	if names := missingContractNames(t.lastMissing); len(names) > 0 {
 		res := RunResult{RepoName: t.targetRepo}
-		if chain := t.blockedByMissingContract(); len(chain) > 0 {
+		chain, note := t.blockedByMissingContract()
+		if len(chain) > 0 {
 			res.ChainTasks = chain
 		}
-		log.Printf("⛔ [ACS] Task %s: 이 저장소에 없는 이름 때문에 막혔다 (%d개)", t.taskID, len(names))
-		return res, fmt.Errorf("%s", missingContractNote(names))
+		log.Printf("⛔ [ACS] Task %s: 없는 이름 때문에 막혔다 (%d개, 다른 저장소로 넘긴 일 %d개)",
+			t.taskID, len(names), len(chain))
+		return res, fmt.Errorf("%s", note)
 	}
 
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
