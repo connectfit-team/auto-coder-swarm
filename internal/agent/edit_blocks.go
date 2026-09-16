@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -250,6 +251,19 @@ func replaceFlattened(srcLines []string, search, replace string) (string, error)
 		msg := fmt.Sprintf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
 		if near := nearestAnchor(srcLines, search); near != "" {
 			msg += "\n" + near
+			// **어떻게 하라는지까지 적는다.**
+			//
+			// "없다" 와 "가장 비슷한 곳은 104줄" 만으로는 같은 실수를 되풀이한다.
+			// 실측으로 한 파일이 두 번 다 **새로 넣을 줄을 SEARCH 에 적어**
+			// 실패했다(W-63343). 넣으려는 것과 찾으려는 것을 헷갈린 것이다.
+			//
+			// 그 파일의 실제 줄로 본보기를 만들어 보여 준다.
+			if anchor := firstAnchorLine(near); anchor != "" {
+				msg += "\n\n새 줄을 **넣으려는** 것이면 SEARCH 에 적을 것은 이미 있는 줄이다." +
+					"\n그 줄을 SEARCH 에 두고, REPLACE 에 그 줄과 새 줄을 함께 적어라:" +
+					"\n<<<<<<< SEARCH\n" + anchor +
+					"\n=======\n" + anchor + "\n<여기에 새 줄>\n>>>>>>> REPLACE"
+			}
 		} else {
 			msg += "\n겹치는 이름이 거의 없다 — 이 파일이 아닐 수 있다."
 		}
@@ -397,4 +411,22 @@ func reindent(lines []string, indent string) []string {
 		out = append(out, indent+rel+strings.TrimSpace(l))
 	}
 	return out
+}
+
+// firstAnchorLine 은 nearestAnchor 가 보여 준 줄에서 **원문 그대로의 한 줄**을
+// 뽑는다. 앞에 붙은 줄 번호는 뗀다 — SEARCH 에는 번호가 들어가면 안 된다.
+func firstAnchorLine(near string) string {
+	for _, ln := range strings.Split(near, "\n") {
+		i := strings.Index(ln, ":")
+		if i <= 0 {
+			continue
+		}
+		if _, err := strconv.Atoi(strings.TrimSpace(ln[:i])); err != nil {
+			continue
+		}
+		if body := strings.TrimRight(ln[i+1:], " \t\r"); strings.TrimSpace(body) != "" {
+			return strings.TrimPrefix(body, " ")
+		}
+	}
+	return ""
 }
