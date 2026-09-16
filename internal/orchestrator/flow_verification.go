@@ -25,6 +25,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD", fmt.Sprintf("[%s] 검증 (%s) - 시도 %d", t.meta.Type, t.meta.BuildCommand, healAttempt), t.meta.BuildCommand, "")
 		bCmd := shellCmd(t.ctx, t.repoPath, t.meta.BuildCommand)
 		buildOut, err := bCmd.CombinedOutput()
+		var typeLines []string
 
 		// 빌드가 통과했으면 **바뀐 패키지의 테스트를 실제로 돌린다.**
 		// 컴파일만 보면 틀린 테스트가 통과한다 — 테스트를 쓰는 것이 일의
@@ -51,6 +52,16 @@ func (t *taskContext) stepVerification() (bool, error) {
 					fmt.Sprintf("타입 오류가 %d개 늘었다", len(added)), "", note)
 				buildOut = []byte(note)
 				err = errNewTypeErrors
+				// **센 것을 그대로 쓴다.**
+				//
+				// 진행 곡선이 buildErrorLines 로 다시 세는데, 그 규칙은 빌드
+				// 출력을 위한 것이라 타입 오류 글줄을 못 알아본다. 실측으로
+				// 7개가 늘었는데 "오류 1개" 로 세어, 다음 회차와 지문이 같아져
+				// 「같은 오류로 돌고 있다」 로 일찍 멈췄다(W-57253).
+				typeLines = typeLines[:0]
+				for _, e := range added {
+					typeLines = append(typeLines, e.file+": "+e.msg)
+				}
 			}
 		}
 
@@ -81,6 +92,9 @@ func (t *taskContext) stepVerification() (bool, error) {
 		// 가 되어 멈춘다 — 치유기는 아무것도 받지 못한 채였다(W-33934).
 		// 걸러 낸 것이 없으면 날것 그대로 준다. 사람에게도 그렇게 적는다.
 		lines := buildErrorLines(string(buildOut))
+		if len(typeLines) > 0 {
+			lines = typeLines // 타입 오류는 이미 정확히 세어 두었다
+		}
 		if len(lines) == 0 {
 			raw := strings.TrimSpace(string(buildOut))
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BUILD_UNREADABLE",
