@@ -69,8 +69,20 @@ func relevantRegions(original, instructions string) string {
 	var b strings.Builder
 	prev := -2
 	for _, i := range idx {
+		// **생략을 분명히 적는다.**
+		//
+		// `...` 한 줄로는 모델이 무시한다. 실제로 5줄과 그 아래 어딘가를
+		// 이어 붙여 SEARCH 를 만들었고, 그런 줄은 원문에 없으니 고치기가
+		// 통째로 실패했다(W-31838).
+		//
+		//	import { t } from '$lib/i18n/context';   ← 5줄
+		//	                                          ← 원문에는 다른 줄들이 있다
+		//	const { t } = useI18n();                 ← 한참 아래
+		//
+		// 몇 줄이 빠졌는지, 이어진 줄이 아니라는 것을 적으면 붙일 수 없다.
 		if i != prev+1 && prev >= 0 {
-			b.WriteString("...\n")
+			fmt.Fprintf(&b, "…… %d~%d줄은 보여 주지 않았다. **이 위와 아래는 이어진 줄이 아니다** ……\n",
+				prev+2, i)
 		}
 		// 줄 번호를 붙여 어디인지 알게 한다. SEARCH 에는 번호를 빼고 적으라고 이른다.
 		fmt.Fprintf(&b, "%d: %s\n", i+1, lines[i])
