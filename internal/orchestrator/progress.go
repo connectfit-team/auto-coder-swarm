@@ -40,6 +40,7 @@ type healProgress struct {
 	rounds  int
 	best    int      // 지금까지 가장 적었던 오류 수
 	stalled int      // 나아지지 않은 회차가 몇 번 이어졌나
+	lastN   int      // 마지막 회차의 오류 수. -1 은 아직 없음
 	seen    []string // 앞서 본 오류 묶음의 지문
 	history []string // 사람이 볼 진행 곡선
 }
@@ -61,6 +62,7 @@ func envInt(name string, def int) int {
 func (p *healProgress) step(errs []string) (bool, string) {
 	p.rounds++
 	n := len(errs)
+	p.lastN = n
 	fp := fingerprintErrors(errs)
 
 	for _, old := range p.seen {
@@ -114,4 +116,15 @@ func fingerprintErrors(errs []string) string {
 	sort.Strings(norm)
 	sum := sha256.Sum256([]byte(strings.Join(norm, "\n")))
 	return hex.EncodeToString(sum[:8])
+}
+
+// last 는 마지막 회차에 남아 있던 오류 수다. 아직 돈 적이 없으면 -1.
+//
+// 시도들 사이를 견주는 데 쓴다 — 워크트리에 남아 있는 것은 마지막 회차의
+// 결과이므로, 그때의 오류 수가 그 diff 의 값이다.
+func (p *healProgress) last() int {
+	if p.rounds == 0 {
+		return -1
+	}
+	return p.lastN
 }

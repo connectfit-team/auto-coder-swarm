@@ -165,8 +165,32 @@ func (t *taskContext) stepVerification() (bool, error) {
 	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_STOPPED", stop, "", prog.Curve())
 	t.lastFeedback = "HEALER STOPPED: " + stop + "\n" + prog.Curve()
+
+	// **가장 나았던 시도를 버리지 않는다.**
+	//
+	// 실측으로 시도 2가 오류 1개까지 갔는데 시도 3이 37개로 되돌아갔고,
+	// 남은 것은 시도 3뿐이었다(W-38946). 회차마다 워크트리를 되돌리므로
+	// 가장 가까이 갔던 것이 사라진다. 되돌리기 전에 남겨 둔다.
+	t.rememberIfBest(prog.last())
 	exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 	return false, nil
+}
+
+// rememberIfBest 는 이번 회차가 여태 가장 나았으면 남긴다.
+func (t *taskContext) rememberIfBest(errs int) {
+	if errs < 0 {
+		return
+	}
+	if t.bestErrors >= 0 && errs >= t.bestErrors {
+		return
+	}
+	diff := t.currentDiff()
+	if strings.TrimSpace(diff) == "" {
+		return
+	}
+	t.bestErrors, t.bestDiff, t.bestAttempt = errs, diff, t.attempt
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BEST_SO_FAR",
+		fmt.Sprintf("여태 가장 나은 시도다 — 남은 오류 %d개", errs), "", "")
 }
 
 // findWipedFiles 는 거의 통째로 지워진 파일을 찾는다.
