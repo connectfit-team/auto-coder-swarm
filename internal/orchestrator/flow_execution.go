@@ -38,6 +38,11 @@ func (t *taskContext) stepExecution(attempt int) error {
 		if sheet := AvailableNames(t.repoPath, change.FilePath); sheet != "" {
 			instr = sheet + instr
 		}
+		// 남의 도구 쓰는 법은 이웃 파일이 알고 있다 — 지어내는 것보다 베끼는
+		// 것이 낫다(Playwright 의 `async ({ page })`, Locator 의 toContainText).
+		if ex := siblingExample(t.repoPath, change.FilePath, 30); ex != "" {
+			instr = ex + instr
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
