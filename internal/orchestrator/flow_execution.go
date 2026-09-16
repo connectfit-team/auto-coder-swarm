@@ -69,9 +69,28 @@ func (t *taskContext) stepExecution(attempt int) error {
 		}
 
 		if _, err := t.coder.ModifyFile(t.ctx, full, instr); err != nil {
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
-				fmt.Sprintf("[%s] 고치지 못했습니다", change.FilePath), "", err.Error())
-			failures = append(failures, err.Error())
+			// **파일 하나 때문에 나머지를 버리지 않는다.**
+			//
+			// 다섯 파일 가운데 하나를 못 고치면 그 회차 전체가 "반쪽 상태"
+			// 로 버려진다. 실측으로 시도 1·2 가 그렇게 빌드조차 못 가 보고
+			// 끝났다(W-65839) — 나머지 넷은 제대로 고쳐져 있었는데도.
+			//
+			// 못 고친 까닭은 이미 정확하다("원문에 없는 내용을 찾으라고
+			// 했다" + 가장 비슷한 자리). 그것을 들려 주고 그 파일만 한 번
+			// 더 시켜 본다. 처음부터 다시 도는 것보다 훨씬 싸다.
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_RETRY",
+				fmt.Sprintf("[%s] 한 번 더 — 왜 안 됐는지 들려준다", change.FilePath), "", err.Error())
+
+			again := instr + "\n\n[앞서 이렇게 실패했다 — 같은 실수를 되풀이하지 마라]\n" + err.Error() +
+				"\nSEARCH 는 위에 보인 원문에서 **그대로** 베껴라. 기억으로 쓰지 마라."
+			if _, err2 := t.coder.ModifyFile(t.ctx, full, again); err2 != nil {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
+					fmt.Sprintf("[%s] 두 번 다 고치지 못했습니다", change.FilePath), "", err2.Error())
+				failures = append(failures, err2.Error())
+			} else {
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_RETRIED_OK",
+					fmt.Sprintf("[%s] 두 번째에 고쳤습니다", change.FilePath), "", "")
+			}
 		}
 	}
 	if len(failures) == 0 {
