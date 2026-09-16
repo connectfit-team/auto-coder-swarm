@@ -64,6 +64,7 @@ func (t *taskContext) execute() (RunResult, error) {
 				fmt.Errorf("사람이 멈춰서 그만두었다")
 		}
 
+		t.attempt = attempt
 		startPlan := time.Now()
 		if err := t.stepPlanning(attempt); err != nil {
 			observability.IncrementAgentOp("Planner", "failed")
@@ -99,6 +100,13 @@ func (t *taskContext) execute() (RunResult, error) {
 		observability.RecordStepDuration("verification", t.targetRepo, time.Since(startVerif).Seconds())
 		if !success {
 			log.Printf("⚠️ [ACS] Verification failed for %s (Attempt %d). Retrying...", t.taskID, attempt)
+			// 지난 시도가 더 나았으면 그것을 들고 이어가게 한다.
+			if t.bestErrors >= 0 && t.bestAttempt != attempt {
+				t.lastFeedback += fmt.Sprintf(
+					"\n\n[시도 %d 가 더 나았다 — 그때는 오류가 %d개였다]\n"+
+						"처음부터 다시 쓰지 말고 **그 수정을 되살려 거기서 이어라.**\n%s",
+					t.bestAttempt, t.bestErrors, clip(t.bestDiff, 3000))
+			}
 			continue
 		}
 
@@ -166,6 +174,11 @@ func (t *taskContext) execute() (RunResult, error) {
 	}
 
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
+	if t.bestErrors > 0 {
+		return RunResult{RepoName: t.targetRepo}, fmt.Errorf(
+			"최대 시도 초과 — 가장 가까웠던 것은 시도 %d 이고 오류 %d개가 남아 있었다",
+			t.bestAttempt, t.bestErrors)
+	}
 	return RunResult{RepoName: t.targetRepo}, fmt.Errorf("최대 시도 초과")
 }
 
