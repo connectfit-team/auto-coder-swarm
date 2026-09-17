@@ -346,7 +346,14 @@ func (t *taskContext) restoreBest() {
 	if t.bestDiff == "" || t.attempt <= 1 {
 		return
 	}
-	st, err := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "status", "--porcelain").Output()
+	// **추적하지 않는 파일은 "고쳐져 있음" 이 아니다.**
+	//
+	// 앞선 시도가 새 파일을 만들면 그것이 워크트리에 남는다. 그것까지
+	// "깨끗하지 않다" 로 보면 되살리기가 영영 안 돈다 — 실측으로 시도 2에서
+	// BEST_RESTORED 가 한 번도 안 찍혔다(W-86009). 사본 갱신 스크립트에서도
+	// 같은 실수로 한 저장소가 442커밋 뒤처진 적이 있다.
+	st, err := exec.CommandContext(t.ctx, "git", "-C", t.repoPath,
+		"status", "--porcelain", "--untracked-files=no").Output()
 	if err != nil || strings.TrimSpace(string(st)) != "" {
 		return
 	}
