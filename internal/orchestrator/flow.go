@@ -65,6 +65,15 @@ func (t *taskContext) execute() (RunResult, error) {
 		}
 
 		t.attempt = attempt
+		// **가장 나았던 시도를 실제로 되살려 놓고 시작한다.**
+		//
+		// 전에는 되먹임에 "그 수정을 되살려 거기서 이어라" 고 적기만 했다.
+		// 모델은 그럴 수 없다 — 워크트리는 이미 되돌려졌고, 그 diff 를 손으로
+		// 다시 칠 수도 없다. 그래서 오류 1개까지 갔던 시도 다음에 15개로
+		// 되돌아갔다(W-20574).
+		//
+		// 되살리는 것은 기계가 할 일이다. 모델은 이어서 고치기만 하면 된다.
+		t.restoreBest()
 		startPlan := time.Now()
 		if err := t.stepPlanning(attempt); err != nil {
 			observability.IncrementAgentOp("Planner", "failed")
@@ -102,10 +111,12 @@ func (t *taskContext) execute() (RunResult, error) {
 			log.Printf("⚠️ [ACS] Verification failed for %s (Attempt %d). Retrying...", t.taskID, attempt)
 			// 지난 시도가 더 나았으면 그것을 들고 이어가게 한다.
 			if t.bestErrors >= 0 && t.bestAttempt != attempt {
+				// 되살리는 것은 기계가 한다(restoreBest). 모델에게는 **무엇이
+				// 남았는지**만 알려 준다 — diff 를 통째로 주면 창만 먹는다.
 				t.lastFeedback += fmt.Sprintf(
-					"\n\n[시도 %d 가 더 나았다 — 그때는 오류가 %d개였다]\n"+
-						"처음부터 다시 쓰지 말고 **그 수정을 되살려 거기서 이어라.**\n%s",
-					t.bestAttempt, t.bestErrors, clip(t.bestDiff, 3000))
+					"\n\n[시도 %d 의 수정을 그대로 되살려 두었다 — 그때 남은 오류는 %d개다]\n"+
+						"처음부터 다시 쓰지 마라. 이미 고쳐진 것 위에서 **남은 것만** 고쳐라.",
+					t.bestAttempt, t.bestErrors)
 			}
 			continue
 		}
