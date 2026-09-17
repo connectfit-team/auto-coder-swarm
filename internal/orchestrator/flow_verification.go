@@ -311,3 +311,27 @@ func (t *taskContext) markAnalysisDeadEnd() []string {
 	}
 	return added
 }
+
+// restoreBest 는 여태 가장 나았던 수정을 워크트리에 되살린다.
+//
+// 깨끗할 때만 한다 — 이미 무언가 고쳐져 있으면 겹쳐 발라 더 나빠진다.
+// 되살리지 못해도 그냥 간다. 처음부터 쓰는 것이 느릴 뿐 틀리지는 않는다.
+func (t *taskContext) restoreBest() {
+	if t.bestDiff == "" || t.attempt <= 1 {
+		return
+	}
+	st, err := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "status", "--porcelain").Output()
+	if err != nil || strings.TrimSpace(string(st)) != "" {
+		return
+	}
+	cmd := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "apply", "--3way", "--whitespace=nowarn")
+	cmd.Stdin = strings.NewReader(t.bestDiff)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BEST_RESTORE_FAILED",
+			fmt.Sprintf("시도 %d 를 되살리지 못했다 — 처음부터 간다", t.bestAttempt), "", clip(string(out), 400))
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BEST_RESTORED",
+		fmt.Sprintf("시도 %d 를 되살렸다 (그때 남은 오류 %d개) — 여기서 이어간다", t.bestAttempt, t.bestErrors), "", "")
+}
