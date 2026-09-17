@@ -65,6 +65,7 @@ func (t *taskContext) execute() (RunResult, error) {
 		}
 
 		t.attempt = attempt
+		t.verifiedClean = false
 		// **가장 나았던 시도를 실제로 되살려 놓고 시작한다.**
 		//
 		// 전에는 되먹임에 "그 수정을 되살려 거기서 이어라" 고 적기만 했다.
