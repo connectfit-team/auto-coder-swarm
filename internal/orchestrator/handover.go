@@ -34,7 +34,12 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 	}
 
 	// 새로 만드는 일인데 새로 생긴 이름이 하나도 없으면 만든 것이 아니다.
-	if t.newFeature {
+	//
+	// **요청문으로 판단한다.** 전에는 t.newFeature 만 봤는데, 그것은 눈이
+	// "못 찾았다" 고 했을 때만 켜진다. 눈이 무언가를 찾았다고 하면 꺼진
+	// 채로 지나가, 「기능을 추가할거야」 라는 요청에 시험 파일 문자열 한 줄이
+	// 승인 대기까지 갔다(W-74462).
+	if t.newFeature || IsNewFeatureRequest(t.req.UserRequest) {
 		if bad := CheckNewFeatureAddedSomething(diff); len(bad) > 0 {
 			note := AlignmentNote(bad)
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOTHING_NEW",
