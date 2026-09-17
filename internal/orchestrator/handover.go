@@ -20,6 +20,20 @@ import (
 // handOver 는 고친 것을 사람 판단으로 넘긴다.
 // 넘길 수 없으면 false 다 — 부르는 쪽이 되먹임을 들고 다시 시도한다.
 func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
+	// **빌드를 통과하지 못한 수정은 넘기지 않는다.**
+	//
+	// 사람이 승인하면 그대로 밀린다. 빌드가 깨지는 것을 승인 대기에 올려
+	// 두는 것은 사람의 시간을 쓰는 것이 아니라 버리는 것이다.
+	//
+	// 실측으로 타입 오류 3개가 남은 수정이 승인 대기까지 갔다(W-86009).
+	// 검토자가 반대해도 넘기는 길이 있는데(그건 맞다 — 검토자가 틀릴 수
+	// 있다), 그 길이 빌드까지 못 본 것을 함께 흘려보냈다.
+	if !t.verifiedClean {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOT_VERIFIED",
+			"빌드를 통과하지 못한 수정이라 넘기지 않는다", why, "")
+		return RunResult{}, false
+	}
+
 	// 계획이 짚은 자리를 하나도 안 고쳤으면 한 일이 없는 것이다.
 	if plan, ok := t.ctx.Value("current_plan").(agent.Plan); ok {
 		if bad := CheckDidTheWork(plan, diff); len(bad) > 0 {

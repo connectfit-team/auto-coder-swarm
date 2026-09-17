@@ -68,6 +68,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 
 		if err == nil {
 			// Build succeeded
+			t.verifiedClean = true
 			if t.meta.BenchCommand != "" {
 				cmd := shellCmd(t.ctx, t.repoPath, t.meta.BenchCommand)
 				bOut, _ := cmd.CombinedOutput()

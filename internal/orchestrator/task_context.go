@@ -61,18 +61,19 @@ type taskContext struct {
 	knowledgeMissing string
 	// 엄한 검증 명령이 기준선부터 깨져 있어 한 칸 물러섰다는 말.
 	// PR 에 적어야 한다 — 사람이 무엇이 안 검사됐는지 알아야 한다.
-	steppedDown  string
-	finalDiff    string
-	preBench     string
-	typeCmd      string      // 타입 검사 명령. 빌드가 타입을 안 보는 저장소만 채운다
-	typeBaseline []typeError // 손대기 전에 이미 있던 타입 오류
-	lastMissing  []typeError // 마지막으로 늘어난 타입 오류. 막힌 까닭을 사람에게 말하는 데 쓴다
-	bestErrors   int         // 시도들 가운데 가장 적게 남은 오류 수. -1 은 아직 없음
-	bestDiff     string      // 그때 고친 것
-	bestAttempt  int
-	attempt      int // 지금 몇 번째 시도인가
-	postBench    string
-	meta         ProjectMetadata
+	steppedDown   string
+	finalDiff     string
+	preBench      string
+	typeCmd       string      // 타입 검사 명령. 빌드가 타입을 안 보는 저장소만 채운다
+	typeBaseline  []typeError // 손대기 전에 이미 있던 타입 오류
+	lastMissing   []typeError // 마지막으로 늘어난 타입 오류. 막힌 까닭을 사람에게 말하는 데 쓴다
+	bestErrors    int         // 시도들 가운데 가장 적게 남은 오류 수. -1 은 아직 없음
+	bestDiff      string      // 그때 고친 것
+	bestAttempt   int
+	attempt       int  // 지금 몇 번째 시도인가
+	verifiedClean bool // 지금 워크트리의 수정이 빌드·타입을 통과했나
+	postBench     string
+	meta          ProjectMetadata
 }
 
 func (o *SwarmOrchestrator) newTaskContext(ctx context.Context, taskID string, req StatelessRequest, isApproved bool, repoLockFunc func(string) (bool, error)) *taskContext {
