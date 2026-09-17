@@ -1,0 +1,70 @@
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+)
+
+// 담을 자리가 없을 때 **어느 계약에 붙어야 하는지**는 이미 알 수 있다.
+//
+// 「연결 요청에 보류 상태를 담을 필드」 가 없다고 했으면, 그 「연결 요청」 이
+// 어떤 타입인지 물어보면 된다. 그 타입이 생성물 안에 있으면 경로가 임자를
+// 말해 준다 — `…/protos/ceowebapis/…` → `proto-ceowebapis`(#76 과 같은 길).
+//
+// 산문으로 저장소를 고르게 하면 빗나간다. 이름 하나를 묻고 경로를 읽는다.
+
+// askTypeForState 는 그 상태가 붙어야 할 **타입 이름 하나**를 묻는다.
+func (t *taskContext) askTypeForState(files []string, missing []string) string {
+	sheet := t.stateSheet(files)
+	if strings.TrimSpace(sheet) == "" {
+		return ""
+	}
+	prompt := fmt.Sprintf(`아래는 이 일과 맞닿은 자리에 **실제로 있는 이름과 타입의 필드**다.
+
+%s
+[없어서 못 만드는 것]
+%s
+
+이 상태는 **어느 타입에 붙어야 하나?** 위 목록에 있는 타입 이름 하나만
+적어라. 다른 말은 쓰지 마라.`, sheet, strings.Join(missing, "\n"))
+
+	ctx, cancel := context.WithTimeout(t.ctx, stateCheckTimeout)
+	defer cancel()
+	raw, err := agent.CallLLM(ctx, t.primaryLLM, "StateOwner", prompt)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(strings.SplitN(strings.TrimSpace(raw), "\n", 2)[0])
+	name = strings.Trim(name, "`'\"., ")
+	if i := strings.LastIndex(name, "."); i > 0 {
+		name = name[:i] // Type.field 로 답했으면 타입만
+	}
+	if name == "" || strings.ContainsAny(name, " \t") {
+		return ""
+	}
+	return name
+}
+
+// ownerRepoForState 는 그 상태가 붙을 타입의 임자 저장소를 준다.
+// 못 찾으면 빈 문자열과 까닭을 준다.
+func (t *taskContext) ownerRepoForState(files, missing []string) (string, string) {
+	typeName := t.askTypeForState(files, missing)
+	if typeName == "" {
+		return "", "어느 타입에 붙어야 하는지 답을 못 받았다"
+	}
+	home := typeHome(t.repoPath, typeName)
+	if home == "" {
+		return "", fmt.Sprintf("%s 가 이 저장소에 정의돼 있지 않다", typeName)
+	}
+	owner := protoOwnerRepo(home)
+	if owner == "" {
+		return "", fmt.Sprintf("%s 는 이 저장소가 손으로 쓴 타입이다(%s) — 여기서 고칠 일이다", typeName, home)
+	}
+	if !t.orchestrator.wsMgr.HasRepo(owner) {
+		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다", owner)
+	}
+	return owner, fmt.Sprintf("%s 는 %s 에서 온다", typeName, home)
+}
