@@ -56,7 +56,17 @@ func addedDeclarations(diff string) []string {
 		}
 	}
 
+	// 더한 줄만 모아 둔다 — 껍데기인지 보려면 뒤따르는 줄이 필요하다.
+	var addedBody []string
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			addedBody = append(addedBody, line[1:])
+		}
+	}
+
 	var out []string
+	var kept []int
+	var bodies []string
 	for _, line := range strings.Split(diff, "\n") {
 		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
 			continue
@@ -72,12 +82,34 @@ func addedDeclarations(diff string) []string {
 		}
 		for _, re := range addedDeclRe {
 			if re.MatchString(body) {
+				kept = append(kept, len(out))
 				out = append(out, trimmed)
+				bodies = append(bodies, body)
 				break
 			}
 		}
 	}
-	return out
+	// 빈 껍데기만 남았으면 만든 것이 아니다.
+	var real []string
+	for i, name := range out {
+		_ = i
+		idx := indexOfLine(addedBody, bodies[i])
+		if idx >= 0 && stubAt(addedBody, idx) {
+			continue
+		}
+		real = append(real, name)
+	}
+	_ = kept
+	return real
+}
+
+func indexOfLine(lines []string, want string) int {
+	for i, l := range lines {
+		if l == want {
+			return i
+		}
+	}
+	return -1
 }
 
 // CheckNewFeatureAddedSomething 은 새로 만드는 일에서만 본다.
@@ -93,4 +125,42 @@ func CheckNewFeatureAddedSomething(diff string) []guard.Violation {
 		Evidence: clipList(append([]string{"고친 파일: " + strings.Join(changedFiles(diff), " · ")},
 			"새 선언·새 값: 0개")),
 	}}
+}
+
+// 빈 껍데기는 만든 것이 아니다.
+//
+// 「기능을 추가할거야」 에 이것이 넘어왔다(W-58244).
+//
+//	export function useI18n() {
+//	    // Implementation of useI18n function
+//	}
+//
+// 이름은 생겼다. 그래서 「새 이름이 0개」 관문을 지나갔다. 그런데 속이 비어
+// 있으니 아무 일도 하지 않는다. 주석으로 「여기에 구현」 이라고 적은 것은
+// 구현이 아니다.
+//
+// 선언을 셀 때 **속이 있는지**까지 본다. 중괄호를 열었으면, 닫히기 전에
+// 주석·빈 줄이 아닌 줄이 하나는 있어야 한다.
+
+var reDeclOpensBody = regexp.MustCompile(`^\s*(?:export\s+)?(?:declare\s+)?(?:async\s+)?(?:function|class)\s+[\p{L}\p{N}_]+[^{]*\{\s*$`)
+
+// stubAt 은 그 줄에서 시작한 선언이 빈 껍데기인지 본다.
+// 껍데기가 아니거나 판단할 수 없으면 false.
+func stubAt(added []string, i int) bool {
+	if !reDeclOpensBody.MatchString(added[i]) {
+		return false
+	}
+	depth := 1
+	for j := i + 1; j < len(added) && depth > 0; j++ {
+		t := strings.TrimSpace(added[j])
+		depth += strings.Count(t, "{") - strings.Count(t, "}")
+		if depth <= 0 {
+			break
+		}
+		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "/*") {
+			continue
+		}
+		return false // 속이 있다
+	}
+	return true
 }
