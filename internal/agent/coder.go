@@ -74,6 +74,17 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	var updated string
 	if len([]rune(original)) > wholeFileRewriteLimit {
 		updated, err = a.editByBlocks(ctx, filePath, original, instructions)
+		// **찾아바꾸기가 실패하면 나눠서 시킨다.**
+		//
+		// 한 번에 셋을 시키는 것이 문제였다 — 자리를 찾고, 코드를 쓰고,
+		// 형식을 맞춘다. 실패는 늘 첫째에서 났다(원문에 없는 줄을 지어내거나
+		// 떨어진 대목을 이어 붙이거나). 자리는 번호 하나로 고르고, 코드만
+		// 따로 쓰게 하고, 붙이는 것은 기계가 하면 그 갈래가 사라진다.
+		if err != nil {
+			if out, err2 := a.editByPlacement(ctx, filePath, original, instructions); err2 == nil {
+				updated, err = out, nil
+			}
+		}
 	} else {
 		updated, err = a.rewriteWholeFile(ctx, filePath, original, instructions)
 	}
