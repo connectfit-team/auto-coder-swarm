@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -22,15 +23,42 @@ const variantAskTimeout = 5 * time.Minute
 // protoPublish 는 그 저장소가 PR 이 아니라 protogen 의 make 목표로 배포된다는 표시다.
 const protoPublish = "protogen-make"
 
-// clockio 는 같은 회사의 다른 서비스다. 낱말이 겹쳐도 gig 앱 요청에
-// 끌어들이면 안 된다.
-var reposOutOfScope = []string{"clockio"}
+// **제품 이름을 코드에 박지 않는다.**
+//
+// 여기 `[]string{"clockio"}` 가 박혀 있었다. 낱말이 겹치는 다른 서비스를
+// 끌어들이지 않으려던 것인데, 그러면 **그 제품에 대한 요청이 오면 조용히
+// 제외된다.** 코드는 규칙을 담고, 무엇을 뺄지는 설정이 정한다.
+//
+//	SWARM_VARIANT_EXCLUDE=clockio,foo
+//
+// 비어 있으면 아무것도 빼지 않는다(기본).
+func variantExcludes(request string) []string {
+	raw := strings.TrimSpace(os.Getenv("SWARM_VARIANT_EXCLUDE"))
+	if raw == "" {
+		return nil
+	}
+	low := strings.ToLower(request)
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		// **요청이 그 이름을 말했으면 빼지 않는다.** 그 제품을 고쳐 달라는
+		// 요청까지 막으면 설정이 아니라 벽이 된다.
+		if strings.Contains(low, strings.ToLower(p)) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
 
 // tryVariantAddition 은 값 추가 요청이면 그 길로 가고, 아니면 넘긴다.
 // 두 번째 값이 false 면 결함 흐름이 이어받는다.
 func (t *taskContext) tryVariantAddition() (RunResult, bool, error) {
 	sub, cancel := context.WithTimeout(t.ctx, variantAskTimeout)
-	ask, err := t.orchestrator.insightClient.VariantAsk(sub, t.req.UserRequest, reposOutOfScope)
+	ask, err := t.orchestrator.insightClient.VariantAsk(sub, t.req.UserRequest, variantExcludes(t.req.UserRequest))
 	cancel()
 	if errors.Is(err, insightclient.ErrNotAuthorized) {
 		// 열쇠가 틀린 것을 "값 추가가 아니다" 로 넘기면, 설정 문제가 판단
