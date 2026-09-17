@@ -19,6 +19,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 	// 시도를 셋으로 묶어 두었더니 오류가 줄고 있는 도중에 "최대 시도 초과"
 	// 로 끝났다. 멈추는 조건은 횟수보다 강한 것으로 둔다 — 나아지지 않거나,
 	// 앞서 본 오류 묶음이 다시 나오면 멈춘다(그것이 고리다).
+	roundBestErrs, roundBestDiff := -1, ""
 	prog := &healProgress{}
 	stop := ""
 	for healAttempt := 1; ; healAttempt++ {
@@ -107,6 +108,17 @@ func (t *taskContext) stepVerification() (bool, error) {
 			lines = []string{"(읽을 수 없는 실패) " + clip(raw, 200)}
 		}
 
+		// **회차 사이에서도 가장 나은 것을 지킨다.**
+		//
+		// 치유가 늘 나아지게만 하지는 않는다 — 실측으로 오류 1개였던 회차
+		// 다음에 109개가 됐고, 워크트리에 남은 것은 109개짜리였다(W-58244).
+		// 다음 시도가 그것을 이어받으니 더 나빠진다.
+		if roundBestErrs < 0 || len(lines) < roundBestErrs {
+			if d := t.currentDiff(); strings.TrimSpace(d) != "" {
+				roundBestErrs, roundBestDiff = len(lines), d
+			}
+		}
+
 		// 이번 회차가 나아졌는지 센다. 나아지는 동안은 계속 간다.
 		goOn, why := prog.step(lines)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "HEALING_PROGRESS",
@@ -185,6 +197,20 @@ func (t *taskContext) stepVerification() (bool, error) {
 	// 실측으로 시도 2가 오류 1개까지 갔는데 시도 3이 37개로 되돌아갔고,
 	// 남은 것은 시도 3뿐이었다(W-38946). 회차마다 워크트리를 되돌리므로
 	// 가장 가까이 갔던 것이 사라진다. 되돌리기 전에 남겨 둔다.
+	// 가장 나았던 회차로 되돌려 놓고 남긴다. 마지막 회차가 더 나쁘면
+	// 그것을 들고 갈 까닭이 없다.
+	if roundBestErrs >= 0 && roundBestErrs < prog.last() {
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		cmd := exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "apply", "--3way", "--whitespace=nowarn")
+		cmd.Stdin = strings.NewReader(roundBestDiff)
+		if err := cmd.Run(); err == nil {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ROUND_BEST_KEPT",
+				fmt.Sprintf("마지막 회차(%d개) 보다 나은 회차(%d개)로 되돌렸다", prog.last(), roundBestErrs), "", "")
+			t.rememberIfBest(roundBestErrs)
+			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+			return false, nil
+		}
+	}
 	t.rememberIfBest(prog.last())
 	exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 	return false, nil
