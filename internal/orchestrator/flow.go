@@ -49,29 +49,6 @@ func (t *taskContext) execute() (RunResult, error) {
 	t.wsPath = wsPath
 	defer t.orchestrator.wsMgr.Cleanup(wsPath)
 
-	// **코드를 쓰기 전에 만들 수 있는 일인지 묻는다.**
-	//
-	// 새 기능은 대개 새 상태를 필요로 한다. 담을 자리가 없으면 프런트만으로는
-	// 만들 수 없다. 물어본 적이 없어서 모델은 늘 있는 필드를 억지로 썼다 —
-	// 「아직 초대하지 않음」 을 「보류」 로 쓰는 식이다(W-86009).
-	//
-	// 없다고 하면 **반쪽을 만들지 않는다.** 무엇이 없는지 대고 그 계약의
-	// 임자에게 일을 만든다. 그것이 이 요청의 올바른 답이다.
-	if IsNewFeatureRequest(t.req.UserRequest) {
-		if ans, ok := t.askStateExists(t.candidateFiles()); ok && len(ans.missing) > 0 {
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_MISSING",
-				"이 일에 필요한 상태를 담을 자리가 이 저장소에 없다",
-				"", strings.Join(ans.missing, "\n"))
-			res := RunResult{RepoName: t.targetRepo}
-			if chain := t.chainForMissingState(ans.missing); len(chain) > 0 {
-				res.ChainTasks = chain
-			}
-			return res, fmt.Errorf(
-				"이 저장소만으로는 만들 수 없다 — 담을 자리가 없다:\n  %s",
-				strings.Join(ans.missing, "\n  "))
-		}
-	}
-
 	for attempt := 1; attempt <= 3; attempt++ {
 		log.Printf("🔄 [ACS] Task %s: Execution Attempt %d/3", t.taskID, attempt)
 		if t.ctx.Err() != nil {
@@ -109,6 +86,21 @@ func (t *taskContext) execute() (RunResult, error) {
 		}
 		observability.RecordStepDuration("planning", t.targetRepo, time.Since(startPlan).Seconds())
 		observability.IncrementAgentOp("Planner", "success")
+
+		// **코드를 쓰기 전에 만들 수 있는 일인지 묻는다.**
+		//
+		// 새 기능은 대개 새 상태를 필요로 한다. 담을 자리가 없으면 프런트만
+		// 으로는 만들 수 없다. 물어본 적이 없어서 모델은 늘 있는 필드를 억지로
+		// 썼다 — 「아직 초대하지 않음」 을 「보류」 로 쓰는 식이다(W-86009).
+		//
+		// 계획 뒤에 묻는다. 계획이 **고칠 파일을 알려 주기 때문**이다. 분석
+		// 텍스트의 경로로 물었더니 쪽지가 비어 물음이 통째로 건너뛰어졌다
+		// (W-24436).
+		if attempt == 1 && IsNewFeatureRequest(t.req.UserRequest) {
+			if stop, err := t.stopIfStateMissing(); stop {
+				return RunResult{RepoName: t.targetRepo, ChainTasks: t.pendingChain}, err
+			}
+		}
 
 		startExec := time.Now()
 		if err := t.stepExecution(attempt); err != nil {

@@ -70,8 +70,9 @@ type taskContext struct {
 	bestErrors    int         // 시도들 가운데 가장 적게 남은 오류 수. -1 은 아직 없음
 	bestDiff      string      // 그때 고친 것
 	bestAttempt   int
-	attempt       int  // 지금 몇 번째 시도인가
-	verifiedClean bool // 지금 워크트리의 수정이 빌드·타입을 통과했나
+	attempt       int                // 지금 몇 번째 시도인가
+	verifiedClean bool               // 지금 워크트리의 수정이 빌드·타입을 통과했나
+	pendingChain  []StatelessRequest // 멈추면서 다른 저장소에 남길 일
 	postBench     string
 	meta          ProjectMetadata
 }
