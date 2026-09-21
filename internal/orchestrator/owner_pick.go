@@ -12,7 +12,7 @@ import (
 
 var reFirstInt = regexp.MustCompile(`\d+`)
 
-// pickOwnerAmong 은 임자 후보가 여럿일 때 하나를 고른다.
+// pickContractAmong 은 닿은 계약이 여럿일 때 하나를 고른다.
 //
 // 고칠 파일들이 서로 다른 계약을 쓰면 후보가 둘 이상 나온다. 여태는 거기서
 // 손을 뗐고("어느 쪽인지 알 수 없다"), 그러면 연쇄가 만들어지지 않아 사람은
@@ -23,8 +23,8 @@ var reFirstInt = regexp.MustCompile(`\d+`)
 // 닫혀 있다 — 번호 하나여서 지어낼 여지가 없다.
 //
 // 세 번 묻고 다수결로 정한다. 한 번만 물으면 회차마다 답이 달랐다.
-func (t *taskContext) pickOwnerAmong(order []string, evidence map[string]string, missing []string) (string, string) {
-	prompt := ownerPickPrompt(order, evidence, missing)
+func (t *taskContext) pickContractAmong(order []string, evidence map[string]string, missing []string) (string, string) {
+	prompt := contractPickPrompt(order, evidence, missing)
 
 	const rounds = 3
 	answers := make([]int, 0, rounds)
@@ -34,15 +34,15 @@ func (t *taskContext) pickOwnerAmong(order []string, evidence map[string]string,
 
 	pick, votes := majorityIndex(answers)
 	if pick == 0 {
-		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 세 번 물어도 어느 쪽인지 정해지지 않았다",
+		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 세 번 물어도 어느 것인지 정해지지 않았다",
 			strings.Join(order, ", "))
 	}
-	owner := order[pick-1]
-	return owner, fmt.Sprintf("후보 %d 곳 가운데 %s 를 골랐다(%d/%d표)", len(order), owner, votes, rounds)
+	picked := order[pick-1]
+	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, rounds)
 }
 
-// ownerPickPrompt 는 닫힌 물음을 만든다 — 번호 하나.
-func ownerPickPrompt(order []string, evidence map[string]string, missing []string) string {
+// contractPickPrompt 는 닫힌 물음을 만든다 — 번호 하나.
+func contractPickPrompt(order []string, evidence map[string]string, missing []string) string {
 	var lines []string
 	for i, o := range order {
 		lines = append(lines, fmt.Sprintf("%d) %s — %s", i+1, o, evidence[o]))
@@ -50,8 +50,8 @@ func ownerPickPrompt(order []string, evidence map[string]string, missing []strin
 	return fmt.Sprintf(`[없어서 못 만드는 것]
 %s
 
-이것을 담을 자리를 만들 곳은 아래 계약 가운데 어디인가? 각 줄은
-「저장소 — 어느 파일이 어느 공장을 거쳐 그 계약에 닿는지」 다.
+이것을 담을 자리를 만들 곳은 아래 계약 가운데 어느 것인가? 각 줄은
+「계약 — 어느 파일이 어느 공장을 거쳐 거기에 닿는지 (펴낸 저장소)」 다.
 
 %s
 

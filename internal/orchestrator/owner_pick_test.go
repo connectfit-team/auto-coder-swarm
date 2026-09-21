@@ -47,17 +47,21 @@ func TestParseOwnerIndexStaysInRange(t *testing.T) {
 }
 
 // 물음은 닫혀 있어야 한다 — 후보와 근거를 다 보이고 번호 하나만 받는다.
-func TestOwnerPickPromptIsClosed(t *testing.T) {
-	order := []string{"proto-ceowebapis", "proto-purchaseapis"}
-	ev := map[string]string{
-		"proto-ceowebapis":   "a.ts → getConnectClient() → ConnectCEOWebDefinition → src/lib/server/protos/ceowebapis/x.ts",
-		"proto-purchaseapis": "b.ts → getPurchaseClient() → PurchaseDefinition → src/lib/server/protos/purchaseapis/y.ts",
+func TestContractPickPromptIsClosed(t *testing.T) {
+	order := []string{
+		"src/lib/server/protos/ceowebapis/ceoweb/v1/ceo.service.ts",
+		"src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts",
 	}
-	p := ownerPickPrompt(order, ev, []string{"연결 요청에 보류 상태를 담을 필드"})
+	ev := map[string]string{
+		order[0]: "staff.ts → getStaffClient() → StaffInternalDefinition (proto-ceowebapis)",
+		order[1]: "connect.ts → getConnectClient() → ConnectCEOWebDefinition (proto-ceowebapis)",
+	}
+	p := contractPickPrompt(order, ev, []string{"연결 요청에 보류 상태를 담을 필드"})
 
 	for _, must := range []string{
-		"1) proto-ceowebapis", "2) proto-purchaseapis",
-		"getConnectClient()", "getPurchaseClient()",
+		"1) src/lib/server/protos/ceowebapis/ceoweb/v1/ceo.service.ts",
+		"2) src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts",
+		"getStaffClient()", "getConnectClient()",
 		"연결 요청에 보류 상태를 담을 필드",
 		"번호 하나만",
 	} {
@@ -73,8 +77,12 @@ func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	if strings.Contains(src, "어느 쪽인지 알 수 없다") {
 		t.Error("후보가 여럿일 때 묻지 않고 손을 떼는 옛 모양이 남아 있다")
 	}
-	if !strings.Contains(src, "pickOwnerAmong") {
+	if !strings.Contains(src, "pickContractAmong") {
 		t.Error("후보가 여럿일 때 고르는 물음이 없다")
+	}
+	// 후보를 저장소로 묶으면 같은 저장소의 다른 계약이 덮어써진다.
+	if !strings.Contains(src, "traceContracts") {
+		t.Error("후보를 계약이 아니라 저장소로 묶고 있다")
 	}
 }
 

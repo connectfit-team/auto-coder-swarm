@@ -59,27 +59,27 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	//
 	// 고칠 파일이 부르는 gRPC 공장을 따라가면 **물을 것이 없다.** 그 파일이
 	// 다루는 데이터가 어느 계약에서 오는지는 적혀 있는 사실이다.
-	count := map[string]string{}
-	var order []string
-	for _, f := range files {
-		if o, why := protoOwnerViaClientDeep(t.repoPath, f, 2); o != "" {
-			if _, seen := count[o]; !seen {
-				order = append(order, o)
-			}
-			count[o] = fmt.Sprintf("%s → %s", f, why)
-		}
-	}
+	order, seen := traceContracts(files, func(f string) (string, string) {
+		return protoOwnerViaClientDeep(t.repoPath, f, 2)
+	})
 	// 여럿이면 **고르는 자리**다. 손을 떼면 연쇄가 만들어지지 않는다.
 	if len(order) > 1 {
-		picked, why := t.pickOwnerAmong(order, count, missing)
+		ev := map[string]string{}
+		for _, k := range order {
+			ev[k] = fmt.Sprintf("%s (%s)", seen[k].why, seen[k].owner)
+		}
+		picked, why := t.pickContractAmong(order, ev, missing)
 		if picked == "" {
 			return "", why
 		}
-		count[picked] = fmt.Sprintf("%s · %s", count[picked], why)
+		c := seen[picked]
+		c.why = fmt.Sprintf("%s · %s", c.why, why)
+		seen[picked] = c
 		order = []string{picked}
 	}
 	if len(order) == 1 {
-		return t.resolveTracedOwner(order[0], count[order[0]])
+		c := seen[order[0]]
+		return t.resolveTracedOwner(c.owner, c.why)
 	}
 
 	typeName := t.askTypeForState(files, missing)
