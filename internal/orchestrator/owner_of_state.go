@@ -62,7 +62,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	count := map[string]string{}
 	var order []string
 	for _, f := range files {
-		if o, why := protoOwnerViaClient(t.repoPath, f); o != "" {
+		if o, why := protoOwnerViaClientDeep(t.repoPath, f, 2); o != "" {
 			if _, seen := count[o]; !seen {
 				order = append(order, o)
 			}
@@ -96,7 +96,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		//
 		// 그 타입을 채우는 것은 RPC 다. 그 파일이 부르는 공장을 따라가면
 		// 계약의 임자가 나온다 — 한 걸음도 모델에게 묻지 않는다(W-77123).
-		if o, why := protoOwnerViaClient(t.repoPath, home); o != "" {
+		if o, why := protoOwnerViaClientDeep(t.repoPath, home, 2); o != "" {
 			if !t.orchestrator.wsMgr.HasRepo(o) {
 				return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", o, why)
 			}

@@ -104,3 +104,52 @@ func importsName(list, want string) bool {
 	}
 	return false
 }
+
+// protoOwnerViaClientDeep 는 그 파일에서 못 따라가면 **그 파일이 들여오는
+// 저장소 안 모듈**까지 한 걸음 더 간다.
+//
+// 계획이 짚는 파일은 회차마다 다르다. 화면 파일만 짚은 회차에서는 gRPC 를
+// 부르는 곳이 없어 고리가 끊겼다 — 네 번 가운데 한 번이 그래서 임자를 못
+// 찾았다(W-58547). 화면은 데이터 모듈을 들여오고, 그 모듈이 공장을 부른다.
+// 한 걸음이면 닿는다.
+func protoOwnerViaClientDeep(repoPath, file string, hops int) (string, string) {
+	seen := map[string]bool{}
+	cur := []string{file}
+	for h := 0; h <= hops; h++ {
+		var next []string
+		for _, f := range cur {
+			if seen[f] {
+				continue
+			}
+			seen[f] = true
+			if o, why := protoOwnerViaClient(repoPath, f); o != "" {
+				return o, why
+			}
+			next = append(next, inRepoImports(repoPath, f)...)
+		}
+		if len(next) == 0 {
+			break
+		}
+		cur = next
+	}
+	return "", "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
+}
+
+// inRepoImports 는 그 파일이 들여오는 **저장소 안** 모듈의 경로를 준다.
+func inRepoImports(repoPath, file string) []string {
+	b, err := os.ReadFile(filepath.Join(repoPath, file))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, im := range reImportFrom.FindAllStringSubmatch(string(b), -1) {
+		p := tsModulePath(repoPath, file, im[2])
+		if p == "" {
+			continue
+		}
+		if rel, err := filepath.Rel(repoPath, p); err == nil {
+			out = append(out, filepath.ToSlash(rel))
+		}
+	}
+	return out
+}
