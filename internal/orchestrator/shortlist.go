@@ -31,17 +31,21 @@ func (t *taskContext) shortlistContracts(order []string, evidence map[string]str
 	return kept
 }
 
-// contractFits 는 한 계약에 대해 예·아니오를 세 번 묻고 과반으로 정한다.
+// contractFits 는 한 계약에 대해 예·아니오를 세 번 묻고 정한다.
+//
+// **떨어뜨리려면 「아니오」 가 과반이어야 한다.** 못 읽은 답을 아니오로 세면
+// 모델이 말이 많거나 안 떠 있을 때 후보가 통째로 사라진다 — 실측으로 17개
+// 가운데 0개가 남은 회차가 있었다. 모르는 것은 남긴다.
 func (t *taskContext) contractFits(contract, evidence string, missing []string) bool {
 	prompt := contractFitPrompt(contract, evidence, missing)
-	yes := 0
+	no := 0
 	const rounds = 3
 	for i := 0; i < rounds; i++ {
-		if t.asksYes(prompt) {
-			yes++
+		if yes, ok := t.asksYes(prompt); ok && !yes {
+			no++
 		}
 	}
-	return yes*2 > rounds
+	return no*2 <= rounds
 }
 
 // contractFitPrompt 는 예·아니오 하나를 묻는다.
@@ -59,19 +63,22 @@ func contractFitPrompt(contract, evidence string, missing []string) string {
 		strings.Join(missing, "\n"), contract, evidence)
 }
 
-// asksYes 는 예·아니오 하나를 받는다. 못 읽으면 아니오다.
-func (t *taskContext) asksYes(prompt string) bool {
+// asksYes 는 예·아니오 하나를 받는다. 두 번째 값은 **읽었는지**다.
+func (t *taskContext) asksYes(prompt string) (bool, bool) {
 	ctx, cancel := context.WithTimeout(t.ctx, stateCheckTimeout)
 	defer cancel()
 	raw, err := agent.CallLLM(ctx, t.primaryLLM, "ContractFit", prompt)
 	if err != nil {
-		return false
+		return false, false
 	}
 	return readsAsYes(raw)
 }
 
-// readsAsYes 는 답이 「예」 인지 본다. 애매하면 아니오다.
-func readsAsYes(raw string) bool {
+// readsAsYes 는 답이 「예」 인지 본다. 두 번째 값은 읽었는지다.
+//
+// 첫 줄에서 예·아니오를 찾고, 없으면 못 읽은 것으로 본다. 애매한 것을
+// 아니오로 세면 말이 많은 회차마다 후보가 사라진다.
+func readsAsYes(raw string) (bool, bool) {
 	for _, line := range strings.Split(raw, "\n") {
 		s := strings.ToLower(strings.TrimSpace(line))
 		if s == "" {
@@ -80,11 +87,11 @@ func readsAsYes(raw string) bool {
 		s = strings.TrimSpace(strings.Trim(s, "`'\"*.,!"))
 		switch {
 		case strings.HasPrefix(s, "아니") || strings.HasPrefix(s, "no"):
-			return false
+			return false, true
 		case strings.HasPrefix(s, "예") || strings.HasPrefix(s, "yes") || s == "y":
-			return true
+			return true, true
 		}
-		return false // 첫 줄이 예·아니오가 아니면 아니오로 본다
+		return false, false // 첫 줄이 예·아니오가 아니다 — 못 읽었다
 	}
-	return false
+	return false, false
 }

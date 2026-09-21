@@ -31,6 +31,11 @@ type StatelessRequest struct {
 	ParentRepos     []string `json:"parent_repos,omitempty"` // To prevent cycles in chain reactions
 	// 이 요청을 낳은 작업. 화면이 형제 작업과 그 PR 들을 함께 보여 주는 데 쓴다.
 	ParentTaskID string `json:"parent_task_id,omitempty"`
+	// 이 일 자체가 **담을 자리를 만드는 일**이다.
+	//
+	// 그렇지 않으면 「담을 자리가 없나」 를 물어 스스로 「없다」 고 답하고
+	// 다시 남에게 넘긴다 — 자기가 할 일을 다시 넘기는 것이다.
+	AddsState bool `json:"adds_state,omitempty"`
 }
 
 type TaskStrategy struct {
