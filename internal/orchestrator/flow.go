@@ -86,7 +86,7 @@ func (t *taskContext) execute() (res RunResult, err error) {
 					continue
 				}
 				// 마지막 시도에는 다시 세울 곳이 없다.
-				return RunResult{}, t.whyKeptRetrying("계획")
+				return RunResult{}, t.whyKeptRetrying("계획", attempt)
 			}
 			return RunResult{}, err
 		}
@@ -114,11 +114,13 @@ func (t *taskContext) execute() (res RunResult, err error) {
 			// 계획 단계와 같은 되먹임 길을 쓴다. 이 갈래가 없어서 코더가
 			// 일부 파일을 못 고쳤을 때 "계획을 다시 세운다" 라는 오류 문구가
 			// 그대로 사람에게 갔다(W-65073) — 다시 세우지도 않았다.
+			// 오늘 코더는 마지막 시도에 이 신호를 내지 않는다(고친 것을
+			// 버리지 않으려고). 그 조건이 바뀌면 여기서 걸린다.
 			if errors.Is(err, errRetryPlanning) {
 				if attempt < 3 {
 					continue
 				}
-				return RunResult{}, t.whyKeptRetrying("코딩")
+				return RunResult{}, t.whyKeptRetrying("코딩", attempt)
 			}
 			return RunResult{}, err
 		}
