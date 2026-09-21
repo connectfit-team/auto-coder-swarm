@@ -1,20 +1,13 @@
 package orchestrator
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// 손으로 쓴 타입이어도 **그 데이터가 어디서 오는지**는 파일에 적혀 있다.
-//
-// 「연결 요청에 보류 상태를 담을 필드」 가 없다고 했고, 모델은 그것이
-// ReceivedRequest 에 붙어야 한다고 바르게 답했다. 그런데 그 타입은 이 저장소가
-// 손으로 쓴 것이라 거기서 멈췄다(W-77123).
-//
-// 멈출 자리가 아니다. 그 타입을 채우는 것은 RPC 이고, 고리가 전부 적혀 있다.
+// 손으로 쓴 타입이어도 그 데이터가 어디서 오는지는 파일에 적혀 있다.
 //
 //	ReceivedRequest              ← connectcud.ts 가 쓴 타입
 //	  getConnectClient()         ← 그 파일이 부르는 공장
@@ -23,57 +16,82 @@ import (
 //	  proto-ceowebapis           ← 임자
 //
 // 한 걸음도 모델에게 묻지 않는다. 파일을 읽어 따라간다.
-
 var (
 	reClientCall = regexp.MustCompile(`\b(get[\p{L}\p{N}_]*Client)\s*\(\s*\)`)
 	reImportFrom = regexp.MustCompile(`(?s)import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+["']([^"']+)["']`)
 )
 
-// protoOwnerViaClient 는 그 파일이 부르는 gRPC 공장을 따라가 임자 저장소를 찾는다.
-func protoOwnerViaClient(repoPath, file string) (owner, gen, why string) {
+// protoContractsInFile 은 그 파일이 부르는 공장을 **모두** 따라가 계약을 준다.
+//
+// 첫 공장 하나만 보면, 계약 둘을 쓰는 파일이 하나로 접히고 어느 쪽이 뽑히는지가
+// 파일 안 글자 순서로 정해진다.
+func protoContractsInFile(repoPath, file string) ([]tracedContract, string) {
 	b, err := os.ReadFile(filepath.Join(repoPath, file))
 	if err != nil {
-		return "", "", ""
+		return nil, ""
 	}
 	src := string(b)
 
-	m := reClientCall.FindStringSubmatch(src)
-	if m == nil {
-		return "", "", "이 파일은 gRPC 공장을 부르지 않는다"
+	calls := reClientCall.FindAllStringSubmatch(src, -1)
+	if len(calls) == 0 {
+		return nil, "이 파일은 gRPC 공장을 부르지 않는다"
 	}
-	factory := m[1]
+	imports := reImportFrom.FindAllStringSubmatch(src, -1)
 
-	// 그 공장이 어느 모듈에서 오는지
+	var out []tracedContract
+	var lastWhyNot string
+	seen := map[string]bool{}
+	for _, c := range calls {
+		factory := c[1]
+		if seen[factory] {
+			continue
+		}
+		seen[factory] = true
+		got, whyNot := contractOfFactory(repoPath, file, src, imports, factory)
+		if got == nil {
+			lastWhyNot = whyNot
+			continue
+		}
+		out = append(out, *got)
+	}
+	if len(out) == 0 {
+		return nil, lastWhyNot
+	}
+	return out, ""
+}
+
+// contractOfFactory 는 공장 하나를 계약까지 따라간다.
+func contractOfFactory(repoPath, file, src string, imports [][]string, factory string) (*tracedContract, string) {
 	var clientsMod string
-	for _, im := range reImportFrom.FindAllStringSubmatch(src, -1) {
+	for _, im := range imports {
 		if strings.Contains(im[1], factory) {
 			clientsMod = im[2]
 			break
 		}
 	}
 	if clientsMod == "" {
-		return "", "", factory + " 를 어디서 들여오는지 못 찾았다"
+		return nil, factory + " 를 어디서 들여오는지 못 찾았다"
 	}
 	clientsPath := tsModulePath(repoPath, file, clientsMod)
 	if clientsPath == "" {
-		return "", "", clientsMod + " 를 저장소 안에서 못 찾았다"
+		return nil, clientsMod + " 를 저장소 안에서 못 찾았다"
 	}
-
 	cb, err := os.ReadFile(clientsPath)
 	if err != nil {
-		return "", "", ""
+		return nil, ""
 	}
 	csrc := string(cb)
 
-	// 그 공장의 정의 줄에서 계약 이름을 뽑는다
 	defRe := regexp.MustCompile(`(?m)^\s*export\s+const\s+` + regexp.QuoteMeta(factory) + `\s*=.*?<\s*typeof\s+([\p{L}\p{N}_]+)`)
 	dm := defRe.FindStringSubmatch(csrc)
 	if dm == nil {
-		return "", "", factory + " 의 정의에서 계약 이름을 못 읽었다"
+		argRe := regexp.MustCompile(`(?m)^\s*export\s+const\s+` + regexp.QuoteMeta(factory) + `\s*=\s*[\p{L}\p{N}_.]+\s*\(\s*([\p{L}\p{N}_]*Definition)\b`)
+		if dm = argRe.FindStringSubmatch(csrc); dm == nil {
+			return nil, factory + " 의 정의에서 계약 이름을 못 읽었다"
+		}
 	}
 	defName := dm[1]
 
-	// 그 이름을 들여오는 경로가 임자를 말해 준다
 	rel, _ := filepath.Rel(repoPath, clientsPath)
 	for _, im := range reImportFrom.FindAllStringSubmatch(csrc, -1) {
 		if !importsName(im[1], defName) {
@@ -84,12 +102,16 @@ func protoOwnerViaClient(repoPath, file string) (owner, gen, why string) {
 			continue
 		}
 		pr, _ := filepath.Rel(repoPath, p)
-		rel := filepath.ToSlash(pr)
-		if o := protoOwnerRepo(rel); o != "" {
-			return o, rel, fmt.Sprintf("%s() → %s → %s", factory, defName, rel)
+		gen := filepath.ToSlash(pr)
+		if o := protoOwnerRepo(gen); o != "" {
+			return &tracedContract{
+				owner:    o,
+				contract: gen,
+				why:      factory + "() → " + defName + " → " + gen,
+			}, ""
 		}
 	}
-	return "", "", defName + " 를 들여오는 곳이 생성물이 아니다"
+	return nil, defName + " 를 들여오는 곳이 생성물이 아니다"
 }
 
 // importsName 은 들여오기 목록에 그 이름이 있는지 본다. `X as Y` 의 Y 도 본다.
@@ -106,14 +128,13 @@ func importsName(list, want string) bool {
 	return false
 }
 
-// protoOwnerViaClientDeep 는 그 파일에서 못 따라가면 **그 파일이 들여오는
-// 저장소 안 모듈**까지 한 걸음 더 간다.
+// protoContractsDeep 은 그 파일에서 못 따라가면 그 파일이 들여오는 저장소 안
+// 모듈까지 한 걸음 더 간다.
 //
 // 계획이 짚는 파일은 회차마다 다르다. 화면 파일만 짚은 회차에서는 gRPC 를
-// 부르는 곳이 없어 고리가 끊겼다 — 네 번 가운데 한 번이 그래서 임자를 못
-// 찾았다(W-58547). 화면은 데이터 모듈을 들여오고, 그 모듈이 공장을 부른다.
-// 한 걸음이면 닿는다.
-func protoOwnerViaClientDeep(repoPath, file string, hops int) (owner, gen, why string) {
+// 부르는 곳이 없어 고리가 끊겼다. 화면은 데이터 모듈을 들여오고, 그 모듈이
+// 공장을 부른다.
+func protoContractsDeep(repoPath, file string, hops int) ([]tracedContract, string) {
 	seen := map[string]bool{}
 	cur := []string{file}
 	for h := 0; h <= hops; h++ {
@@ -123,8 +144,8 @@ func protoOwnerViaClientDeep(repoPath, file string, hops int) (owner, gen, why s
 				continue
 			}
 			seen[f] = true
-			if o, g, w := protoOwnerViaClient(repoPath, f); o != "" {
-				return o, g, w
+			if got, _ := protoContractsInFile(repoPath, f); len(got) > 0 {
+				return got, ""
 			}
 			next = append(next, inRepoImports(repoPath, f)...)
 		}
@@ -133,7 +154,7 @@ func protoOwnerViaClientDeep(repoPath, file string, hops int) (owner, gen, why s
 		}
 		cur = next
 	}
-	return "", "", "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
+	return nil, "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
 }
 
 // inRepoImports 는 그 파일이 들여오는 **저장소 안** 모듈의 경로를 준다.

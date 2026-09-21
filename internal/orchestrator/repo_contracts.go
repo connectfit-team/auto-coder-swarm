@@ -18,6 +18,7 @@ var (
 	reClientGeneric = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+const[ \t]+([\p{L}\p{N}_]+)[ \t]*=[ \t]*[\p{L}\p{N}_.]+[ \t]*<\s*typeof[ \t]+([\p{L}\p{N}_]+)`)
 	// export const x = 무엇(XDefinition, …)
 	reClientArg = regexp.MustCompile(`(?m)^[ \t]*export[ \t]+const[ \t]+([\p{L}\p{N}_]+)[ \t]*=[ \t]*[\p{L}\p{N}_.]+[ \t]*\(\s*([\p{L}\p{N}_]*Definition)\b`)
+	reSpaces    = regexp.MustCompile(`\s+`)
 )
 
 // 훑지 않는 곳. 남의 코드와 빌드 결과물이다.
@@ -29,35 +30,44 @@ var skipDirs = map[string]bool{
 const (
 	maxContractScanFiles = 5000
 	maxContractFileBytes = 512 * 1024
-	maxContractNote      = 160
-	maxContractNoteLines = 40 // 긴 주석은 앞부터 싣는다 — 끝만 잡으면 문장 중간부터 나온다
+	// 계약에 적힌 말은 **글자 수**로 센다. 바이트로 자르면 한글 53자에서
+	// 끊겨, 앞머리 설명 뒤에 오는 경고(「조회에는 쓰지 마라」)가 통째로
+	// 날아간다 — 실제 저장소에서 경고 달린 계약 넷이 전부 그랬다.
+	maxContractNoteRunes = 600
+	maxContractNoteLines = 40
 )
 
-// contractScan 은 훑은 결과다. **얼마나 훑었는지도 함께 준다** — 상한에
-// 걸려 잘린 목록을 온전한 것처럼 내놓으면 「목록에 없다」 가 「이 저장소에
-// 없다」 로 읽힌다.
+// contractScan 은 훑은 결과다. 얼마나 훑었는지도 함께 준다 — 상한에 걸려
+// 잘린 목록을 온전한 것처럼 내놓으면 「목록에 없다」 가 「이 저장소에 없다」
+// 로 읽힌다.
 type contractScan struct {
 	contracts map[string]tracedContract
 	scanned   int      // 실제로 읽은 파일 수
 	factories int      // 공장 정의를 본 횟수 (관행은 읽혔다는 뜻)
-	truncated bool     // 상한에 걸려 끝까지 못 갔다
+	truncated bool     // 파일 상한에 걸려 끝까지 못 갔다
 	skipped   []string // 너무 커서 건너뛴 파일
 }
 
-// note 는 사람이 볼 한 줄이다. 온전히 훑었으면 빈 문자열이다.
+// complete 는 목록을 온전한 것으로 내놓아도 되는지다.
+func (s contractScan) complete() bool { return !s.truncated && len(s.skipped) == 0 }
+
+// note 는 사람이 볼 한 줄이다. 온전히 훑었고 계약을 찾았으면 빈 문자열이다.
 func (s contractScan) note() string {
-	switch {
-	case s.truncated:
-		return "파일 상한에 걸려 끝까지 훑지 못했다 — 목록이 온전하지 않다"
-	case len(s.contracts) == 0 && s.factories > 0:
-		return "공장 정의는 봤지만 계약 경로를 못 따라갔다 — 이 저장소의 들여오기 관행을 못 읽었다"
-	case len(s.contracts) == 0:
-		return "이 저장소에서 gRPC 공장 정의를 찾지 못했다"
+	var out []string
+	if s.truncated {
+		out = append(out, "파일 상한에 걸려 끝까지 훑지 못했다")
 	}
 	if len(s.skipped) > 0 {
-		return "너무 커서 건너뛴 파일이 있다: " + strings.Join(s.skipped, ", ")
+		out = append(out, "너무 커서 건너뛴 파일이 있다: "+strings.Join(s.skipped, ", "))
 	}
-	return ""
+	if len(s.contracts) == 0 {
+		if s.factories > 0 {
+			out = append(out, "공장 정의는 봤지만 계약 경로를 못 따라갔다 — 이 저장소의 들여오기 관행을 못 읽었다")
+		} else {
+			out = append(out, "훑은 파일에서 gRPC 공장 정의를 못 읽었다")
+		}
+	}
+	return strings.Join(out, " · ")
 }
 
 // repoContracts 는 이 저장소가 쓰는 계약을 준다. 열쇠는 생성물 경로다.
@@ -151,16 +161,17 @@ func collectContracts(repoPath, rel, src string, out *contractScan) {
 	}
 }
 
-// docCommentAbove 는 그 선언 바로 위에 달린 말을 준다.
+// docCommentAbove 는 그 선언 위에 달린 말을 준다.
 //
-// 「앱과 같은 RPC 다」·「조회에는 쓰지 마라」 처럼 **고르면 안 되는 계약**임을
-// 적어 둔 곳이 거기다. 목록에서 그것이 빠지면 쓰기 계약과 구별되지 않는다.
+// 「앱과 같은 RPC 다」·「조회에는 쓰지 마라」 처럼 고르면 안 되는 계약임을
+// 적어 둔 곳이 거기다. 빈 줄을 건너서도 모은다 — 빈 줄에 막히면 바로 그
+// 경고가 어느 계약에도 안 붙는다.
 func docCommentAbove(src string, at int) string {
 	lines := strings.Split(src[:at], "\n")
 	var got []string
 	for i := len(lines) - 1; i >= 0 && len(got) < maxContractNoteLines; i-- {
 		s := strings.TrimSpace(lines[i])
-		if s == "" && len(got) == 0 {
+		if s == "" {
 			continue
 		}
 		switch {
@@ -169,12 +180,25 @@ func docCommentAbove(src string, at int) string {
 		case strings.HasPrefix(s, "*/"), strings.HasPrefix(s, "/*"), strings.HasPrefix(s, "*"):
 			s = strings.TrimSpace(strings.Trim(s, "/*"))
 		default:
-			i = -1
+			i = -1 // 코드 줄을 만나면 거기까지다
 			continue
 		}
 		if s != "" {
 			got = append([]string{s}, got...)
 		}
 	}
-	return clip(strings.Join(got, " "), maxContractNote)
+	return oneLine(strings.Join(got, " "), maxContractNoteRunes)
+}
+
+// oneLine 은 목록 한 줄에 실을 수 있게 접는다.
+//
+// 글자 수로 세고 줄바꿈을 지운다. 바이트로 자르면 한글이 뭉개지고, 줄바꿈이
+// 남으면 한 줄에 한 후보인 목록에서 번호 없는 줄이 생긴다.
+func oneLine(s string, maxRunes int) string {
+	s = strings.TrimSpace(reSpaces.ReplaceAllString(s, " "))
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return strings.TrimSpace(string(r[:maxRunes])) + " …"
 }

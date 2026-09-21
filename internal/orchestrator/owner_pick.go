@@ -15,7 +15,7 @@ import (
 // 아무 데서나 첫 정수를 주우면 경로로 답한 회차에서 「v1」 의 1 이 번호가
 // 된다 — 범위 안이라 걸러지지도 않고, 같은 실수를 세 번 되풀이해 다수결까지
 // 붙는다.
-var reOnlyNumber = regexp.MustCompile(`^(\d+)\s*[.)번]?\s*$`)
+var reDigits = regexp.MustCompile(`\d+`)
 
 // pickContractAmong 은 닿은 계약이 여럿일 때 하나를 고른다.
 //
@@ -101,13 +101,11 @@ func parseOwnerPick(raw string, order []string) int {
 		if s == "" {
 			continue
 		}
-		s = strings.TrimSpace(strings.Trim(s, "`'\"*"))
-		if m := reOnlyNumber.FindStringSubmatch(s); m != nil {
-			i, err := strconv.Atoi(m[1])
-			if err != nil || i < 0 || i > len(order) {
+		if n, ok := lineAsNumber(s); ok {
+			if n < 0 || n > len(order) {
 				return 0
 			}
-			return i
+			return n
 		}
 		break
 	}
@@ -122,4 +120,24 @@ func parseOwnerPick(raw string, order []string) int {
 		return idx
 	}
 	return 0
+}
+
+// lineAsNumber 는 그 줄이 번호 하나를 말하는지 본다.
+//
+// 「3」·「3번」·「답: 3」 은 번호이고, 경로나 문장은 아니다. 숫자가 여럿이거나
+// 경로가 섞였거나 줄이 길면 번호로 보지 않는다 — 문장에서 숫자를 주우면
+// 「v1」 의 1 이 번호가 된다.
+func lineAsNumber(s string) (int, bool) {
+	if strings.ContainsAny(s, "/\\") || len([]rune(s)) > 12 {
+		return 0, false
+	}
+	m := reDigits.FindAllString(s, -1)
+	if len(m) != 1 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[0])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }

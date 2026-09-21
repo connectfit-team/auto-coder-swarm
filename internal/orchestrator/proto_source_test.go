@@ -10,8 +10,8 @@ import (
 // 글에서 뽑으면 고칠 파일이 생성물일 때 그 파일이 계약 자리에 들어간다.
 func TestTraceCarriesContractPathAsValue(t *testing.T) {
 	const gen = "src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts"
-	trace := func(f string) (string, string, string) {
-		return "proto-ceowebapis", gen, "getConnectClient() → ConnectCEOWebDefinition → " + gen
+	trace := func(f string) []tracedContract {
+		return []tracedContract{{owner: "proto-ceowebapis", contract: gen, why: "getConnectClient() → ConnectCEOWebDefinition → " + gen}}
 	}
 	// 고칠 파일 자체가 생성물이어도 계약은 흔들리지 않는다.
 	_, seen := traceContracts([]string{"src/lib/server/protos/userapis/user/v1/service.ts"}, trace)
