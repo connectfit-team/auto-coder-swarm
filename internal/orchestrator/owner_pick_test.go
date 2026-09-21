@@ -39,6 +39,8 @@ func TestParseOwnerPickRejectsStrayNumbers(t *testing.T) {
 		{"2", 2},
 		{" 3.\n", 3},
 		{"1번", 1},
+		{"답: 3", 3},
+		{"3)", 3},
 		{"4", 0},  // 목록 밖
 		{"0", 0},  // 어느 것도 아니다
 		{"없다", 0}, // 번호가 없다
@@ -87,13 +89,17 @@ func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	if strings.Contains(src, "어느 쪽인지 알 수 없다") {
 		t.Error("후보가 여럿일 때 묻지 않고 손을 떼는 옛 모양이 남아 있다")
 	}
-	for _, must := range []string{"pickContractAmong", "traceContracts", "len(traced) == 1"} {
+	for _, must := range []string{"pickContractAmong", "traceContracts"} {
 		if !strings.Contains(src, must) {
 			t.Errorf("owner_of_state.go 에 %q 가 없다", must)
 		}
 	}
-	if !strings.Contains(src, "scan.truncated") {
+	if !strings.Contains(src, "scan.complete()") {
 		t.Error("잘린 목록을 온전한 것처럼 내놓는다")
+	}
+	// 고르지 못했다고 손을 떼면 연쇄가 끊긴다 — 옛 길로 내려가야 한다.
+	if !strings.Contains(src, "CONTRACT_PICK_NONE") {
+		t.Error("못 골랐을 때 타입을 묻는 길로 내려가지 않는다")
 	}
 }
 

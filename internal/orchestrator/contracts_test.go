@@ -7,16 +7,16 @@ import "testing"
 func TestTraceContractsKeepsEachContract(t *testing.T) {
 	const ceo = "src/lib/server/protos/ceowebapis/ceoweb/v1/ceo.service.ts"
 	const connect = "src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts"
-	trace := func(f string) (string, string, string) {
+	trace := func(f string) []tracedContract {
 		switch f {
 		case "staff.ts":
-			return "proto-ceowebapis", ceo, "getStaffClient() → StaffInternalDefinition → " + ceo
+			return []tracedContract{{owner: "proto-ceowebapis", contract: ceo, why: "getStaffClient() → StaffInternalDefinition → " + ceo}}
 		case "connect.ts":
-			return "proto-ceowebapis", connect, "getConnectClient() → ConnectCEOWebDefinition → " + connect
+			return []tracedContract{{owner: "proto-ceowebapis", contract: connect, why: "getConnectClient() → ConnectCEOWebDefinition → " + connect}}
 		case "another.ts": // 같은 계약에 또 닿는다
-			return "proto-ceowebapis", connect, "getConnectClient() → ConnectCEOWebDefinition → " + connect
+			return []tracedContract{{owner: "proto-ceowebapis", contract: connect, why: "getConnectClient() → ConnectCEOWebDefinition → " + connect}}
 		}
-		return "", "", "gRPC 공장을 부르지 않는다"
+		return nil
 	}
 
 	order, seen := traceContracts([]string{"staff.ts", "connect.ts", "another.ts", "page.svelte"}, trace)
@@ -36,8 +36,8 @@ func TestTraceContractsKeepsEachContract(t *testing.T) {
 
 // 생성물 경로를 못 읽으면 저장소로 묶는다 — 그래도 후보는 남아야 한다.
 func TestTraceContractsFallsBackToRepo(t *testing.T) {
-	trace := func(f string) (string, string, string) {
-		return "some-repo", "", "공장은 찾았지만 경로를 못 읽었다"
+	trace := func(f string) []tracedContract {
+		return []tracedContract{{owner: "some-repo", why: "공장은 찾았지만 경로를 못 읽었다"}}
 	}
 	order, seen := traceContracts([]string{"a.ts", "b.ts"}, trace)
 	if len(order) != 1 || order[0] != "some-repo" {
