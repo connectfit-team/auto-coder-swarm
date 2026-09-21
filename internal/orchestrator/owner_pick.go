@@ -24,6 +24,19 @@ var reDigits = regexp.MustCompile(`\d+`)
 // 후보가 하나여도 묻는다. 그 하나가 스스로 「조회에는 쓰지 마라」 라고 적어
 // 둔 계약일 수 있고, 그때 「어느 것도 아니다」 라고 답할 길이 있어야 한다.
 func (t *taskContext) pickContractAmong(order []string, evidence map[string]string, missing []string) (picked, why string, rejected bool) {
+	// **한 번에 하나만 묻는다.** 후보가 많으면 번호 하나를 고르라는 물음이
+	// 너무 커서 과반이 나지 않는다 — 실측으로 17개에서 세 번 물어도
+	// 정해지지 않았다. 먼저 「이 계약이 맞나?」 로 줄인다.
+	if len(order) > shortlistFrom {
+		kept := t.shortlistContracts(order, evidence, missing)
+		switch len(kept) {
+		case 0:
+			return "", fmt.Sprintf("계약 후보 %d 가운데 맞다고 한 것이 하나도 없다", len(order)), true
+		case 1:
+			return kept[0], fmt.Sprintf("계약 후보 %d 가운데 하나씩 물어 %s 만 남았다", len(order), kept[0]), false
+		}
+		order = kept
+	}
 	prompt := contractPickPrompt(order, evidence, missing)
 
 	const rounds = 3
