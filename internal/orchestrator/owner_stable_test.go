@@ -10,7 +10,7 @@ func TestProtoOwnerViaClientIsStable(t *testing.T) {
 	// 같은 파일을 여러 번 따라가도 같은 답이 나와야 한다.
 	var first string
 	for i := 0; i < 3; i++ {
-		o, why := protoOwnerViaClient(repo, "src/lib/server/data/connectcud.ts")
+		o, _, why := protoOwnerViaClient(repo, "src/lib/server/data/connectcud.ts")
 		if o == "" {
 			t.Skipf("사본이 없거나 모양이 바뀌었다: %s", why)
 		}

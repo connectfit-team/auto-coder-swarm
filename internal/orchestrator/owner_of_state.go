@@ -52,31 +52,37 @@ func (t *taskContext) askTypeForState(files []string, missing []string) string {
 // ownerRepoForState 는 그 상태가 붙을 타입의 임자 저장소를 준다.
 // 못 찾으면 빈 문자열과 까닭을 준다.
 func (t *taskContext) ownerRepoForState(files, missing []string) (string, string) {
-	// **먼저 기계가 따라가 본다.**
-	//
-	// 「어느 타입에 붙나」 를 모델에게 물었더니 흔들렸다 — 한 번은
-	// ReceivedRequest(맞음), 다음은 TradeInfo(연결과 무관)였다. 임자는
-	// 우연히 같았지만 근거가 틀렸으니 다음엔 샌다.
-	//
-	// 고칠 파일이 부르는 gRPC 공장을 따라가면 **물을 것이 없다.** 그 파일이
-	// 다루는 데이터가 어느 계약에서 오는지는 적혀 있는 사실이다.
-	traced, seen := traceContracts(files, func(f string) (string, string) {
+	// 먼저 기계가 따라가 본다. 그 파일이 다루는 데이터가 어느 계약에서
+	// 오는지는 적혀 있는 사실이다.
+	traced, seen := traceContracts(files, func(f string) (string, string, string) {
 		return protoOwnerViaClientDeep(t.repoPath, f, 2)
 	})
 
-	// **고르는 자리에는 전체 목록을 준다.**
-	//
-	// 계획이 짚은 파일로 미리 좁히면, 계획이 빗나간 회차에서 후보가 통째로
-	// 사라지거나(W-71416: 하나도 못 찾음) 엉뚱한 것만 남는다(읽기 전용이라고
-	// 스스로 적어 둔 조회 계약). 저장소가 쓰는 계약은 다 적혀 있으므로 전부
-	// 보이고, 고칠 파일이 실제로 쓰는 것에는 표를 달아 준다.
-	menu := repoContracts(t.repoPath)
-	for k, c := range seen {
-		if _, ok := menu[k]; !ok {
-			menu[k] = c
-		}
+	// 하나로 확정됐으면 묻지 않는다 — 고를 것이 없는 자리다.
+	if len(traced) == 1 {
+		return t.resolveTracedOwner(seen[traced[0]])
 	}
-	if len(menu) > 0 {
+
+	// 고르는 자리에는 저장소가 쓰는 계약을 다 보인다. 계획이 짚은 파일로
+	// 미리 좁히면 계획이 빗나간 회차에 후보가 통째로 사라지거나 엉뚱한
+	// 것만 남는다.
+	scan := repoContracts(t.repoPath)
+	menu := scan.contracts
+	for k, c := range seen {
+		if m, ok := menu[k]; ok {
+			m.why = c.why // 표가 달릴 줄에는 실제로 따라간 근거를 남긴다
+			menu[k] = m
+			continue
+		}
+		menu[k] = c
+	}
+	if note := scan.note(); note != "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_SCAN",
+			note, fmt.Sprintf("훑은 파일 %d개 · 공장 정의 %d개 · 계약 %d개",
+				scan.scanned, scan.factories, len(scan.contracts)), "")
+	}
+	// 잘린 목록을 온전한 것처럼 내놓고 「어느 것도 아니면 0」 을 물으면 안 된다.
+	if len(menu) > 0 && !scan.truncated {
 		order := make([]string, 0, len(menu))
 		for k := range menu {
 			order = append(order, k)
@@ -84,21 +90,25 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		sort.Strings(order)
 		ev := map[string]string{}
 		for _, k := range order {
-			mark := ""
+			line := fmt.Sprintf("%s (%s)", menu[k].why, menu[k].owner)
 			if _, hit := seen[k]; hit {
-				mark = "  ← 고칠 파일이 실제로 쓰는 계약"
+				line += "  ← 고칠 파일이 실제로 쓰는 계약"
 			}
-			ev[k] = fmt.Sprintf("%s (%s)%s", menu[k].why, menu[k].owner, mark)
+			if menu[k].note != "" {
+				line += "\n     그 계약에 적힌 말: " + menu[k].note
+			}
+			ev[k] = line
 		}
 		picked, why := t.pickContractAmong(order, ev, missing)
 		if picked != "" {
+			if _, hit := seen[picked]; !hit && len(traced) > 0 {
+				// 기계가 따라간 것과 다른 것을 골랐다. 쓰되 남긴다.
+				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_DIFFERS",
+					"고른 계약이 고칠 파일이 쓰는 것과 다르다", strings.Join(traced, ", "), picked)
+			}
 			c := menu[picked]
-			return t.resolveTracedOwner(c.owner, fmt.Sprintf("%s · %s", c.why, why))
-		}
-		// 고르지 못했으면 기계가 따라간 것이 하나일 때만 그것을 쓴다.
-		if len(traced) == 1 {
-			c := seen[traced[0]]
-			return t.resolveTracedOwner(c.owner, fmt.Sprintf("%s · 고르지 못해 따라간 것을 쓴다", c.why))
+			c.why = fmt.Sprintf("%s · %s", c.why, why)
+			return t.resolveTracedOwner(c)
 		}
 		if len(traced) > 1 {
 			return "", why
@@ -119,7 +129,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		//
 		// 그 타입을 채우는 것은 RPC 다. 그 파일이 부르는 공장을 따라가면
 		// 계약의 임자가 나온다 — 한 걸음도 모델에게 묻지 않는다(W-77123).
-		if o, why := protoOwnerViaClientDeep(t.repoPath, home, 2); o != "" {
+		if o, _, why := protoOwnerViaClientDeep(t.repoPath, home, 2); o != "" {
 			if !t.orchestrator.wsMgr.HasRepo(o) {
 				return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", o, why)
 			}
@@ -135,29 +145,20 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	return owner, fmt.Sprintf("%s 는 %s 에서 온다", typeName, home)
 }
 
-// lastProtosPath 는 까닭 글에서 생성물 경로를 뽑는다.
-func lastProtosPath(why string) string {
-	for _, f := range strings.Fields(strings.ReplaceAll(why, "→", " ")) {
-		if strings.Contains(f, "/protos/") {
-			return strings.Trim(f, " ,·")
-		}
-	}
-	return ""
-}
-
-// resolveTracedOwner 는 따라가서 찾은 임자를 실제로 넘길 저장소로 바꾼다.
+// resolveTracedOwner 는 따라가서 찾은 계약을 실제로 넘길 저장소로 바꾼다.
 //
-// 펴낸 결과물이 아니라 원본을 고쳐야 하므로, 경로에 적힌 생성물 자리로
-// 원본 저장소와 발행 목표를 찾는다.
-func (t *taskContext) resolveTracedOwner(owner, why string) (string, string) {
-	if gen := lastProtosPath(why); gen != "" {
-		if src, rel, target := t.protoSource(gen); src != "" {
+// 펴낸 결과물이 아니라 원본을 고쳐야 하므로 생성물 경로로 원본 저장소와
+// 발행 목표를 찾는다. 경로는 값으로 들고 다닌다 — 까닭 글에서 다시
+// 긁어내면 고칠 파일 경로가 계약 경로 자리에 들어간다.
+func (t *taskContext) resolveTracedOwner(c tracedContract) (string, string) {
+	if c.contract != "" {
+		if src, rel, target := t.protoSource(c.contract); src != "" {
 			t.protoPath, t.protoTarget = rel, target
-			return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", why, src, rel, target)
+			return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", c.why, src, rel, target)
 		}
 	}
-	if !t.orchestrator.wsMgr.HasRepo(owner) {
-		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, why)
+	if !t.orchestrator.wsMgr.HasRepo(c.owner) {
+		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", c.owner, c.why)
 	}
-	return owner, why
+	return c.owner, c.why
 }

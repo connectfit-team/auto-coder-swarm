@@ -42,6 +42,12 @@ func tsModulePath(repoPath, fromFile, spec string) string {
 		base = filepath.Join(repoPath, "src", "lib")
 	case strings.HasPrefix(spec, "$"):
 		return "" // $app 등 프레임워크 것
+	case strings.HasPrefix(spec, "@/"):
+		base = filepath.Join(repoPath, "src", strings.TrimPrefix(spec, "@/"))
+	case strings.HasPrefix(spec, "~/"):
+		base = filepath.Join(repoPath, "src", strings.TrimPrefix(spec, "~/"))
+	case strings.HasPrefix(spec, "src/"):
+		base = filepath.Join(repoPath, spec)
 	case strings.HasPrefix(spec, "."):
 		base = filepath.Join(filepath.Dir(filepath.Join(repoPath, fromFile)), spec)
 	default:
