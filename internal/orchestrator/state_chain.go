@@ -80,7 +80,9 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(
 			"%s 에서 「%s」 를 만들려는데 담을 자리가 없어 막혔다:\n  %s\n"+
-				"이 저장소에 먼저 있어야 한다. 상태를 담을 필드와 그것을 바꾸는 길을 더해라.",
+				"이 저장소에 먼저 있어야 한다. 상태를 담을 필드와 그것을 바꾸는 길을 더해라.\n"+
+				"**계약은 원본(.proto)만 고친다.** 펴낸 결과물(*.pb.go·생성된 .ts)은 손대지 마라 — "+
+				"다음 발행 때 덮어써진다. 고친 뒤 발행은 protogen 의 make 목표로 한다.",
 			t.targetRepo, strings.TrimSpace(t.req.UserRequest), strings.Join(missing, "\n  ")),
 		TargetRepo:   owner,
 		Depth:        t.req.Depth - 1,
