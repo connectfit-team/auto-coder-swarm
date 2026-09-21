@@ -34,9 +34,51 @@ type stateAnswer struct {
 
 var reNone = regexp.MustCompile(`(?i)^\s*NONE\b`)
 
-// askStateExists 는 이 일에 필요한 상태를 담을 자리가 있는지 묻는다.
-// 못 물어봤으면 (nil, false) — 그때는 하던 대로 간다.
+// askStateExists 는 **세 번 물어 다수결로 정한다.**
+//
+// 한 번만 물었더니 회차마다 답이 달랐다 — 같은 요청에 어떤 회차는 「없다」
+// 고 바르게 답하고(W-30084 외) 어떤 회차는 「있다」 로 넘어가 코드를 썼다
+// (W-90966). 이 판단이 흔들리면 그 뒤가 전부 흔들린다.
+//
+// 값을 지어내는 것이 아니라 **고르는** 물음이므로, 여러 번 묻고 모아 보면
+// 흔들림이 줄어든다. 「없다」 가 과반이면 없는 것으로 본다 — 없는데 있다고
+// 해서 반쪽을 만드는 쪽이, 있는데 없다고 해서 멈추는 쪽보다 나쁘다.
 func (t *taskContext) askStateExists(files []string) (*stateAnswer, bool) {
+	const rounds = 3
+	var answers []*stateAnswer
+	for i := 0; i < rounds; i++ {
+		if a, ok := t.askStateOnce(files); ok {
+			answers = append(answers, a)
+		}
+	}
+	if len(answers) == 0 {
+		return nil, false
+	}
+	missingVotes := 0
+	var missing []string
+	var have string
+	for _, a := range answers {
+		if len(a.missing) > 0 {
+			missingVotes++
+			if len(a.missing) > len(missing) {
+				missing = a.missing
+			}
+		} else if have == "" {
+			have = a.have
+		}
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_VOTE",
+		fmt.Sprintf("담을 자리가 없다 %d표 / 물어본 %d번", missingVotes, len(answers)),
+		"", strings.Join(missing, "\n"))
+
+	if missingVotes*2 > len(answers) {
+		return &stateAnswer{missing: missing}, true
+	}
+	return &stateAnswer{have: have}, true
+}
+
+// askStateOnce 는 한 번 묻는다.
+func (t *taskContext) askStateOnce(files []string) (*stateAnswer, bool) {
 	sheet := t.stateSheet(files)
 	if strings.TrimSpace(sheet) == "" {
 		return nil, false
