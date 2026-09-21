@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
@@ -59,35 +60,49 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	//
 	// 고칠 파일이 부르는 gRPC 공장을 따라가면 **물을 것이 없다.** 그 파일이
 	// 다루는 데이터가 어느 계약에서 오는지는 적혀 있는 사실이다.
-	count := map[string]string{}
-	var order []string
-	for _, f := range files {
-		if o, why := protoOwnerViaClientDeep(t.repoPath, f, 2); o != "" {
-			if _, seen := count[o]; !seen {
-				order = append(order, o)
-			}
-			count[o] = fmt.Sprintf("%s → %s", f, why)
+	traced, seen := traceContracts(files, func(f string) (string, string) {
+		return protoOwnerViaClientDeep(t.repoPath, f, 2)
+	})
+
+	// **고르는 자리에는 전체 목록을 준다.**
+	//
+	// 계획이 짚은 파일로 미리 좁히면, 계획이 빗나간 회차에서 후보가 통째로
+	// 사라지거나(W-71416: 하나도 못 찾음) 엉뚱한 것만 남는다(읽기 전용이라고
+	// 스스로 적어 둔 조회 계약). 저장소가 쓰는 계약은 다 적혀 있으므로 전부
+	// 보이고, 고칠 파일이 실제로 쓰는 것에는 표를 달아 준다.
+	menu := repoContracts(t.repoPath)
+	for k, c := range seen {
+		if _, ok := menu[k]; !ok {
+			menu[k] = c
 		}
 	}
-	if len(order) == 1 {
-		owner := order[0]
-		// **펴낸 결과물이 아니라 원본을 고친다.** 경로에 생성물 자리가 적혀
-		// 있으므로 그것으로 원본을 찾는다.
-		if gen := lastProtosPath(count[owner]); gen != "" {
-			if src, rel, target := t.protoSource(gen); src != "" {
-				t.protoPath, t.protoTarget = rel, target
-				return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", count[owner], src, rel, target)
+	if len(menu) > 0 {
+		order := make([]string, 0, len(menu))
+		for k := range menu {
+			order = append(order, k)
+		}
+		sort.Strings(order)
+		ev := map[string]string{}
+		for _, k := range order {
+			mark := ""
+			if _, hit := seen[k]; hit {
+				mark = "  ← 고칠 파일이 실제로 쓰는 계약"
 			}
+			ev[k] = fmt.Sprintf("%s (%s)%s", menu[k].why, menu[k].owner, mark)
 		}
-		if !t.orchestrator.wsMgr.HasRepo(owner) {
-			return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, count[owner])
+		picked, why := t.pickContractAmong(order, ev, missing)
+		if picked != "" {
+			c := menu[picked]
+			return t.resolveTracedOwner(c.owner, fmt.Sprintf("%s · %s", c.why, why))
 		}
-		return owner, count[owner]
-	}
-	if len(order) > 1 {
-		// 여럿이면 고르지 않는다 — 어느 계약인지 알 수 없다.
-		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 어느 쪽인지 알 수 없다",
-			strings.Join(order, ", "))
+		// 고르지 못했으면 기계가 따라간 것이 하나일 때만 그것을 쓴다.
+		if len(traced) == 1 {
+			c := seen[traced[0]]
+			return t.resolveTracedOwner(c.owner, fmt.Sprintf("%s · 고르지 못해 따라간 것을 쓴다", c.why))
+		}
+		if len(traced) > 1 {
+			return "", why
+		}
 	}
 
 	typeName := t.askTypeForState(files, missing)
@@ -128,4 +143,21 @@ func lastProtosPath(why string) string {
 		}
 	}
 	return ""
+}
+
+// resolveTracedOwner 는 따라가서 찾은 임자를 실제로 넘길 저장소로 바꾼다.
+//
+// 펴낸 결과물이 아니라 원본을 고쳐야 하므로, 경로에 적힌 생성물 자리로
+// 원본 저장소와 발행 목표를 찾는다.
+func (t *taskContext) resolveTracedOwner(owner, why string) (string, string) {
+	if gen := lastProtosPath(why); gen != "" {
+		if src, rel, target := t.protoSource(gen); src != "" {
+			t.protoPath, t.protoTarget = rel, target
+			return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", why, src, rel, target)
+		}
+	}
+	if !t.orchestrator.wsMgr.HasRepo(owner) {
+		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, why)
+	}
+	return owner, why
 }

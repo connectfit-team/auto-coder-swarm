@@ -56,13 +56,20 @@ func (t *taskContext) chainForMissingState(missing []string) []StatelessRequest 
 	defer cancel()
 	routed, err := t.orchestrator.insightClient.RouteRepos(sub, q)
 	if err != nil {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_SKIPPED",
+			"저장소 고르기가 답하지 않았다", err.Error(), strings.Join(missing, " · "))
 		return nil
 	}
+	// 걸러낸 것은 까닭과 함께 남긴다. 조용히 비우면 「못 골랐다」 만 남아
+	// 무엇을 보고 그랬는지 알 수 없다.
+	var dropped []string
 	for _, r := range routed {
 		if r.RepoName == t.targetRepo || hasRepo(t.req.ParentRepos, r.RepoName) {
+			dropped = append(dropped, r.RepoName+"(이미 거쳐 온 저장소)")
 			continue
 		}
 		if !t.orchestrator.wsMgr.HasRepo(r.RepoName) {
+			dropped = append(dropped, r.RepoName+"(사본이 없다)")
 			continue
 		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_TRIGGERED",
@@ -70,8 +77,12 @@ func (t *taskContext) chainForMissingState(missing []string) []StatelessRequest 
 		return []StatelessRequest{t.stateChainRequest(r.RepoName, missing)}
 	}
 	// **왜 못 만들었는지 적는다.** 조용히 비우면 사람은 연쇄가 도는 줄 안다.
+	why := "저장소 고르기가 아무것도 내놓지 않았다"
+	if len(dropped) > 0 {
+		why = "걸러낸 것: " + strings.Join(dropped, ", ")
+	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CHAIN_SKIPPED",
-		"담을 자리를 만들 저장소를 못 골랐다", "", strings.Join(missing, " · "))
+		"담을 자리를 만들 저장소를 못 골랐다", why, strings.Join(missing, " · "))
 	return nil
 }
 
