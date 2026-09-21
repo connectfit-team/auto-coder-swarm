@@ -1,11 +1,13 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -33,20 +35,33 @@ func TestInternalSignalNeverReachesHuman(t *testing.T) {
 		t.Errorf("되먹임이 없을 때 안쪽 신호가 그대로 나갔다: %q", bare)
 	}
 
-	// 사람이 봐도 되는 신호는 문구가 그대로 남아야 한다.
-	for _, sig := range humanReadableSignals {
-		wrapped := fmt.Errorf("감싼다: %w", sig)
-		if got := tc.humanReason(wrapped); got != wrapped {
-			t.Errorf("사람이 봐도 되는 신호를 걷어 냈다: %v → %v", sig, got)
-		}
-	}
-
 	real := fmt.Errorf("빌드가 오류 15개로 깨졌다")
 	if tc.humanReason(real) != real {
 		t.Errorf("바깥 오류를 바꿨다")
 	}
 	if tc.humanReason(nil) != nil {
 		t.Errorf("nil 을 오류로 바꿨다")
+	}
+}
+
+// 사람이 봐도 되는 목록은 관문을 끄는 스위치가 아니다.
+func TestHumanReadableListCannotHideASignal(t *testing.T) {
+	tc := &taskContext{}
+	for _, sig := range humanReadableSignals {
+		var marked *internalSignal
+		if errors.As(sig, &marked) {
+			t.Errorf("안쪽 신호가 사람이 봐도 되는 목록에 있다: %v", sig)
+			continue
+		}
+		wrapped := fmt.Errorf("감싼다: %w", sig)
+		if got := tc.humanReason(wrapped); got != wrapped {
+			t.Errorf("사람이 봐도 되는 신호를 걷어 냈다: %v → %v", sig, got)
+		}
+	}
+	// 목록에 적어도 표식이 있으면 가려진다.
+	hidden := newInternalSignal("가려져야 한다")
+	if got := tc.humanReason(hidden).Error(); strings.Contains(got, "가려져야 한다") {
+		t.Errorf("표식이 있는데 그대로 나갔다: %q", got)
 	}
 }
 
@@ -63,42 +78,115 @@ func TestWhyKeptRetryingReadsRight(t *testing.T) {
 	}
 }
 
-// 신호를 보는 자리는 모두 사유로 바꿔야 하고, 마지막 관문이 걸려 있어야 한다.
-func TestLastGateIsWired(t *testing.T) {
-	src := readSource(t, "flow.go")
-	if !strings.Contains(src, "err = t.humanReason(err)") {
-		t.Error("execute 에 humanReason 관문이 없다")
-	}
-	sees := strings.Count(src, "errors.Is(err, errRetryPlanning)")
-	turns := strings.Count(src, "t.whyKeptRetrying(")
-	if sees == 0 || sees != turns {
-		t.Errorf("신호를 보는 자리 %d 곳, 사유로 바꾸는 곳 %d 곳 — 같아야 한다", sees, turns)
-	}
-}
-
-// 신호를 새로 만들었으면 두 목록 가운데 하나의 원소여야 한다.
+// 마지막 관문은 execute 의 **맨 위 defer** 여야 한다.
 //
-// 글자 대조로는 못 잡는다. 이름이 겹치기만 해도(errRetry ⊂ errRetryPlanning)
-// 통과하고, 주석에 이름만 적어도 통과한다. 두 파일 다 문법 나무로 읽는다.
-func TestEverySentinelIsAccountedFor(t *testing.T) {
-	internal, human := registeredSignals(t)
-	for name := range internal {
-		if human[name] {
-			t.Errorf("%s 가 두 목록에 다 있다 — 한 쪽만 골라라", name)
-		}
+// 글자 대조로는 못 본다. 주석으로 남기거나 `if false { … }` 안에 넣어도
+// 글자는 그대로라 통과한다 — 관문이 죽었는데 초록이다.
+func TestLastGateIsWired(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "flow.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := findMethod(f, "execute")
+	if fn == nil {
+		t.Fatal("flow.go 에서 execute 를 못 찾았다")
 	}
 
-	for _, s := range declaredSignals(t, "..") {
-		if !internal[s] && !human[s] {
-			t.Errorf("%s 가 internal_signal.go 의 어느 목록에도 없다 — 안쪽 신호면 internalSignals 에, 사람이 봐도 되면 humanReadableSignals 에 넣어라", s)
+	// 이름 붙은 반환값이라야 defer 가 바꿀 수 있다.
+	errName := namedErrorResult(fn)
+	if errName == "" {
+		t.Fatal("execute 의 오류 반환값에 이름이 없다 — defer 가 바꿀 수 없다")
+	}
+
+	for _, st := range fn.Body.List {
+		d, ok := st.(*ast.DeferStmt)
+		if !ok {
+			continue
 		}
+		lit, ok := d.Call.Fun.(*ast.FuncLit)
+		if !ok {
+			continue
+		}
+		if assignsHumanReason(lit.Body, errName) {
+			return
+		}
+	}
+	t.Errorf("execute 의 몸통 맨 위에 %s = t.humanReason(%s) 를 하는 defer 가 없다", errName, errName)
+}
+
+func findMethod(f *ast.File, name string) *ast.FuncDecl {
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if ok && fn.Recv != nil && fn.Name.Name == name && fn.Body != nil {
+			return fn
+		}
+	}
+	return nil
+}
+
+// namedErrorResult 는 이름 붙은 error 반환값의 이름을 준다.
+func namedErrorResult(fn *ast.FuncDecl) string {
+	if fn.Type.Results == nil {
+		return ""
+	}
+	for _, r := range fn.Type.Results.List {
+		id, ok := r.Type.(*ast.Ident)
+		if !ok || id.Name != "error" || len(r.Names) != 1 {
+			continue
+		}
+		return r.Names[0].Name
+	}
+	return ""
+}
+
+// assignsHumanReason 은 그 몸통이 err = t.humanReason(err) 를 하는지 본다.
+func assignsHumanReason(body *ast.BlockStmt, errName string) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+			return true
+		}
+		lhs, ok := as.Lhs[0].(*ast.Ident)
+		if !ok || lhs.Name != errName {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "humanReason" {
+			found = true
+		}
+		return true
+	})
+	return found
+}
+
+// 신호를 새로 만들었으면 표식을 달거나 사람이 봐도 된다고 적어야 한다.
+//
+// 훑는 범위는 **이 꾸러미가 실제로 의존하는 꾸러미**다. execute 는 그것들의
+// 오류를 그대로 올려 보내므로 그것들만 사람 사유가 될 수 있다. 이 꾸러미를
+// 쓰는 쪽(internal/api·cmd)까지 훑으면 등록할 방법이 없는 막다른 길이 된다 —
+// 등록하면 되돌이 import 가 되고, 숨기면 캡슐화를 깨라는 말이 된다.
+func TestEverySentinelIsAccountedFor(t *testing.T) {
+	human := registeredHumanReadable(t)
+
+	for _, s := range declaredSignals(t) {
+		if s.marked || human[s.name] {
+			continue
+		}
+		t.Errorf("%s 의 %s 가 갈리지 않았다 — 안쪽 신호면 newInternalSignal 로 만들고, 사람이 봐도 되면 humanReadableSignals 에 넣어라",
+			s.pkg, s.name)
 	}
 }
 
-// registeredSignals 는 두 목록의 원소 이름을 준다. 다른 꾸러미 것은 pkg.Name 이다.
-func registeredSignals(t *testing.T) (internal, human map[string]bool) {
+// registeredHumanReadable 는 humanReadableSignals 의 원소 이름을 준다.
+func registeredHumanReadable(t *testing.T) map[string]bool {
 	t.Helper()
-	internal, human = map[string]bool{}, map[string]bool{}
+	out := map[string]bool{}
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "internal_signal.go", nil, 0)
 	if err != nil {
@@ -111,33 +199,24 @@ func registeredSignals(t *testing.T) (internal, human map[string]bool) {
 		}
 		for _, sp := range gd.Specs {
 			vs, ok := sp.(*ast.ValueSpec)
-			if !ok || len(vs.Names) != 1 || len(vs.Values) != 1 {
-				continue
-			}
-			var into map[string]bool
-			switch vs.Names[0].Name {
-			case "internalSignals":
-				into = internal
-			case "humanReadableSignals":
-				into = human
-			default:
+			if !ok || len(vs.Names) != 1 || len(vs.Values) != 1 || vs.Names[0].Name != "humanReadableSignals" {
 				continue
 			}
 			lit, ok := vs.Values[0].(*ast.CompositeLit)
 			if !ok {
-				t.Fatalf("%s 가 목록 리터럴이 아니다", vs.Names[0].Name)
+				t.Fatal("humanReadableSignals 가 목록 리터럴이 아니다")
 			}
 			for _, e := range lit.Elts {
 				if n := signalName(e); n != "" {
-					into[n] = true
+					out[n] = true
 				}
 			}
 		}
 	}
-	if len(internal) == 0 {
-		t.Fatal("internalSignals 가 비었다 — 목록을 못 읽었다")
+	if len(out) == 0 {
+		t.Fatal("humanReadableSignals 를 못 읽었다")
 	}
-	return internal, human
+	return out
 }
 
 // signalName 은 목록 원소의 이름을 준다. x 이거나 pkg.X 다.
@@ -153,31 +232,29 @@ func signalName(e ast.Expr) string {
 	return ""
 }
 
-// declaredSignals 는 root 아래 모든 꾸러미의 최상위 err·Err 변수를 준다.
-//
-// 이 꾸러미 것은 그냥 이름, 다른 꾸러미 것은 pkg.Name 이다 — execute 가
-// 다른 단계의 오류를 그대로 올려 보내므로 그것들도 사람 사유가 될 수 있다.
-func declaredSignals(t *testing.T, root string) []string {
+type sentinel struct {
+	pkg    string
+	name   string // 이 꾸러미 것은 그냥 이름, 다른 꾸러미 것은 pkg.Name
+	marked bool   // newInternalSignal 로 만들었다
+}
+
+// declaredSignals 는 이 꾸러미와 그것이 의존하는 꾸러미의 err… 변수를 준다.
+func declaredSignals(t *testing.T) []sentinel {
 	t.Helper()
-	seen := map[string]bool{}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
-			return nil
-		}
-		if n := d.Name(); n == "testdata" || n == "vendor" {
-			return filepath.SkipDir
-		}
+	var out []sentinel
+	for _, dir := range dependencyDirs(t) {
 		fset := token.NewFileSet()
-		pkgs, err := parser.ParseDir(fset, p, func(fi fs.FileInfo) bool {
+		pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
 			return !strings.HasSuffix(fi.Name(), "_test.go")
 		}, 0)
 		if err != nil {
-			return nil
+			t.Fatalf("%s 를 못 읽었다: %v", dir, err)
 		}
 		for _, pkg := range pkgs {
+			own := pkg.Name == "orchestrator"
 			for _, f := range pkg.Files {
-				for _, dcl := range f.Decls {
-					gd, ok := dcl.(*ast.GenDecl)
+				for _, d := range f.Decls {
+					gd, ok := d.(*ast.GenDecl)
 					if !ok || gd.Tok != token.VAR {
 						continue
 					}
@@ -186,33 +263,99 @@ func declaredSignals(t *testing.T, root string) []string {
 						if !ok {
 							continue
 						}
-						for _, id := range vs.Names {
+						for i, id := range vs.Names {
 							if !strings.HasPrefix(strings.ToLower(id.Name), "err") {
 								continue
 							}
+							// 밖에서 가리킬 수 없는 값은 이 꾸러미의 목록에
+							// 올릴 수 없다. 지킬 방법이 없는 것을 요구하지 않는다.
+							if !own && !ast.IsExported(id.Name) {
+								continue
+							}
 							name := id.Name
-							if pkg.Name != "orchestrator" {
-								if !ast.IsExported(id.Name) {
-									t.Errorf("%s 꾸러미의 %s 는 밖에서 가리킬 수 없다 — 목록에 넣을 수 있게 내보내거나, 밖으로 내보내지 마라", pkg.Name, id.Name)
-									continue
-								}
+							if !own {
 								name = pkg.Name + "." + id.Name
 							}
-							seen[name] = true
+							out = append(out, sentinel{
+								pkg:    pkg.Name,
+								name:   name,
+								marked: own && madeByNewInternalSignal(vs, i),
+							})
 						}
 					}
 				}
 			}
 		}
-		return nil
-	})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+func madeByNewInternalSignal(vs *ast.ValueSpec, i int) bool {
+	if i >= len(vs.Values) {
+		return false
+	}
+	call, ok := vs.Values[i].(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	id, ok := call.Fun.(*ast.Ident)
+	return ok && id.Name == "newInternalSignal"
+}
+
+// dependencyDirs 는 이 꾸러미가 (곧바로든 건너서든) 들여오는 이 저장소 안
+// 꾸러미의 디렉터리를 준다. 자기 자신도 넣는다.
+func dependencyDirs(t *testing.T) []string {
+	t.Helper()
+	root := filepath.Join("..", "..")
+	mod, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
+	var prefix string
+	for _, line := range strings.Split(string(mod), "\n") {
+		if strings.HasPrefix(line, "module ") {
+			prefix = strings.TrimSpace(strings.TrimPrefix(line, "module ")) + "/"
+			break
+		}
 	}
-	sort.Strings(out)
-	return out
+	if prefix == "" {
+		t.Fatal("go.mod 에서 모듈 이름을 못 읽었다")
+	}
+
+	seen := map[string]bool{".": true}
+	queue := []string{"."}
+	for len(queue) > 0 {
+		dir := queue[0]
+		queue = queue[1:]
+		fset := token.NewFileSet()
+		pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
+			return !strings.HasSuffix(fi.Name(), "_test.go")
+		}, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("%s 를 못 읽었다: %v", dir, err)
+		}
+		for _, pkg := range pkgs {
+			for _, f := range pkg.Files {
+				for _, im := range f.Imports {
+					path := strings.Trim(im.Path.Value, `"`)
+					if !strings.HasPrefix(path, prefix) {
+						continue
+					}
+					next := filepath.Join(root, strings.TrimPrefix(path, prefix))
+					if seen[next] {
+						continue
+					}
+					seen[next] = true
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	dirs := make([]string, 0, len(seen))
+	for d := range seen {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	return dirs
 }

@@ -10,16 +10,26 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
-// 안쪽 신호는 흐름 안에서만 뜻이 있는 오류다. 밖으로 그대로 나가면 사람이
-// 보는 실패 사유가 「계획을 다시 세운다」 가 된다 — 다시 세우지도 않았는데
-// 그렇게 적히면 무엇이 잘못됐는지 알 수 없다.
+// internalSignal 은 흐름 안에서만 뜻이 있는 오류다. 밖으로 그대로 나가면
+// 사람이 보는 실패 사유가 「계획을 다시 세운다」 가 된다 — 다시 세우지도
+// 않았는데 그렇게 적히면 무엇이 잘못됐는지 알 수 없다.
 //
-// 신호를 새로 만들면 둘 중 한 곳에 적는다. 시험이 강제하는 범위는
-// 이름이 err·Err 로 시작하는 꾸러미 변수까지다 — 그 규칙을 벗어나 지으면
-// (retrySignal 처럼, 또는 변수 없이 &fooError{} 를 바로 돌려주면) 잡지 못한다.
-var internalSignals = []error{errRetryPlanning}
+// 표식을 값에 붙인다. 손으로 관리하는 목록에 두면 적기를 잊은 신호가 그대로
+// 새고, 잘못 적은 신호는 시험만 조용해진다.
+type internalSignal struct{ msg string }
 
-// 사람이 봐도 되는 신호. 문구 자체가 이미 사유다.
+func (e *internalSignal) Error() string { return e.msg }
+
+// newInternalSignal 로 만든 오류는 사람에게 그대로 나가지 않는다.
+func newInternalSignal(msg string) error { return &internalSignal{msg: msg} }
+
+// 되먹임을 주고 다시 세우면 되는 계획 실패. 남은 시도를 쓴다.
+var errRetryPlanning = newInternalSignal("계획을 다시 세운다")
+
+// 문구 자체가 이미 사유인 오류. 관문을 지나도 그대로 둔다.
+//
+// 여기 적는 것은 「이 문구를 사람이 봐도 된다」 는 뜻이지 관문을 끄는 스위치가
+// 아니다 — 안쪽 신호는 표식으로 갈리므로 여기 적어도 가려지지 않는다.
 var humanReadableSignals = []error{
 	errChangedTestsFailed,
 	errNewTypeErrors,
@@ -30,22 +40,16 @@ var humanReadableSignals = []error{
 
 // humanReason 은 execute 가 돌려주는 오류에서 안쪽 신호를 걷어 낸다.
 //
-// 사람이 봐도 되는 쪽을 먼저 본다. 신호가 나는 자리마다 whyKeptRetrying 으로
-// 바꾸는 것이 먼저고, 이것은 그 자리를 하나 빠뜨렸을 때를 위한 마지막
-// 관문이다. 몇 번째 시도였는지는 여기서 알 수 없으므로 횟수를 말하지 않는다.
+// 신호가 나는 자리마다 whyKeptRetrying 으로 바꾸는 것이 먼저고, 이것은 그
+// 자리를 하나 빠뜨렸을 때를 위한 마지막 관문이다. 몇 번째 시도였는지는
+// 여기서 알 수 없으므로 횟수를 말하지 않는다.
 func (t *taskContext) humanReason(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, sig := range humanReadableSignals {
-		if errors.Is(err, sig) {
-			return err
-		}
-	}
-	for _, sig := range internalSignals {
-		if errors.Is(err, sig) {
-			return fmt.Errorf("작업이 끝내 되지 않았다.%s", lastFeedbackTail(t.lastFeedback))
-		}
+	var sig *internalSignal
+	if errors.As(err, &sig) {
+		return fmt.Errorf("작업이 끝내 되지 않았다.%s", lastFeedbackTail(t.lastFeedback))
 	}
 	return err
 }
