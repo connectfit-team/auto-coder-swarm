@@ -48,7 +48,7 @@ func (t *taskContext) whyKeptRetrying(step string, attempts int) error {
 
 // lastFeedbackTail 은 마지막 되먹임을 사유 뒤에 붙인다.
 //
-// 되먹임은 **모델에게 쓴 말**이라 「… 다시 계획하라」 같은 지시가 섞여 있다.
+// 되먹임은 모델에게 쓴 말이라 「… 다시 계획하라」 같은 지시가 섞여 있다.
 // 그대로 붙이면 사람은 그것이 자기에게 하는 말인 줄 안다. 누구에게 한
 // 말인지 밝히고 붙인다.
 func lastFeedbackTail(feedback string) string {
