@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
+	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
@@ -12,24 +14,33 @@ import (
 // 보는 실패 사유가 「계획을 다시 세운다」 가 된다 — 다시 세우지도 않았는데
 // 그렇게 적히면 무엇이 잘못됐는지 알 수 없다.
 //
-// 신호를 새로 만들면 둘 중 한 곳에 적는다. 적지 않으면 시험이 막는다.
+// 신호를 새로 만들면 둘 중 한 곳에 적는다. 시험이 강제하는 범위는
+// 이름이 err·Err 로 시작하는 꾸러미 변수까지다 — 그 규칙을 벗어나 지으면
+// (retrySignal 처럼, 또는 변수 없이 &fooError{} 를 바로 돌려주면) 잡지 못한다.
 var internalSignals = []error{errRetryPlanning}
 
 // 사람이 봐도 되는 신호. 문구 자체가 이미 사유다.
-//
-// 이 둘은 지금 stepVerification 이 (false, nil) 로 삼켜 밖으로 나가지
-// 않는다. 나가게 되더라도 「손대기 전에 없던 타입 오류가 생겼다」 는 그대로
-// 사유가 되므로 걷어 내지 않는다.
-var humanReadableSignals = []error{errChangedTestsFailed, errNewTypeErrors}
+var humanReadableSignals = []error{
+	errChangedTestsFailed,
+	errNewTypeErrors,
+	gitmgr.ErrMisaligned,
+	insightclient.ErrAnalysisFailed,
+	insightclient.ErrNotAuthorized,
+}
 
 // humanReason 은 execute 가 돌려주는 오류에서 안쪽 신호를 걷어 낸다.
 //
-// 신호가 나는 자리마다 whyKeptRetrying 으로 바꾸는 것이 먼저고, 이것은 그
-// 자리를 하나 빠뜨렸을 때를 위한 마지막 관문이다. 몇 번째 시도였는지는
-// 여기서 알 수 없으므로 횟수를 말하지 않는다.
+// 사람이 봐도 되는 쪽을 먼저 본다. 신호가 나는 자리마다 whyKeptRetrying 으로
+// 바꾸는 것이 먼저고, 이것은 그 자리를 하나 빠뜨렸을 때를 위한 마지막
+// 관문이다. 몇 번째 시도였는지는 여기서 알 수 없으므로 횟수를 말하지 않는다.
 func (t *taskContext) humanReason(err error) error {
 	if err == nil {
 		return nil
+	}
+	for _, sig := range humanReadableSignals {
+		if errors.Is(err, sig) {
+			return err
+		}
 	}
 	for _, sig := range internalSignals {
 		if errors.Is(err, sig) {
@@ -48,9 +59,8 @@ func (t *taskContext) whyKeptRetrying(step string, attempts int) error {
 
 // lastFeedbackTail 은 마지막 되먹임을 사유 뒤에 붙인다.
 //
-// 되먹임은 **모델에게 쓴 말**이라 「… 다시 계획하라」 같은 지시가 섞여 있다.
-// 그대로 붙이면 사람은 그것이 자기에게 하는 말인 줄 안다. 누구에게 한
-// 말인지 밝히고 붙인다.
+// 되먹임은 모델에게 쓴 말이라 「… 다시 계획하라」 같은 지시가 섞여 있다.
+// 누구에게 한 말인지 밝히지 않으면 사람은 자기에게 하는 말로 읽는다.
 func lastFeedbackTail(feedback string) string {
 	why := strings.TrimSpace(feedback)
 	if why == "" {
