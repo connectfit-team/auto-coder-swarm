@@ -30,16 +30,16 @@ var (
 )
 
 // protoOwnerViaClient 는 그 파일이 부르는 gRPC 공장을 따라가 임자 저장소를 찾는다.
-func protoOwnerViaClient(repoPath, file string) (string, string) {
+func protoOwnerViaClient(repoPath, file string) (owner, gen, why string) {
 	b, err := os.ReadFile(filepath.Join(repoPath, file))
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	src := string(b)
 
 	m := reClientCall.FindStringSubmatch(src)
 	if m == nil {
-		return "", "이 파일은 gRPC 공장을 부르지 않는다"
+		return "", "", "이 파일은 gRPC 공장을 부르지 않는다"
 	}
 	factory := m[1]
 
@@ -52,16 +52,16 @@ func protoOwnerViaClient(repoPath, file string) (string, string) {
 		}
 	}
 	if clientsMod == "" {
-		return "", factory + " 를 어디서 들여오는지 못 찾았다"
+		return "", "", factory + " 를 어디서 들여오는지 못 찾았다"
 	}
 	clientsPath := tsModulePath(repoPath, file, clientsMod)
 	if clientsPath == "" {
-		return "", clientsMod + " 를 저장소 안에서 못 찾았다"
+		return "", "", clientsMod + " 를 저장소 안에서 못 찾았다"
 	}
 
 	cb, err := os.ReadFile(clientsPath)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	csrc := string(cb)
 
@@ -69,7 +69,7 @@ func protoOwnerViaClient(repoPath, file string) (string, string) {
 	defRe := regexp.MustCompile(`(?m)^\s*export\s+const\s+` + regexp.QuoteMeta(factory) + `\s*=.*?<\s*typeof\s+([\p{L}\p{N}_]+)`)
 	dm := defRe.FindStringSubmatch(csrc)
 	if dm == nil {
-		return "", factory + " 의 정의에서 계약 이름을 못 읽었다"
+		return "", "", factory + " 의 정의에서 계약 이름을 못 읽었다"
 	}
 	defName := dm[1]
 
@@ -84,11 +84,12 @@ func protoOwnerViaClient(repoPath, file string) (string, string) {
 			continue
 		}
 		pr, _ := filepath.Rel(repoPath, p)
-		if owner := protoOwnerRepo(filepath.ToSlash(pr)); owner != "" {
-			return owner, fmt.Sprintf("%s() → %s → %s", factory, defName, filepath.ToSlash(pr))
+		rel := filepath.ToSlash(pr)
+		if o := protoOwnerRepo(rel); o != "" {
+			return o, rel, fmt.Sprintf("%s() → %s → %s", factory, defName, rel)
 		}
 	}
-	return "", defName + " 를 들여오는 곳이 생성물이 아니다"
+	return "", "", defName + " 를 들여오는 곳이 생성물이 아니다"
 }
 
 // importsName 은 들여오기 목록에 그 이름이 있는지 본다. `X as Y` 의 Y 도 본다.
@@ -112,7 +113,7 @@ func importsName(list, want string) bool {
 // 부르는 곳이 없어 고리가 끊겼다 — 네 번 가운데 한 번이 그래서 임자를 못
 // 찾았다(W-58547). 화면은 데이터 모듈을 들여오고, 그 모듈이 공장을 부른다.
 // 한 걸음이면 닿는다.
-func protoOwnerViaClientDeep(repoPath, file string, hops int) (string, string) {
+func protoOwnerViaClientDeep(repoPath, file string, hops int) (owner, gen, why string) {
 	seen := map[string]bool{}
 	cur := []string{file}
 	for h := 0; h <= hops; h++ {
@@ -122,8 +123,8 @@ func protoOwnerViaClientDeep(repoPath, file string, hops int) (string, string) {
 				continue
 			}
 			seen[f] = true
-			if o, why := protoOwnerViaClient(repoPath, f); o != "" {
-				return o, why
+			if o, g, w := protoOwnerViaClient(repoPath, f); o != "" {
+				return o, g, w
 			}
 			next = append(next, inRepoImports(repoPath, f)...)
 		}
@@ -132,7 +133,7 @@ func protoOwnerViaClientDeep(repoPath, file string, hops int) (string, string) {
 		}
 		cur = next
 	}
-	return "", "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
+	return "", "", "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
 }
 
 // inRepoImports 는 그 파일이 들여오는 **저장소 안** 모듈의 경로를 준다.

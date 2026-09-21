@@ -75,6 +75,11 @@ func protoOwnerRepo(path string) string {
 	if strings.HasPrefix(name, "proto-") {
 		return name
 	}
+	// 생성물 칸 이름이 곧 저장소 이름이다. 그 관행(…apis)을 벗어난 칸까지
+	// 받으면 protos/google/… 이 proto-google 이라는 없는 저장소가 된다.
+	if !strings.HasSuffix(name, "apis") {
+		return ""
+	}
 	return "proto-" + name
 }
 

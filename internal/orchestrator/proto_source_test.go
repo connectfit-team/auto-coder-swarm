@@ -5,13 +5,24 @@ import (
 	"testing"
 )
 
-func TestLastProtosPath(t *testing.T) {
-	why := "src/lib/server/data/connectcud.ts → getConnectClient() → ConnectCEOWebDefinition → src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts"
-	got := lastProtosPath(why)
-	if !strings.HasSuffix(got, "connect.service.ts") || !strings.Contains(got, "/protos/") {
-		t.Errorf("생성물 경로를 못 뽑았다: %q", got)
+// 계약 경로는 까닭 글에서 긁어내지 않고 값으로 들고 다닌다.
+//
+// 글에서 뽑으면 고칠 파일이 생성물일 때 그 파일이 계약 자리에 들어간다.
+func TestTraceCarriesContractPathAsValue(t *testing.T) {
+	const gen = "src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts"
+	trace := func(f string) (string, string, string) {
+		return "proto-ceowebapis", gen, "getConnectClient() → ConnectCEOWebDefinition → " + gen
 	}
-	if lastProtosPath("아무 경로도 없다") != "" {
-		t.Error("없는데 뽑았다")
+	// 고칠 파일 자체가 생성물이어도 계약은 흔들리지 않는다.
+	_, seen := traceContracts([]string{"src/lib/server/protos/userapis/user/v1/service.ts"}, trace)
+	c, ok := seen[gen]
+	if !ok {
+		t.Fatalf("계약을 못 담았다: %v", seen)
+	}
+	if c.contract != gen {
+		t.Errorf("계약 경로가 흔들렸다: %q", c.contract)
+	}
+	if !strings.Contains(c.why, "protos/userapis") {
+		t.Errorf("어느 파일에서 왔는지가 빠졌다: %q", c.why)
 	}
 }
