@@ -5,38 +5,31 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/connectfit-team/auto-coder-swarm/internal/gitmgr"
-	"github.com/connectfit-team/auto-coder-swarm/internal/insightclient"
 	"github.com/connectfit-team/auto-coder-swarm/internal/korean"
 )
 
-// internalSignal 은 흐름 안에서만 뜻이 있는 오류다. 밖으로 그대로 나가면
-// 사람이 보는 실패 사유가 「계획을 다시 세운다」 가 된다 — 다시 세우지도
-// 않았는데 그렇게 적히면 무엇이 잘못됐는지 알 수 없다.
+// 이 꾸러미의 오류는 둘 중 하나로 만든다. 갈래를 값에 박아 두면 손으로
+// 관리하는 목록이 필요 없고, 목록에 적어 방어를 끄는 길도 없다.
 //
-// 표식을 값에 붙인다. 손으로 관리하는 목록에 두면 적기를 잊은 신호가 그대로
-// 새고, 잘못 적은 신호는 시험만 조용해진다.
+//	newInternalSignal — 흐름 안에서만 뜻이 있다. 사람에게 그대로 나가지 않는다.
+//	newHumanFacing    — 문구 자체가 이미 사유다. 관문을 그대로 지난다.
+//
+// 「계획을 다시 세운다」 가 사람이 보는 실패 사유로 저장된 적이 있다. 다시
+// 세우지도 않았는데 그렇게 적히면 무엇이 잘못됐는지 알 수 없다.
 type internalSignal struct{ msg string }
 
 func (e *internalSignal) Error() string { return e.msg }
 
-// newInternalSignal 로 만든 오류는 사람에게 그대로 나가지 않는다.
 func newInternalSignal(msg string) error { return &internalSignal{msg: msg} }
+
+type humanFacing struct{ msg string }
+
+func (e *humanFacing) Error() string { return e.msg }
+
+func newHumanFacing(msg string) error { return &humanFacing{msg: msg} }
 
 // 되먹임을 주고 다시 세우면 되는 계획 실패. 남은 시도를 쓴다.
 var errRetryPlanning = newInternalSignal("계획을 다시 세운다")
-
-// 문구 자체가 이미 사유인 오류. 관문을 지나도 그대로 둔다.
-//
-// 여기 적는 것은 「이 문구를 사람이 봐도 된다」 는 뜻이지 관문을 끄는 스위치가
-// 아니다 — 안쪽 신호는 표식으로 갈리므로 여기 적어도 가려지지 않는다.
-var humanReadableSignals = []error{
-	errChangedTestsFailed,
-	errNewTypeErrors,
-	gitmgr.ErrMisaligned,
-	insightclient.ErrAnalysisFailed,
-	insightclient.ErrNotAuthorized,
-}
 
 // humanReason 은 execute 가 돌려주는 오류에서 안쪽 신호를 걷어 낸다.
 //
