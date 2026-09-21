@@ -80,6 +80,11 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		}
 	}
 	for k, c := range seen {
+		// 따라간 것에는 계약에 적힌 말이 없다. 훑기가 온전하지 않아도 그
+		// 말은 옮겨 준다 — 경고 없이 확정되는 것이 가장 나쁘다.
+		if from, ok := scan.contracts[k]; ok {
+			c.note = from.note
+		}
 		if m, ok := menu[k]; ok {
 			m.why = c.why // 표가 달릴 줄에는 실제로 따라간 근거를 남긴다
 			menu[k] = m
@@ -105,7 +110,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			}
 			ev[k] = line
 		}
-		picked, why := t.pickContractAmong(order, ev, missing)
+		picked, why, rejected := t.pickContractAmong(order, ev, missing)
 		if picked != "" {
 			if _, hit := seen[picked]; !hit && len(traced) > 0 {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_DIFFERS",
@@ -115,11 +120,13 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			c.why = fmt.Sprintf("%s · %s", c.why, why)
 			return t.resolveTracedOwner(c)
 		}
-		// 고르지 못했다. 따라간 것이 하나뿐이면 그것을 쓰고, 아니면 타입을
-		// 묻는 옛 길로 내려간다 — 여기서 손을 떼면 연쇄가 그냥 끊긴다.
-		if len(traced) == 1 {
+		// **거절과 미결정을 가른다.** 「이 가운데 없다」 고 답했으면 따라간
+		// 것을 대신 쓰면 안 된다 — 그 답이 가리키는 것이 바로 그 계약이다.
+		if !rejected && len(traced) == 1 {
 			c := seen[traced[0]]
 			c.why = fmt.Sprintf("%s · 고르지 못해 따라간 것을 쓴다", c.why)
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_FALLBACK",
+				"고르지 못해 따라간 계약을 쓴다", why, c.contract)
 			return t.resolveTracedOwner(c)
 		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_NONE",
