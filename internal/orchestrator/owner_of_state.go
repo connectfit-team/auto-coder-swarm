@@ -156,10 +156,14 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		}
 		return "", fmt.Sprintf("%s 는 이 저장소가 손으로 쓴 타입이다(%s) — 여기서 고칠 일이다", typeName, home)
 	}
-	if !t.orchestrator.wsMgr.HasRepo(owner) {
-		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다", owner)
-	}
-	return owner, fmt.Sprintf("%s 는 %s 에서 온다", typeName, home)
+	// **여기서도 원본으로 보낸다.** 그냥 owner 를 돌려주면 펴낸 생성물
+	// 저장소가 대상이 되고, 자식은 「펴낸 결과물은 손대지 마라」 는 말과
+	// 함께 바로 그 저장소를 받는다.
+	return t.resolveTracedOwner(tracedContract{
+		owner:    owner,
+		contract: home,
+		why:      fmt.Sprintf("%s 는 %s 에서 온다", typeName, home),
+	})
 }
 
 // resolveTracedOwner 는 따라가서 찾은 계약을 실제로 넘길 저장소로 바꾼다.

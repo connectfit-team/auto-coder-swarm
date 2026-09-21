@@ -42,19 +42,27 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 	const rounds = 3
 	answers := make([]int, 0, rounds)
 	for i := 0; i < rounds; i++ {
-		answers = append(answers, t.askOwnerIndex(prompt, order))
+		// **답을 못 받은 회차는 표가 아니다.** 0 으로 세면 LLM 이 안 떠
+		// 있을 때 「어느 것도 아니라고 3/3표로 답했다」 가 되어, 기계가
+		// 이미 따라가 놓은 계약까지 버린다.
+		if n, ok := t.askOwnerIndex(prompt, order); ok {
+			answers = append(answers, n)
+		}
+	}
+	if len(answers)*2 <= rounds {
+		return "", fmt.Sprintf("계약 후보 %d 를 두고 %d/%d 번만 답을 받았다", len(order), len(answers), rounds), false
 	}
 
 	pick, votes, decided := majorityIndex(answers)
 	switch {
 	case decided && pick == 0:
 		// **고르지 못한 것과 다르다.** 모델이 「이 가운데 없다」 고 말한 것이다.
-		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것도 아니라고 %d/%d표로 답했다", len(order), votes, rounds), true
+		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것도 아니라고 %d/%d표로 답했다", len(order), votes, len(answers)), true
 	case !decided:
 		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것인지 세 번 물어도 정해지지 않았다", len(order)), false
 	}
 	picked = order[pick-1]
-	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, rounds), false
+	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, len(answers)), false
 }
 
 // contractPickPrompt 는 닫힌 물음을 만든다 — 번호 하나.
@@ -97,15 +105,21 @@ func majorityIndex(answers []int) (pick, votes int, decided bool) {
 	return best, count, true
 }
 
-// askOwnerIndex 는 번호 하나를 받는다. 못 읽으면 0 이다.
-func (t *taskContext) askOwnerIndex(prompt string, order []string) int {
+// askOwnerIndex 는 번호 하나를 받는다.
+//
+// 두 번째 값은 **답을 받았는지**다. 못 받은 것을 0(어느 것도 아니다)으로
+// 세면 모델이 한 마디도 안 했는데 거절한 것으로 기록된다.
+func (t *taskContext) askOwnerIndex(prompt string, order []string) (int, bool) {
 	ctx, cancel := context.WithTimeout(t.ctx, stateCheckTimeout)
 	defer cancel()
 	raw, err := agent.CallLLM(ctx, t.primaryLLM, "StateOwnerPick", prompt)
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return parseOwnerPick(raw, order)
+	if strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	return parseOwnerPick(raw, order), true
 }
 
 // parseOwnerPick 은 답에서 고른 번호를 읽는다.
