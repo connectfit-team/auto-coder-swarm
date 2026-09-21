@@ -14,7 +14,9 @@ import (
 	"github.com/connectfit-team/auto-coder-swarm/internal/observability"
 )
 
-func (t *taskContext) execute() (RunResult, error) {
+func (t *taskContext) execute() (res RunResult, err error) {
+	// 안쪽 신호가 사람이 보는 사유가 되지 않게 마지막에 한 번 거른다.
+	defer func() { err = t.humanReason(err) }()
 	log.Printf("🏁 [ACS] Starting task execution: %s (Repo: %s)", t.taskID, t.req.TargetRepo)
 	observability.ActiveWorkers.Inc()
 	defer observability.ActiveWorkers.Dec()
@@ -79,8 +81,12 @@ func (t *taskContext) execute() (RunResult, error) {
 		if err := t.stepPlanning(attempt); err != nil {
 			observability.IncrementAgentOp("Planner", "failed")
 			// 되먹임을 주고 다시 세우면 되는 실패는 남은 시도를 쓴다.
-			if errors.Is(err, errRetryPlanning) && attempt < 3 {
-				continue
+			if errors.Is(err, errRetryPlanning) {
+				if attempt < 3 {
+					continue
+				}
+				// 마지막 시도에는 다시 세울 곳이 없다.
+				return RunResult{}, t.whyKeptRetrying("계획")
 			}
 			return RunResult{}, err
 		}
@@ -108,8 +114,11 @@ func (t *taskContext) execute() (RunResult, error) {
 			// 계획 단계와 같은 되먹임 길을 쓴다. 이 갈래가 없어서 코더가
 			// 일부 파일을 못 고쳤을 때 "계획을 다시 세운다" 라는 오류 문구가
 			// 그대로 사람에게 갔다(W-65073) — 다시 세우지도 않았다.
-			if errors.Is(err, errRetryPlanning) && attempt < 3 {
-				continue
+			if errors.Is(err, errRetryPlanning) {
+				if attempt < 3 {
+					continue
+				}
+				return RunResult{}, t.whyKeptRetrying("코딩")
 			}
 			return RunResult{}, err
 		}
