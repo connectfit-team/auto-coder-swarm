@@ -43,6 +43,28 @@ var addedDeclRe = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*case\s+['"\x60][\w.-]+['"\x60]`),
 }
 
+// .proto 는 모양이 다르다. 계약에 필드·RPC 를 더한 것은 「새로 생긴 이름」
+// 인데 위 패턴은 하나도 알아보지 못했다 — 계약을 고치라고 넘긴 일은
+// 시작하자마자 「새로 생긴 이름이 없다」 로 막혔다.
+//
+// 이 패턴은 .proto 에만 쓴다. `x = 5;` 같은 줄은 다른 말에서는 그냥 대입이다.
+var addedProtoDeclRe = []*regexp.Regexp{
+	regexp.MustCompile(`^\s*(?:message|service|enum|extend|oneof)\s+\w+`),
+	regexp.MustCompile(`^\s*rpc\s+\w+`),
+	// 필드: repeated Foo bar = 3;  ·  optional string baz = 4;
+	regexp.MustCompile(`^\s*(?:repeated\s+|optional\s+|required\s+)?[\w.]+\s+\w+\s*=\s*\d+\s*[;\[]`),
+	// 열거 값: HOLD = 5;
+	regexp.MustCompile(`^\s*\w+\s*=\s*\d+\s*[;\[]`),
+}
+
+// declPatternsFor 는 그 파일에 쓸 패턴을 준다.
+func declPatternsFor(file string) []*regexp.Regexp {
+	if strings.HasSuffix(file, ".proto") {
+		return addedProtoDeclRe
+	}
+	return addedDeclRe
+}
+
 // addedDeclarations 는 diff 가 **새로 들인 이름**을 준다.
 //
 // 주석·빈 줄은 안 센다. **옮기거나 들여쓰기만 바뀐 줄도 안 센다** — 지운 줄에
@@ -67,8 +89,13 @@ func addedDeclarations(diff string) []string {
 	var out []string
 	var kept []int
 	var bodies []string
+	file := ""
 	for _, line := range strings.Split(diff, "\n") {
-		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+		if strings.HasPrefix(line, "+++") {
+			file = strings.TrimPrefix(strings.Fields(line + " ")[1], "b/")
+			continue
+		}
+		if !strings.HasPrefix(line, "+") {
 			continue
 		}
 		body := strings.TrimRight(line[1:], " \t\r")
@@ -80,7 +107,7 @@ func addedDeclarations(diff string) []string {
 		if removed[trimmed] {
 			continue // 옮겼거나 들여쓰기만 바뀌었다
 		}
-		for _, re := range addedDeclRe {
+		for _, re := range declPatternsFor(file) {
 			if re.MatchString(body) {
 				kept = append(kept, len(out))
 				out = append(out, trimmed)
