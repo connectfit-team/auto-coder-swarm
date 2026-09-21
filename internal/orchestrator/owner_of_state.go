@@ -51,6 +51,37 @@ func (t *taskContext) askTypeForState(files []string, missing []string) string {
 // ownerRepoForState 는 그 상태가 붙을 타입의 임자 저장소를 준다.
 // 못 찾으면 빈 문자열과 까닭을 준다.
 func (t *taskContext) ownerRepoForState(files, missing []string) (string, string) {
+	// **먼저 기계가 따라가 본다.**
+	//
+	// 「어느 타입에 붙나」 를 모델에게 물었더니 흔들렸다 — 한 번은
+	// ReceivedRequest(맞음), 다음은 TradeInfo(연결과 무관)였다. 임자는
+	// 우연히 같았지만 근거가 틀렸으니 다음엔 샌다.
+	//
+	// 고칠 파일이 부르는 gRPC 공장을 따라가면 **물을 것이 없다.** 그 파일이
+	// 다루는 데이터가 어느 계약에서 오는지는 적혀 있는 사실이다.
+	count := map[string]string{}
+	var order []string
+	for _, f := range files {
+		if o, why := protoOwnerViaClient(t.repoPath, f); o != "" {
+			if _, seen := count[o]; !seen {
+				order = append(order, o)
+			}
+			count[o] = fmt.Sprintf("%s → %s", f, why)
+		}
+	}
+	if len(order) == 1 {
+		owner := order[0]
+		if !t.orchestrator.wsMgr.HasRepo(owner) {
+			return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, count[owner])
+		}
+		return owner, count[owner]
+	}
+	if len(order) > 1 {
+		// 여럿이면 고르지 않는다 — 어느 계약인지 알 수 없다.
+		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 어느 쪽인지 알 수 없다",
+			strings.Join(order, ", "))
+	}
+
 	typeName := t.askTypeForState(files, missing)
 	if typeName == "" {
 		return "", "어느 타입에 붙어야 하는지 답을 못 받았다"
