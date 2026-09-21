@@ -61,12 +61,12 @@ func TestWhyKeptRetryingReadsRight(t *testing.T) {
 	}
 }
 
-// 마지막 관문은 execute 의 **첫 문장**인 defer 여야 하고, 그 defer 의 몸통
-// **맨 위**에서 이름 붙은 오류 자신을 humanReason 에 넘겨 되받아야 한다.
+// 마지막 관문은 execute 의 **첫 문장**인 defer 여야 하고, 그 defer 의 몸통은
+// 이름 붙은 오류 자신을 humanReason 에 넘겨 되받는 **한 문장뿐**이어야 한다.
 //
-// 느슨하게 보면 죽은 채로 초록이 된다 — `if false { err = t.humanReason(err) }`
-// 는 글자도 나무도 남고, `err = t.humanReason(nil)` 은 모든 실패를 성공으로
-// 바꾼다. 둘 다 실제로 통과하던 모양이다.
+// 느슨하게 보면 죽은 채로 초록이 된다. 실제로 이런 것들이 통과했다 —
+// `if false { … }`, `humanReason(nil)`, 앞에 `err = nil` 한 줄, 앞에 이른
+// return, 뒤에 되돌리기, 다른 수신자의 같은 이름 메서드.
 func TestLastGateIsWired(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "flow.go", nil, 0)
@@ -81,31 +81,41 @@ func TestLastGateIsWired(t *testing.T) {
 	if errName == "" {
 		t.Fatal("execute 의 오류 반환값에 이름이 없다 — defer 가 바꿀 수 없다")
 	}
+	recv := receiverName(fn)
+	if recv == "" {
+		t.Fatal("execute 의 수신자에 이름이 없다")
+	}
 	if len(fn.Body.List) == 0 {
 		t.Fatal("execute 의 몸통이 비었다")
 	}
 
 	d, ok := fn.Body.List[0].(*ast.DeferStmt)
 	if !ok {
-		t.Fatalf("execute 의 첫 문장이 defer 가 아니다 — 그 앞의 return 은 관문을 지나지 않는다")
+		t.Fatal("execute 의 첫 문장이 defer 가 아니다 — 그 앞의 return 은 관문을 지나지 않는다")
 	}
 	lit, ok := d.Call.Fun.(*ast.FuncLit)
 	if !ok {
 		t.Fatal("관문 defer 가 함수 리터럴이 아니다")
 	}
-	for _, st := range lit.Body.List { // 맨 위 문장만 본다. 조건 안은 죽을 수 있다.
-		if isHumanReasonRoundTrip(st, errName) {
-			return
-		}
+	// **한 문장뿐이어야 한다.** 앞에 무엇을 두면 건너뛸 수 있고, 뒤에 무엇을
+	// 두면 되돌릴 수 있다.
+	if len(lit.Body.List) != 1 {
+		t.Fatalf("관문 defer 의 몸통이 %d 문장이다 — %s = %s.humanReason(%s) 한 문장뿐이어야 한다",
+			len(lit.Body.List), errName, recv, errName)
 	}
-	t.Errorf("관문 defer 의 맨 위에 %s = …humanReason(%s) 가 없다", errName, errName)
+	if !isHumanReasonRoundTrip(lit.Body.List[0], errName, recv) {
+		t.Errorf("관문 defer 가 %s = %s.humanReason(%s) 가 아니다", errName, recv, errName)
+	}
 }
 
-// isHumanReasonRoundTrip 은 err = ….humanReason(err) 인지 본다.
-// 넘기는 것이 그 오류 자신이어야 한다 — nil 을 넘기면 실패가 통째로 사라진다.
-func isHumanReasonRoundTrip(st ast.Stmt, errName string) bool {
+// isHumanReasonRoundTrip 은 err = t.humanReason(err) 인지 본다.
+//
+// 넘기는 것이 그 오류 자신이어야 하고(nil 을 넘기면 실패가 통째로 사라진다),
+// 부르는 대상이 그 메서드의 수신자여야 한다(같은 이름의 항등 메서드를 가진
+// 다른 타입을 놓으면 관문이 사라진다).
+func isHumanReasonRoundTrip(st ast.Stmt, errName, recv string) bool {
 	as, ok := st.(*ast.AssignStmt)
-	if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+	if !ok || as.Tok != token.ASSIGN || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
 		return false
 	}
 	lhs, ok := as.Lhs[0].(*ast.Ident)
@@ -120,8 +130,20 @@ func isHumanReasonRoundTrip(st ast.Stmt, errName string) bool {
 	if !ok || sel.Sel.Name != "humanReason" {
 		return false
 	}
+	x, ok := sel.X.(*ast.Ident)
+	if !ok || x.Name != recv {
+		return false
+	}
 	arg, ok := call.Args[0].(*ast.Ident)
 	return ok && arg.Name == errName
+}
+
+// receiverName 은 메서드 수신자의 이름을 준다.
+func receiverName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 || len(fn.Recv.List[0].Names) != 1 {
+		return ""
+	}
+	return fn.Recv.List[0].Names[0].Name
 }
 
 func findMethod(f *ast.File, name string) *ast.FuncDecl {
@@ -150,9 +172,13 @@ func namedErrorResult(fn *ast.FuncDecl) string {
 
 // 이 꾸러미의 오류는 두 만들개로만 만든다.
 //
-// 이름으로 거르면(err… 로 시작하는 것만) 이름만 바꿔 빠져나간다. 목록으로
-// 갈라도 목록에 적는 것이 곧 방어를 끄는 스위치가 된다. 만드는 자리를
-// 막으면 둘 다 없어진다.
+// 이름으로 거르면 이름만 바꿔 빠져나가고, 목록으로 갈래를 나누면 목록에 적는
+// 것이 곧 방어를 끄는 스위치가 된다. 만드는 자리를 막으면 둘 다 없어진다.
+//
+// **막는 범위는 이것이다** — 꾸러미 수준 오류 변수와 오류 타입 선언. 함수
+// 안에서 그 자리에 만들어 돌려주는 오류(errors.New·fmt.Errorf)는 막지 않는다.
+// 그것들은 대개 사람이 읽을 사유이고, 흐름 갈래로 쓰려면 같은 값을 다시
+// 가리켜야 하므로 결국 꾸러미 수준 변수나 타입이 필요하다.
 func TestErrorsAreMadeByAConstructor(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(fi fs.FileInfo) bool {
@@ -163,7 +189,13 @@ func TestErrorsAreMadeByAConstructor(t *testing.T) {
 	}
 	var bad []string
 	for _, pkg := range pkgs {
-		errTypes := errorTypesIn(pkg)
+		// 오류 타입은 둘뿐이다. 새로 만들면 갈래가 값에 박히지 않는다.
+		for name, where := range errorTypesIn(pkg) {
+			if name == "internalSignal" || name == "humanFacing" {
+				continue
+			}
+			bad = append(bad, fmt.Sprintf("%s 의 오류 타입 %s — 새 오류 타입을 만들었다", shortName(where), name))
+		}
 		for name, f := range pkg.Files {
 			for _, d := range f.Decls {
 				gd, ok := d.(*ast.GenDecl)
@@ -179,7 +211,7 @@ func TestErrorsAreMadeByAConstructor(t *testing.T) {
 						if i >= len(vs.Values) {
 							continue
 						}
-						if why := notAConstructor(vs.Values[i], errTypes); why != "" {
+						if why := notAConstructor(id.Name, vs.Values[i]); why != "" {
 							bad = append(bad, fmt.Sprintf("%s 의 %s — %s", shortName(name), id.Name, why))
 						}
 					}
@@ -193,10 +225,10 @@ func TestErrorsAreMadeByAConstructor(t *testing.T) {
 	}
 }
 
-// errorTypesIn 은 이 꾸러미에서 Error() 를 가진 타입 이름을 모은다.
-func errorTypesIn(pkg *ast.Package) map[string]bool {
-	out := map[string]bool{}
-	for _, f := range pkg.Files {
+// errorTypesIn 은 이 꾸러미에서 Error() 를 가진 타입 이름과 그 파일을 준다.
+func errorTypesIn(pkg *ast.Package) map[string]string {
+	out := map[string]string{}
+	for path, f := range pkg.Files {
 		for _, d := range f.Decls {
 			fn, ok := d.(*ast.FuncDecl)
 			if !ok || fn.Recv == nil || fn.Name.Name != "Error" || len(fn.Recv.List) != 1 {
@@ -205,42 +237,52 @@ func errorTypesIn(pkg *ast.Package) map[string]bool {
 			switch rt := fn.Recv.List[0].Type.(type) {
 			case *ast.StarExpr:
 				if id, ok := rt.X.(*ast.Ident); ok {
-					out[id.Name] = true
+					out[id.Name] = path
 				}
 			case *ast.Ident:
-				out[rt.Name] = true
+				out[rt.Name] = path
 			}
 		}
 	}
 	return out
 }
 
-// notAConstructor 는 그 값이 오류를 만드는데 만들개를 안 쓴 경우 까닭을 준다.
-func notAConstructor(v ast.Expr, errTypes map[string]bool) string {
-	switch e := v.(type) {
-	case *ast.CallExpr:
-		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
-			if pkg, ok := sel.X.(*ast.Ident); ok {
-				if (pkg.Name == "errors" && sel.Sel.Name == "New") ||
-					(pkg.Name == "fmt" && sel.Sel.Name == "Errorf") {
-					return pkg.Name + "." + sel.Sel.Name + " 으로 만들었다"
-				}
-			}
-		}
-	case *ast.UnaryExpr:
-		lit, ok := e.X.(*ast.CompositeLit)
-		if !ok {
+// notAConstructor 는 그 변수가 만들개를 안 쓴 경우 까닭을 준다.
+//
+// 이름이 err 로 시작하면 무엇으로 만들었든 곧바로 만들개여야 한다 — 한 겹
+// 감싼 함수로 만들면 갈래가 값에 박히지 않는다.
+func notAConstructor(name string, v ast.Expr) string {
+	if call, ok := v.(*ast.CallExpr); ok {
+		if id, ok := call.Fun.(*ast.Ident); ok &&
+			(id.Name == "newInternalSignal" || id.Name == "newHumanFacing") {
 			return ""
 		}
-		if id, ok := lit.Type.(*ast.Ident); ok && errTypes[id.Name] {
-			return "오류 타입 " + id.Name + " 을 그 자리에서 만들었다"
-		}
-	case *ast.CompositeLit:
-		if id, ok := e.Type.(*ast.Ident); ok && errTypes[id.Name] {
-			return "오류 타입 " + id.Name + " 을 그 자리에서 만들었다"
-		}
+	}
+	if strings.HasPrefix(strings.ToLower(name), "err") {
+		return "만들개로 만들지 않았다"
+	}
+	if sel, ok := callSelector(v); ok &&
+		((sel[0] == "errors" && sel[1] == "New") || (sel[0] == "fmt" && sel[1] == "Errorf")) {
+		return sel[0] + "." + sel[1] + " 으로 만들었다"
 	}
 	return ""
+}
+
+// callSelector 는 pkg.Func(…) 꼴이면 그 둘을 준다.
+func callSelector(v ast.Expr) ([2]string, bool) {
+	call, ok := v.(*ast.CallExpr)
+	if !ok {
+		return [2]string{}, false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return [2]string{}, false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return [2]string{}, false
+	}
+	return [2]string{pkg.Name, sel.Sel.Name}, true
 }
 
 func shortName(path string) string {
