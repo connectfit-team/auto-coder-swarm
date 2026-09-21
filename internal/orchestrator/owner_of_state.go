@@ -69,25 +69,17 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			count[o] = fmt.Sprintf("%s → %s", f, why)
 		}
 	}
-	if len(order) == 1 {
-		owner := order[0]
-		// **펴낸 결과물이 아니라 원본을 고친다.** 경로에 생성물 자리가 적혀
-		// 있으므로 그것으로 원본을 찾는다.
-		if gen := lastProtosPath(count[owner]); gen != "" {
-			if src, rel, target := t.protoSource(gen); src != "" {
-				t.protoPath, t.protoTarget = rel, target
-				return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", count[owner], src, rel, target)
-			}
-		}
-		if !t.orchestrator.wsMgr.HasRepo(owner) {
-			return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, count[owner])
-		}
-		return owner, count[owner]
-	}
+	// 여럿이면 **고르는 자리**다. 손을 떼면 연쇄가 만들어지지 않는다.
 	if len(order) > 1 {
-		// 여럿이면 고르지 않는다 — 어느 계약인지 알 수 없다.
-		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 어느 쪽인지 알 수 없다",
-			strings.Join(order, ", "))
+		picked, why := t.pickOwnerAmong(order, count, missing)
+		if picked == "" {
+			return "", why
+		}
+		count[picked] = fmt.Sprintf("%s · %s", count[picked], why)
+		order = []string{picked}
+	}
+	if len(order) == 1 {
+		return t.resolveTracedOwner(order[0], count[order[0]])
 	}
 
 	typeName := t.askTypeForState(files, missing)
@@ -128,4 +120,21 @@ func lastProtosPath(why string) string {
 		}
 	}
 	return ""
+}
+
+// resolveTracedOwner 는 따라가서 찾은 임자를 실제로 넘길 저장소로 바꾼다.
+//
+// 펴낸 결과물이 아니라 원본을 고쳐야 하므로, 경로에 적힌 생성물 자리로
+// 원본 저장소와 발행 목표를 찾는다.
+func (t *taskContext) resolveTracedOwner(owner, why string) (string, string) {
+	if gen := lastProtosPath(why); gen != "" {
+		if src, rel, target := t.protoSource(gen); src != "" {
+			t.protoPath, t.protoTarget = rel, target
+			return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", why, src, rel, target)
+		}
+	}
+	if !t.orchestrator.wsMgr.HasRepo(owner) {
+		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, why)
+	}
+	return owner, why
 }
