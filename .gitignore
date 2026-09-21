@@ -1,6 +1,8 @@
 # Binaries
 bin/
-swarm
+# 맨 앞의 / 가 없으면 cmd/swarm/ 폴더까지 무시돼 그 안의 소스가
+# 조용히 git 밖에 남는다 — 실제로 두 파일이 그랬다.
+/swarm
 *.exe
 *.exe~
 *.dll
