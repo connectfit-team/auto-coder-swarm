@@ -71,6 +71,13 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	}
 	if len(order) == 1 {
 		owner := order[0]
+		// **펴낸 결과물이 아니라 원본을 고친다.** 경로에 생성물 자리가 적혀
+		// 있으므로 그것으로 원본을 찾는다.
+		if gen := lastProtosPath(count[owner]); gen != "" {
+			if src, rel, target := t.protoSource(gen); src != "" {
+				return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", count[owner], src, rel, target)
+			}
+		}
 		if !t.orchestrator.wsMgr.HasRepo(owner) {
 			return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", owner, count[owner])
 		}
@@ -110,4 +117,14 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다", owner)
 	}
 	return owner, fmt.Sprintf("%s 는 %s 에서 온다", typeName, home)
+}
+
+// lastProtosPath 는 까닭 글에서 생성물 경로를 뽑는다.
+func lastProtosPath(why string) string {
+	for _, f := range strings.Fields(strings.ReplaceAll(why, "→", " ")) {
+		if strings.Contains(f, "/protos/") {
+			return strings.Trim(f, " ,·")
+		}
+	}
+	return ""
 }
