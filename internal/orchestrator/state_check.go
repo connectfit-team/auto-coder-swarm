@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -81,7 +83,17 @@ func (t *taskContext) askStateExists(files []string) (*stateAnswer, bool) {
 func (t *taskContext) askStateOnce(files []string) (*stateAnswer, bool) {
 	sheet := t.stateSheet(files)
 	if strings.TrimSpace(sheet) == "" {
-		return nil, false
+		// **쪽지를 못 만들었다고 물음을 건너뛰지 않는다.**
+		//
+		// 건너뛰면 곧장 코드를 쓴다 — 가장 위험한 방향이다. 실측으로 그
+		// 회차가 33KB 를 쓰고 관문 둘에 걸려 버려졌다(W-90966).
+		//
+		// 이름을 못 캤으면 **파일을 그대로 보여 준다.** 판단할 재료가 줄 뿐
+		// 없어지는 것은 아니다.
+		sheet = t.filesAsSheet(files)
+		if strings.TrimSpace(sheet) == "" {
+			return nil, false
+		}
 	}
 
 	prompt := fmt.Sprintf(`아래는 %s 저장소에서 이 일과 맞닿은 자리에 **실제로 있는 이름과 필드**다.
@@ -138,6 +150,29 @@ func (t *taskContext) stateSheet(files []string) string {
 			b.WriteString(s)
 			n++
 		}
+	}
+	return b.String()
+}
+
+// filesAsSheet 는 쓸 수 있는 이름을 못 캤을 때 **파일을 그대로** 보여 준다.
+// 창을 넘기지 않게 앞부분만, 파일 수도 줄여 준다.
+func (t *taskContext) filesAsSheet(files []string) string {
+	var b strings.Builder
+	n := 0
+	for _, f := range files {
+		if n >= 3 {
+			break
+		}
+		raw, err := os.ReadFile(filepath.Join(t.repoPath, f))
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(raw), "\n")
+		if len(lines) > 60 {
+			lines = lines[:60]
+		}
+		b.WriteString("  " + f + "\n    " + strings.Join(lines, "\n    ") + "\n")
+		n++
 	}
 	return b.String()
 }
