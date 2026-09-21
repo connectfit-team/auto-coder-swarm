@@ -74,3 +74,19 @@ func keysOf(m map[string]tracedContract) []string {
 	}
 	return out
 }
+
+// 고른 뒤 근거 문자열에 표와 득표가 덧붙는다. 그래도 계약 경로를 바르게
+// 뽑아야 한다 — 여기서 어긋나면 엉뚱한 .proto 를 고치라고 넘긴다.
+func TestComposedWhyStillYieldsContractPath(t *testing.T) {
+	want := "src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts"
+	why := "getConnectClient() → ConnectCEOWebDefinition → " + want +
+		" · 계약 후보 17 가운데 " + want + " 를 골랐다(3/3표)"
+	if got := lastProtosPath(why); got != want {
+		t.Errorf("계약 경로를 못 뽑았다: %q", got)
+	}
+	traced := "connect.ts → getConnectClient() → ConnectCEOWebDefinition → " + want +
+		" · 고르지 못해 따라간 것을 쓴다"
+	if got := lastProtosPath(traced); got != want {
+		t.Errorf("따라간 쪽에서 경로를 못 뽑았다: %q", got)
+	}
+}
