@@ -9,24 +9,39 @@ import (
 func TestReadsAsYes(t *testing.T) {
 	cases := []struct {
 		raw  string
-		want bool
+		yes  bool
+		read bool
 	}{
-		{"예", true},
-		{" 예.\n", true},
-		{"yes", true},
-		{"Y", true},
-		{"아니오", false},
-		{"아니다", false},
-		{"no", false},
-		{"", false},
-		{"잘 모르겠다", false},
-		{"이 계약은 읽기 전용이므로 예", false}, // 첫 낱말이 예·아니오가 아니다
-		{"아니오. 이 계약은 앱과 같은 RPC 다", false},
+		{"예", true, true},
+		{" 예.\n", true, true},
+		{"yes", true, true},
+		{"Y", true, true},
+		{"아니오", false, true},
+		{"아니다", false, true},
+		{"no", false, true},
+		{"", false, false},
+		{"잘 모르겠다", false, false},
+		{"이 계약은 읽기 전용이므로 예", false, false},
+		{"아니오. 이 계약은 앱과 같은 RPC 다", false, true},
 	}
 	for _, c := range cases {
-		if got := readsAsYes(c.raw); got != c.want {
-			t.Errorf("%q → %v, 기대 %v", c.raw, got, c.want)
+		yes, read := readsAsYes(c.raw)
+		if yes != c.yes || read != c.read {
+			t.Errorf("%q → (%v, %v), 기대 (%v, %v)", c.raw, yes, read, c.yes, c.read)
 		}
+	}
+}
+
+// 떨어뜨리려면 「아니오」 가 과반이어야 한다. 못 읽은 답을 아니오로 세면
+// 말이 많은 회차마다 후보가 통째로 사라진다 — 실측으로 17개 중 0개가
+// 남은 회차가 있었다.
+func TestUnreadableAnswerKeepsTheCandidate(t *testing.T) {
+	src := readSource(t, "shortlist.go")
+	if !strings.Contains(src, "no*2 <= rounds") {
+		t.Error("못 읽은 답을 아니오로 세고 있다")
+	}
+	if strings.Contains(src, "return yes*2 > rounds") {
+		t.Error("「예」 과반을 요구하는 옛 모양이 남아 있다")
 	}
 }
 

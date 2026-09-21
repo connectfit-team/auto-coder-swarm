@@ -109,6 +109,7 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 			owner, strings.Join(missing, ", "), where,
 			t.targetRepo, strings.TrimSpace(t.req.UserRequest)),
 		TargetRepo:   owner,
+		AddsState:    true,
 		Depth:        t.req.Depth - 1,
 		ParentRepos:  append(t.req.ParentRepos, t.targetRepo),
 		ParentTaskID: rootTaskID(t),
