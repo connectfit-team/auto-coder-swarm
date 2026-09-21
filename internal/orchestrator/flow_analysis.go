@@ -43,6 +43,19 @@ func (t *taskContext) prepareAnalysis() error {
 		log.Printf("[Orchestrator] 범위 추출 실패 (요청의 target_repo 로 물러섬): %v", err)
 	}
 
+	// **시킨 저장소가 있으면 그것이 이긴다.**
+	//
+	// 연쇄로 만든 일은 대상이 이미 정해져 있다. 그런데 모델이 고른 것을
+	// 먼저 쓰는 바람에, protogen 에 넘긴 일 넷이 모두 스스로 gig_ceo_web 을
+	// 다시 골라 웹 경로를 계획했다가 「protogen 에 없는 경로」 로 전부 잘리고
+	// 죽었다. 넘긴 쪽이 어디인지 아는데 다시 고르게 둘 까닭이 없다.
+	if t.req.TargetRepo != "" {
+		if scope.Repo != "" && !strings.EqualFold(scope.Repo, t.req.TargetRepo) {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_FORCED",
+				fmt.Sprintf("시킨 저장소를 쓴다: %s (모델은 %q 를 골랐다)", t.req.TargetRepo, scope.Repo), "", "")
+		}
+		scope.Repo = t.req.TargetRepo
+	}
 	if scope.Repo == "" {
 		scope.Repo = t.req.TargetRepo
 	}

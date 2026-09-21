@@ -75,6 +75,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 		// 있으므로 그것으로 원본을 찾는다.
 		if gen := lastProtosPath(count[owner]); gen != "" {
 			if src, rel, target := t.protoSource(gen); src != "" {
+				t.protoPath, t.protoTarget = rel, target
 				return src, fmt.Sprintf("%s · 원본은 %s 의 %s 다 (펴내기: %s)", count[owner], src, rel, target)
 			}
 		}
