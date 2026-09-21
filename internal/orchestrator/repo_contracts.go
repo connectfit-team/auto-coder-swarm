@@ -19,8 +19,11 @@ import (
 var (
 	reTypeofDef = regexp.MustCompile(`typeof\s+([\p{L}\p{N}_]*Definition)\b`)
 	reArgDef    = regexp.MustCompile(`\(\s*([\p{L}\p{N}_]*Definition)\s*[,)]`)
-	reDeclName  = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:const|function|let|var)[ \t]+([\p{L}\p{N}_]+)`)
-	reSpaces    = regexp.MustCompile(`\s+`)
+	// **맨 왼쪽 선언만** 본다. 들여쓴 지역 변수까지 세면, 함수 몸통에서
+	// 공장을 부르는 저장소에서 바로 앞의 `const port = …` 가 선언 머리가
+	// 되어 이름도 뜻을 잃고 그 함수에 달린 경고도 통째로 사라진다.
+	reDeclName = regexp.MustCompile(`(?m)^(?:export[ \t]+)?(?:const|function|let|var)[ \t]+([\p{L}\p{N}_]+)`)
+	reSpaces   = regexp.MustCompile(`\s+`)
 )
 
 // 훑지 않는 곳. 남의 코드와 빌드 결과물이다.
@@ -63,9 +66,12 @@ func (s contractScan) note() string {
 		out = append(out, "너무 커서 건너뛴 파일이 있다: "+strings.Join(s.skipped, ", "))
 	}
 	if len(s.contracts) == 0 {
-		if s.factories > 0 {
-			out = append(out, "공장 정의는 봤지만 계약 경로를 못 따라갔다 — 이 저장소의 들여오기 관행을 못 읽었다")
-		} else {
+		switch {
+		case s.factories > 0:
+			out = append(out, "계약 이름이 쓰인 자리는 봤지만 경로를 못 따라갔다 — 이 저장소의 들여오기 관행을 못 읽었다")
+		case s.scanned == 0:
+			out = append(out, "이 저장소에는 훑을 .ts 파일이 없다 — 보지 않았다는 뜻이지 없다는 뜻이 아니다")
+		default:
 			out = append(out, "훑은 파일에서 계약 이름이 쓰인 자리를 못 읽었다")
 		}
 	}
@@ -127,7 +133,6 @@ func collectContracts(repoPath, rel, src string, out *contractScan) {
 	if len(hits) == 0 {
 		return
 	}
-	out.factories += len(hits)
 	imports := reImportFrom.FindAllStringSubmatch(src, -1)
 	for _, h := range hits {
 		defName := src[h[2]:h[3]]
@@ -135,6 +140,11 @@ func collectContracts(repoPath, rel, src string, out *contractScan) {
 			if !importsName(im[1], defName) {
 				continue
 			}
+			// **들여온 이름만 센다.** 생성물 자신의
+			// `ServiceImplementation<typeof XDefinition>` 이나 남의 지역
+			// 변수까지 세면, 「공장은 봤는데 관행을 못 읽었다」 는 틀린
+			// 진단이 나온다.
+			out.factories++
 			p := tsModulePath(repoPath, rel, im[2])
 			if p == "" {
 				continue
@@ -184,11 +194,15 @@ func declAbove(src string, at int) (string, int) {
 func docCommentAbove(src string, at int) string {
 	lines := strings.Split(src[:at], "\n")
 	var got []string
+	skippedBlank := false
 	for i := len(lines) - 1; i >= 0 && len(got) < maxContractNoteLines; i-- {
 		s := strings.TrimSpace(lines[i])
 		if s == "" {
-			if len(got) == 0 {
-				continue // 선언 바로 위의 빈 줄 하나까지만 넘어간다
+			// 선언 바로 위의 빈 줄 **하나**까지만 넘어간다. 여러 줄을
+			// 건너뛰면 앞 계약을 두고 쓴 말이 이 계약의 것으로 둔갑한다.
+			if len(got) == 0 && !skippedBlank {
+				skippedBlank = true
+				continue
 			}
 			break
 		}

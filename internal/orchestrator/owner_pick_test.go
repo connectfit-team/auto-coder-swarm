@@ -18,7 +18,7 @@ func TestMajorityIndexTellsRefusalFromIndecision(t *testing.T) {
 		{"둘이면 과반이다", []int{1, 2, 2}, 2, true},
 		{"갈리면 정해지지 않았다", []int{1, 2, 3}, 0, false},
 		{"0 이 과반이면 거절이다", []int{0, 0, 2}, 0, true},
-		{"0 과 1 이 반반이면 정해지지 않았다", []int{0, 1, 0}, 0, true},
+		{"0 이 과반이면 거절이다(0,1,0)", []int{0, 1, 0}, 0, true},
 		{"전부 거절", []int{0, 0, 0}, 0, true},
 		{"둘씩 갈리면 정해지지 않았다", []int{1, 2, 3, 4}, 0, false},
 	}
@@ -88,7 +88,7 @@ func TestContractPickPromptIsClosed(t *testing.T) {
 	}
 }
 
-// 후보가 여럿이라고 손을 떼면 연쇄가 끊긴다. 하나뿐이면 묻지 않는다.
+// 후보가 여럿이라고 손을 떼면 연쇄가 끊긴다. 하나뿐이어도 묻는다.
 func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	src := readSource(t, "owner_of_state.go")
 	if strings.Contains(src, "어느 쪽인지 알 수 없다") {
