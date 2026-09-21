@@ -34,8 +34,7 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 
 	pick, votes := majorityIndex(answers)
 	if pick == 0 {
-		return "", fmt.Sprintf("고칠 파일들이 서로 다른 계약을 쓴다(%s) — 세 번 물어도 어느 것인지 정해지지 않았다",
-			strings.Join(order, ", "))
+		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것인지 세 번 물어도 정해지지 않았다", len(order))
 	}
 	picked := order[pick-1]
 	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, rounds)
