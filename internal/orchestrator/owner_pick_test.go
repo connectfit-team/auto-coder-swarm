@@ -5,22 +5,27 @@ import (
 	"testing"
 )
 
-func TestMajorityIndexNeedsMoreThanHalf(t *testing.T) {
+// 「어느 것도 아니다」 와 「못 정했다」 는 다른 답이다. 섞으면 모델이 경고를
+// 읽고 거절했는데도 따라간 계약이 확정된다.
+func TestMajorityIndexTellsRefusalFromIndecision(t *testing.T) {
 	cases := []struct {
 		name    string
 		answers []int
-		want    int
+		pick    int
+		decided bool
 	}{
-		{"셋 다 같다", []int{2, 2, 2}, 2},
-		{"둘이면 과반이다", []int{1, 2, 2}, 2},
-		{"갈리면 고르지 않는다", []int{1, 2, 3}, 0},
-		{"0 이 많아도 0 은 뽑지 않는다", []int{0, 0, 2}, 0},
-		{"0 과 1 이 반반이면 정해지지 않았다", []int{0, 1, 0}, 0},
-		{"전부 못 읽었다", []int{0, 0, 0}, 0},
+		{"셋 다 같다", []int{2, 2, 2}, 2, true},
+		{"둘이면 과반이다", []int{1, 2, 2}, 2, true},
+		{"갈리면 정해지지 않았다", []int{1, 2, 3}, 0, false},
+		{"0 이 과반이면 거절이다", []int{0, 0, 2}, 0, true},
+		{"0 과 1 이 반반이면 정해지지 않았다", []int{0, 1, 0}, 0, true},
+		{"전부 거절", []int{0, 0, 0}, 0, true},
+		{"둘씩 갈리면 정해지지 않았다", []int{1, 2, 3, 4}, 0, false},
 	}
 	for _, c := range cases {
-		if got, _ := majorityIndex(c.answers); got != c.want {
-			t.Errorf("%s: %v → %d, 기대 %d", c.name, c.answers, got, c.want)
+		pick, _, decided := majorityIndex(c.answers)
+		if pick != c.pick || decided != c.decided {
+			t.Errorf("%s: %v → (%d, %v), 기대 (%d, %v)", c.name, c.answers, pick, decided, c.pick, c.decided)
 		}
 	}
 }
@@ -100,6 +105,14 @@ func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	// 고르지 못했다고 손을 떼면 연쇄가 끊긴다 — 옛 길로 내려가야 한다.
 	if !strings.Contains(src, "CONTRACT_PICK_NONE") {
 		t.Error("못 골랐을 때 타입을 묻는 길로 내려가지 않는다")
+	}
+	// 「어느 것도 아니다」 라고 답했으면 따라간 것을 대신 쓰면 안 된다.
+	if !strings.Contains(src, "!rejected && len(traced) == 1") {
+		t.Error("거절을 미결정과 같이 다뤄 따라간 계약이 확정된다")
+	}
+	// 따라간 것에도 계약에 적힌 말을 옮겨야 한다.
+	if !strings.Contains(src, "c.note = from.note") {
+		t.Error("따라간 계약에 경고가 실리지 않는다")
 	}
 }
 

@@ -21,10 +21,9 @@ var reDigits = regexp.MustCompile(`\d+`)
 //
 // 기계가 후보와 근거를 다 뽑아 놓았으므로 남은 것은 그중 하나를 고르는 물음
 // 하나뿐이다. 닫힌 물음이라 지어낼 여지가 없다. 세 번 묻고 과반일 때만 정한다.
-func (t *taskContext) pickContractAmong(order []string, evidence map[string]string, missing []string) (string, string) {
-	if len(order) == 1 {
-		return order[0], "후보가 하나뿐이라 묻지 않았다"
-	}
+// 후보가 하나여도 묻는다. 그 하나가 스스로 「조회에는 쓰지 마라」 라고 적어
+// 둔 계약일 수 있고, 그때 「어느 것도 아니다」 라고 답할 길이 있어야 한다.
+func (t *taskContext) pickContractAmong(order []string, evidence map[string]string, missing []string) (picked, why string, rejected bool) {
 	prompt := contractPickPrompt(order, evidence, missing)
 
 	const rounds = 3
@@ -33,12 +32,16 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 		answers = append(answers, t.askOwnerIndex(prompt, order))
 	}
 
-	pick, votes := majorityIndex(answers)
-	if pick == 0 {
-		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것인지 세 번 물어도 정해지지 않았다", len(order))
+	pick, votes, decided := majorityIndex(answers)
+	switch {
+	case decided && pick == 0:
+		// **고르지 못한 것과 다르다.** 모델이 「이 가운데 없다」 고 말한 것이다.
+		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것도 아니라고 %d/%d표로 답했다", len(order), votes, rounds), true
+	case !decided:
+		return "", fmt.Sprintf("계약 후보 %d 가운데 어느 것인지 세 번 물어도 정해지지 않았다", len(order)), false
 	}
-	picked := order[pick-1]
-	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, rounds)
+	picked = order[pick-1]
+	return picked, fmt.Sprintf("계약 후보 %d 가운데 %s 를 골랐다(%d/%d표)", len(order), picked, votes, rounds), false
 }
 
 // contractPickPrompt 는 닫힌 물음을 만든다 — 번호 하나.
@@ -59,25 +62,26 @@ func contractPickPrompt(order []string, evidence map[string]string, missing []st
 		strings.Join(missing, "\n"), strings.Join(lines, "\n"))
 }
 
-// majorityIndex 는 과반을 넘긴 번호를 준다. 없거나 0 이 이기면 0 이다.
-func majorityIndex(answers []int) (int, int) {
-	votes := map[int]int{}
+// majorityIndex 는 과반을 넘긴 답을 준다.
+//
+// 「0 이 과반」(어느 것도 아니다)과 「과반이 없다」(못 정했다)를 갈라 준다.
+// 둘을 섞으면, 모델이 경고를 읽고 거절했는데도 부르는 쪽이 「못 정했으니
+// 따라간 것을 쓰자」 로 넘어간다.
+func majorityIndex(answers []int) (pick, votes int, decided bool) {
+	tally := map[int]int{}
 	for _, a := range answers {
-		votes[a]++
+		tally[a]++
 	}
-	best, count := 0, 0
-	for idx, n := range votes {
-		if idx == 0 {
-			continue
-		}
+	best, count := -1, 0
+	for idx, n := range tally {
 		if n > count || (n == count && idx < best) {
 			best, count = idx, n
 		}
 	}
-	if best == 0 || count*2 <= len(answers) {
-		return 0, count
+	if best < 0 || count*2 <= len(answers) {
+		return 0, count, false
 	}
-	return best, count
+	return best, count, true
 }
 
 // askOwnerIndex 는 번호 하나를 받는다. 못 읽으면 0 이다.

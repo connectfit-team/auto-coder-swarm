@@ -34,7 +34,7 @@ func protoContractsInFile(repoPath, file string) ([]tracedContract, string) {
 
 	calls := reClientCall.FindAllStringSubmatch(src, -1)
 	if len(calls) == 0 {
-		return nil, "이 파일은 gRPC 공장을 부르지 않는다"
+		return nil, "이 파일에서 gRPC 공장 호출을 못 읽었다"
 	}
 	imports := reImportFrom.FindAllStringSubmatch(src, -1)
 
@@ -139,22 +139,29 @@ func protoContractsDeep(repoPath, file string, hops int) ([]tracedContract, stri
 	cur := []string{file}
 	for h := 0; h <= hops; h++ {
 		var next []string
+		var found []tracedContract
 		for _, f := range cur {
 			if seen[f] {
 				continue
 			}
 			seen[f] = true
+			// **같은 걸음의 파일을 다 본다.** 첫 파일에서 멈추면 화면이 함께
+			// 쓰는 다른 계약이 통째로 안 보이고, 「실제로 쓰는 계약」 표가
+			// 사실과 달라진다.
 			if got, _ := protoContractsInFile(repoPath, f); len(got) > 0 {
-				return got, ""
+				found = append(found, got...)
 			}
 			next = append(next, inRepoImports(repoPath, f)...)
+		}
+		if len(found) > 0 {
+			return dedupeContracts(found), ""
 		}
 		if len(next) == 0 {
 			break
 		}
 		cur = next
 	}
-	return nil, "이 파일들과 그것들이 들여오는 모듈에서 gRPC 공장을 못 찾았다"
+	return nil, "이 파일들과 그것들이 들여오는 모듈에서 계약 이름이 쓰인 자리를 못 찾았다"
 }
 
 // inRepoImports 는 그 파일이 들여오는 **저장소 안** 모듈의 경로를 준다.
@@ -172,6 +179,24 @@ func inRepoImports(repoPath, file string) []string {
 		if rel, err := filepath.Rel(repoPath, p); err == nil {
 			out = append(out, filepath.ToSlash(rel))
 		}
+	}
+	return out
+}
+
+// dedupeContracts 는 같은 계약이 두 번 들어가지 않게 한다.
+func dedupeContracts(in []tracedContract) []tracedContract {
+	seen := map[string]bool{}
+	var out []tracedContract
+	for _, c := range in {
+		k := c.contract
+		if k == "" {
+			k = c.owner
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, c)
 	}
 	return out
 }
