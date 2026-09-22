@@ -101,18 +101,27 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 	// 파일만 알려 줬더니 자식이 그 파일에서 타입을 못 찾고 없는 메시지를
 	// 지어냈다(ConnectRequest — 진짜는 ReceivedRequest 이고 같은 폴더의
 	// 다른 파일에 있다). 계약 파일은 서비스와 메시지를 나눠 두는 일이 흔하다.
-	path, msg := t.protoPath, t.stateType
+	// **자리가 둘이다.** 필드는 메시지가 선언된 파일에, RPC 는 서비스가
+	// 선언된 파일에 들어간다. 계약은 그 둘을 나눠 두는 일이 흔한데 자리를
+	// 하나만 알려 주면 자식이 한쪽에 다 밀어 넣고 없는 메시지를 지어낸다.
+	svcPath, msg := t.protoPath, t.stateType
+	msgPath := ""
 	if msg != "" {
-		if f := protoFileDeclaring(t.orchestrator.wsMgr.RepoPath(owner), msg); f != "" {
-			path = f
-		}
+		msgPath = protoFileDeclaring(t.orchestrator.wsMgr.RepoPath(owner), msg)
 	}
+
 	var where string
-	if path != "" {
-		where = fmt.Sprintf("고칠 자리: %s\n펴내기: %s\n", path, t.protoTarget)
+	switch {
+	case msgPath != "" && svcPath != "" && msgPath != svcPath:
+		where = fmt.Sprintf("고칠 자리\n  필드: %s 의 %s 메시지\n  RPC : %s 의 service\n펴내기: %s\n",
+			msgPath, msg, svcPath, t.protoTarget)
+	case msgPath != "":
+		where = fmt.Sprintf("고칠 자리: %s (%s 메시지)\n펴내기: %s\n", msgPath, msg, t.protoTarget)
+	case svcPath != "":
+		where = fmt.Sprintf("고칠 자리: %s\n펴내기: %s\n", svcPath, t.protoTarget)
 	}
 	if msg != "" {
-		where += fmt.Sprintf("붙일 메시지: %s — **있는 것을 고쳐라. 같은 이름으로 새로 만들지 마라.**\n", msg)
+		where += fmt.Sprintf("**%s 는 이미 있다. 그것을 고쳐라 — 같은 이름으로 새로 만들지 마라.**\n", msg)
 	}
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(

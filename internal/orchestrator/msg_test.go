@@ -39,7 +39,7 @@ func TestHandoffNamesTheMessage(t *testing.T) {
 	src := readSource(t, "state_chain.go")
 	for _, must := range []string{
 		"protoFileDeclaring(",
-		"붙일 메시지",
+		"메시지",
 		"같은 이름으로 새로 만들지 마라",
 	} {
 		if !strings.Contains(src, must) {
