@@ -12,19 +12,25 @@ import (
 // 못 받은 회차를 0 으로 세면, LLM 이 안 떠 있을 때 「어느 것도 아니라고
 // 3/3표로 답했다」 가 되어 기계가 이미 따라가 놓은 계약까지 버린다.
 func TestSilenceIsNotRefusal(t *testing.T) {
-	src := readSource(t, "owner_pick.go")
+	pick := readSource(t, "owner_pick.go")
+	short := readSource(t, "shortlist.go")
+
+	// 못 읽은 답은 표가 아니다 — 0(전혀 아니다)과 다르다.
 	for _, must := range []string{
-		"func (t *taskContext) askOwnerIndex(prompt string, order []string) (int, bool)",
-		"if n, ok := t.askOwnerIndex(prompt, order); ok {",
-		"len(answers)*2 <= rounds",
+		"func (t *taskContext) askScore(prompt string) (int, bool)",
+		"if n, ok := t.askScore(prompt); ok {",
+		"return -1",
 	} {
-		if !strings.Contains(src, must) {
-			t.Errorf("owner_pick.go 에 %q 가 없다 — 침묵을 거절로 센다", must)
+		if !strings.Contains(short, must) {
+			t.Errorf("shortlist.go 에 %q 가 없다 — 침묵을 0점으로 센다", must)
 		}
 	}
-	// 득표 수를 실제로 답한 횟수로 적어야 한다.
-	if strings.Contains(src, "votes, rounds)") {
-		t.Error("득표를 물어본 횟수로 적고 있다 — 답한 횟수로 적어야 한다")
+	// 한 번도 못 읽었으면 거절이 아니라 미결정이다.
+	if !strings.Contains(pick, "case !read:") {
+		t.Error("한 번도 못 읽은 것을 거절과 갈라 다루지 않는다")
+	}
+	if !strings.Contains(pick, "case top <= 0:") {
+		t.Error("모두 0점인 것을 거절로 다루지 않는다")
 	}
 }
 
