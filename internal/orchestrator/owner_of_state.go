@@ -134,6 +134,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	}
 
 	typeName := t.askTypeForState(files, missing)
+	t.stateType = typeName // 넘길 때 「어느 메시지에 붙이는지」 를 알려 준다
 	if typeName == "" {
 		return "", "어느 타입에 붙어야 하는지 답을 못 받았다"
 	}

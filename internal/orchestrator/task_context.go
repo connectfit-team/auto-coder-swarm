@@ -73,6 +73,7 @@ type taskContext struct {
 	attempt       int                // 지금 몇 번째 시도인가
 	verifiedClean bool               // 지금 워크트리의 수정이 빌드·타입을 통과했나
 	pendingChain  []StatelessRequest // 멈추면서 다른 저장소에 남길 일
+	stateType     string             // 이 상태가 붙을 타입 이름 (모델이 짚은 것)
 	protoPath     string             // 넘길 때 알려 줄 원본 경로
 	protoTarget   string             // 그것을 펴내는 make 목표
 	postBench     string

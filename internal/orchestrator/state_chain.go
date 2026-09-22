@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -95,9 +96,23 @@ func (t *taskContext) chainForMissingState(missing []string) []StatelessRequest 
 //
 // 첫 줄이 **할 일**이어야 한다 — 어디서 막혔는지는 배경으로 뒤에 둔다.
 func (t *taskContext) stateChainRequest(owner string, missing []string) StatelessRequest {
+	// **어느 메시지에 붙이는지까지 알려 준다.**
+	//
+	// 파일만 알려 줬더니 자식이 그 파일에서 타입을 못 찾고 없는 메시지를
+	// 지어냈다(ConnectRequest — 진짜는 ReceivedRequest 이고 같은 폴더의
+	// 다른 파일에 있다). 계약 파일은 서비스와 메시지를 나눠 두는 일이 흔하다.
+	path, msg := t.protoPath, t.stateType
+	if msg != "" {
+		if f := protoFileDeclaring(t.orchestrator.wsMgr.RepoPath(owner), msg); f != "" {
+			path = f
+		}
+	}
 	var where string
-	if t.protoPath != "" {
-		where = fmt.Sprintf("고칠 자리: %s\n펴내기: %s\n", t.protoPath, t.protoTarget)
+	if path != "" {
+		where = fmt.Sprintf("고칠 자리: %s\n펴내기: %s\n", path, t.protoTarget)
+	}
+	if msg != "" {
+		where += fmt.Sprintf("붙일 메시지: %s — **있는 것을 고쳐라. 같은 이름으로 새로 만들지 마라.**\n", msg)
 	}
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(
@@ -114,4 +129,19 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 		ParentRepos:  append(t.req.ParentRepos, t.targetRepo),
 		ParentTaskID: rootTaskID(t),
 	}
+}
+
+// protoFileDeclaring 은 그 메시지를 선언한 .proto 파일을 준다.
+func protoFileDeclaring(repoPath, message string) string {
+	if repoPath == "" || message == "" {
+		return ""
+	}
+	want := regexp.MustCompile(`(?m)^\s*message\s+` + regexp.QuoteMeta(message) + `\s*\{`)
+	found := ""
+	forEachProto(repoPath, func(rel, src string) {
+		if found == "" && want.MatchString(src) {
+			found = rel
+		}
+	})
+	return found
 }
