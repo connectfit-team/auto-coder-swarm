@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// 점수가 이만큼 벌어져야 고른다. 한 점 차이는 흔들림이다.
+const scoreMargin = 2
+
 // pickContractAmong 은 닿은 계약이 여럿일 때 하나를 고른다.
 //
 // 기계가 후보와 근거(파일 → 공장 → 계약)와 그 계약에 적힌 말을 이미 다 뽑아
@@ -26,6 +29,19 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 		return "", fmt.Sprintf("계약 후보 %d 가 모두 0점이다 — 이 가운데 없다", len(order)), true
 	case best == "":
 		return "", fmt.Sprintf("계약 후보 %d 가운데 %d점이 둘 이상이다 — 차례가 갈리지 않는다", len(order), top), false
+	case top-second < scoreMargin:
+		// **엇비슷하면 고르지 않는다.**
+		//
+		// 이 모델은 계약을 줄 세우지 못한다. 재어 보면 경로만 주었을 때
+		// 다섯 계약이 모두 3점이었고, 근거 글을 붙이면 엉뚱한 계약이 정답보다
+		// 높게 나왔다(정답 2·2·2 / 오답 3·2·3). 갈리는 것처럼 보인 회차는
+		// 계약에 적힌 「쓰지 마라」 라는 낱말에 반응한 것이지 판단이 아니다.
+		//
+		// 한 점 차이로 고르면 그 흔들림이 그대로 답이 된다. 뚜렷할 때만
+		// 쓰고, 아니면 따라간 것과 타입을 묻는 길에 맡긴다 — 그쪽이 파일에
+		// 적힌 사실이다.
+		return "", fmt.Sprintf("계약 후보 %d 가운데 가장 높은 것이 %d점, 다음이 %d점이다 — 뚜렷하지 않다",
+			len(order), top, second), false
 	}
 	return best, fmt.Sprintf("계약 후보 %d 가운데 %s 가 %d점으로 가장 높다(다음은 %d점)",
 		len(order), best, top, second), false
