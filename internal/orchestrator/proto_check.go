@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,10 @@ func CheckProtoChange(repoPath, diff string) []guard.Violation {
 	out = append(out, duplicateDecls(repoPath, files)...)
 	out = append(out, duplicateFieldNumbers(repoPath, files)...)
 	out = append(out, changedExisting(diff)...)
+	out = append(out, newServiceBesideOne(repoPath, files, diff)...)
+	out = append(out, fieldNumberGaps(repoPath, files, diff)...)
+	out = append(out, enumZeroMeansSomething(diff)...)
+	out = append(out, sameNameDifferentType(diff)...)
 	return out
 }
 
@@ -218,4 +223,232 @@ func forEachProto(repoPath string, fn func(rel, src string)) {
 		fn(filepath.ToSlash(rel), string(b))
 		return nil
 	})
+}
+
+var (
+	reServiceDecl = regexp.MustCompile(`(?m)^\s*service\s+(\w+)`)
+	reEnumOpen    = regexp.MustCompile(`(?m)^\s*enum\s+(\w+)\s*\{`)
+	reEnumValue   = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(\d+)\s*[;\[]`)
+)
+
+// newServiceBesideOne 은 이미 service 가 있는 파일에 service 를 새로 만들었는지 본다.
+//
+// 자식이 되풀이해 이렇게 했다 — 있는 service Internal 에 rpc 를 더하는 대신
+// service ConnectService 를 새로 만들고 그 안에 넣었다. 쓰는 쪽은 Internal 을
+// 부르므로 그 rpc 는 아무도 못 부른다. 한 번은 새 service 안에
+// 「// 기존 RPC …」 라는 자리표시까지 남겼다.
+func newServiceBesideOne(repoPath string, changed []string, diff string) []guard.Violation {
+	added := map[string]bool{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if m := reServiceDecl.FindStringSubmatch(line[1:]); m != nil {
+			added[m[1]] = true
+		}
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	var out []guard.Violation
+	for _, rel := range changed {
+		b, err := os.ReadFile(filepath.Join(repoPath, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		var existing []string
+		for _, m := range reServiceDecl.FindAllStringSubmatch(string(b), -1) {
+			if !added[m[1]] {
+				existing = append(existing, m[1])
+			}
+		}
+		if len(existing) == 0 {
+			continue
+		}
+		for name := range added {
+			out = append(out, guard.Violation{
+				Why: fmt.Sprintf("service %s 를 새로 만들었다 — 이 파일에는 이미 service %s 가 있다",
+					name, strings.Join(existing, " · ")),
+				Evidence: []string{rel, "있는 service 안에 rpc 를 더해라. 새 service 는 쓰는 쪽이 부르지 않는다"},
+			})
+		}
+	}
+	return out
+}
+
+// fieldNumberGaps 는 새 필드 번호가 멀리 뛰었는지 본다.
+//
+// 「번호는 기존 필드와 충돌되지 않도록 선택」 이라며 14 다음에 99 를 쓴 수정이
+// 있었다. 겹치지는 않지만 그 사이 번호가 통째로 막히고, 다음 사람이 무엇을
+// 쓸 수 있는지 알 수 없다. 빈 다음 번호를 쓴다.
+func fieldNumberGaps(repoPath string, changed []string, diff string) []guard.Violation {
+	addedNums := map[string]bool{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if m := reProtoField.FindStringSubmatch(line[1:]); m != nil {
+			addedNums[m[1]+"="+m[2]] = true
+		}
+	}
+	if len(addedNums) == 0 {
+		return nil
+	}
+	var out []guard.Violation
+	for _, rel := range changed {
+		b, err := os.ReadFile(filepath.Join(repoPath, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		for _, blk := range messageBlocks(string(b)) {
+			var old, added []int
+			for _, f := range reProtoField.FindAllStringSubmatch(blk.body, -1) {
+				n, err := strconv.Atoi(f[2])
+				if err != nil {
+					continue
+				}
+				if addedNums[f[1]+"="+f[2]] {
+					added = append(added, n)
+				} else {
+					old = append(old, n)
+				}
+			}
+			if len(added) == 0 || len(old) == 0 {
+				continue
+			}
+			max := 0
+			for _, n := range old {
+				if n > max {
+					max = n
+				}
+			}
+			for _, n := range added {
+				if n > max+len(added) {
+					out = append(out, guard.Violation{
+						Why: fmt.Sprintf("%s 에 번호 %d 을 썼다 — 있던 마지막이 %d 이니 %d 부터 쓴다",
+							blk.name, n, max, max+1),
+						Evidence: []string{rel, "사이 번호가 통째로 막히고, 다음 사람이 무엇을 쓸 수 있는지 알 수 없다"},
+					})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// enumZeroMeansSomething 은 새 enum 의 0 번이 뜻을 가진 값인지 본다.
+//
+// `enum PendingState { PENDING = 0; … }` 를 더한 수정이 있었다. proto3 에서
+// 0 은 값이 없을 때의 기본값이라, 그러면 **여태 있던 모든 요청이 보류로
+// 읽힌다.** 0 번은 「정해지지 않음」 이어야 한다.
+func enumZeroMeansSomething(diff string) []guard.Violation {
+	var out []guard.Violation
+	var cur string
+	depth := 0
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		body := line[1:]
+		if m := reEnumOpen.FindStringSubmatch(body); m != nil {
+			cur, depth = m[1], 1
+			continue
+		}
+		if cur == "" {
+			continue
+		}
+		if strings.Contains(body, "}") {
+			depth--
+			if depth <= 0 {
+				cur = ""
+			}
+			continue
+		}
+		m := reEnumValue.FindStringSubmatch(body)
+		if m == nil || m[2] != "0" {
+			continue
+		}
+		name := strings.ToUpper(m[1])
+		ok := false
+		for _, w := range []string{"UNSPECIFIED", "UNKNOWN", "NONE", "INVALID", "DEFAULT"} {
+			if strings.Contains(name, w) {
+				ok = true
+			}
+		}
+		if !ok {
+			out = append(out, guard.Violation{
+				Why:      fmt.Sprintf("enum %s 의 0 번이 %s 다 — 0 은 값이 없을 때의 기본값이라 여태 있던 것이 모두 그 값으로 읽힌다", cur, m[1]),
+				Evidence: []string{"0 번은 UNSPECIFIED 처럼 「정해지지 않음」 이어야 한다"},
+			})
+		}
+		cur = ""
+	}
+	return out
+}
+
+// reFieldTyped 는 더한 필드의 타입과 이름을 함께 읽는다.
+var reFieldTyped = regexp.MustCompile(`^\s*(?:repeated\s+|optional\s+)?([\w.]+)\s+(\w+)\s*=\s*\d+\s*[;\[]`)
+
+// sameNameDifferentType 은 한 수정 안에서 같은 것을 두 타입으로 나타냈는지 본다.
+//
+// 실측: ReceivedRequest 에 `RequestPendingStatus pending_status` 를 더해
+// 놓고, 그 상태를 바꾸는 RPC 의 요청에는 `string new_status` 를 받았다.
+// 같은 것을 한쪽은 enum 으로, 한쪽은 글자로 다룬다 — 쓰는 쪽이 둘을 손으로
+// 맞춰야 하고, 맞추지 않으면 조용히 어긋난다.
+//
+// 이름의 마지막 토막(…_status)이 같은데 타입이 다르면 짚는다.
+func sameNameDifferentType(diff string) []guard.Violation {
+	types := map[string]map[string]bool{} // 이름 꼬리 → 타입들
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		m := reFieldTyped.FindStringSubmatch(line[1:])
+		if m == nil {
+			continue
+		}
+		typ, name := m[1], m[2]
+		parts := strings.Split(name, "_")
+		tail := parts[len(parts)-1]
+		if len(tail) < 3 {
+			continue // id·no 처럼 짧은 꼬리는 겹쳐도 뜻이 없다
+		}
+		if types[tail] == nil {
+			types[tail] = map[string]bool{}
+		}
+		types[tail][typ] = true
+	}
+	var out []guard.Violation
+	for tail, ts := range types {
+		if len(ts) < 2 {
+			continue
+		}
+		// 하나라도 만든 타입(글자가 아닌 것)이 섞여 있을 때만 본다.
+		named := false
+		var list []string
+		for t := range ts {
+			list = append(list, t)
+			if !protoScalars[t] {
+				named = true
+			}
+		}
+		if !named {
+			continue
+		}
+		sort.Strings(list)
+		out = append(out, guard.Violation{
+			Why: fmt.Sprintf("…_%s 를 서로 다른 타입으로 다룬다 (%s)", tail, strings.Join(list, " · ")),
+			Evidence: []string{
+				"같은 것을 한쪽은 만든 타입으로, 한쪽은 글자로 다루면 쓰는 쪽이 손으로 맞춰야 한다"},
+		})
+	}
+	return out
+}
+
+// proto 의 기본 타입.
+var protoScalars = map[string]bool{
+	"double": true, "float": true, "int32": true, "int64": true,
+	"uint32": true, "uint64": true, "sint32": true, "sint64": true,
+	"fixed32": true, "fixed64": true, "sfixed32": true, "sfixed64": true,
+	"bool": true, "string": true, "bytes": true,
 }
