@@ -65,6 +65,18 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 		}
 	}
 
+	// 계약을 고쳤으면 계약을 읽어 본다. 빌드는 계약을 못 본다 —
+	// 생성물을 다시 만들지 않으므로 이미 있는 메시지를 다시 정의해도
+	// go build 는 통과한다.
+	if bad := CheckProtoChange(t.repoPath, diff); len(bad) > 0 {
+		note := AlignmentNote(bad)
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PROTO_BROKEN",
+			"계약이 깨진다 — 넘기지 않는다", why, note)
+		t.lastFeedback = "PROTO: " + note
+		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+		return RunResult{}, false
+	}
+
 	if bad := CheckToolLeak(diff); len(bad) > 0 {
 		note := AlignmentNote(bad)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",
