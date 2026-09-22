@@ -5,82 +5,67 @@ import (
 	"testing"
 )
 
-// 「어느 것도 아니다」 와 「못 정했다」 는 다른 답이다. 섞으면 모델이 경고를
-// 읽고 거절했는데도 따라간 계약이 확정된다.
-func TestMajorityIndexTellsRefusalFromIndecision(t *testing.T) {
-	cases := []struct {
-		name    string
-		answers []int
-		pick    int
-		decided bool
-	}{
-		{"셋 다 같다", []int{2, 2, 2}, 2, true},
-		{"둘이면 과반이다", []int{1, 2, 2}, 2, true},
-		{"갈리면 정해지지 않았다", []int{1, 2, 3}, 0, false},
-		{"0 이 과반이면 거절이다", []int{0, 0, 2}, 0, true},
-		{"0 이 과반이면 거절이다(0,1,0)", []int{0, 1, 0}, 0, true},
-		{"전부 거절", []int{0, 0, 0}, 0, true},
-		{"둘씩 갈리면 정해지지 않았다", []int{1, 2, 3, 4}, 0, false},
-	}
-	for _, c := range cases {
-		pick, _, decided := majorityIndex(c.answers)
-		if pick != c.pick || decided != c.decided {
-			t.Errorf("%s: %v → (%d, %v), 기대 (%d, %v)", c.name, c.answers, pick, decided, c.pick, c.decided)
-		}
-	}
-}
-
-// 번호가 아닌 답에서 숫자를 주워 오면 조용히 엉뚱한 계약이 뽑힌다.
-func TestParseOwnerPickRejectsStrayNumbers(t *testing.T) {
-	order := []string{
-		"src/lib/server/protos/attendanceapis/attendance/v2/ceoweb.internal.ts",
-		"src/lib/server/protos/ceowebapis/ceoweb/v1/ceo.service.ts",
-		"src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts",
-	}
+// 점수 답은 첫 줄의 숫자 하나일 때만 읽는다.
+func TestParseScore(t *testing.T) {
 	cases := []struct {
 		raw  string
-		want int
+		n    int
+		read bool
 	}{
-		{"2", 2},
-		{" 3.\n", 3},
-		{"1번", 1},
-		{"답: 3", 3},
-		{"3)", 3},
-		{"4", 0},  // 목록 밖
-		{"0", 0},  // 어느 것도 아니다
-		{"없다", 0}, // 번호가 없다
-		{"", 0},
-		// 아래가 첫 정수 줍기로는 전부 엉뚱한 번호가 되던 답이다.
-		{"17개 후보 가운데 3번", 0},
-		{"1번은 아니고 3번이다", 0},
-		{"v1 의 connect.service.ts", 0},
-		{"src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts", 3},
-		{"연결 요청이므로 src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts 입니다", 3},
+		{"3", 3, true},
+		{" 0 \n", 0, true},
+		{"10", 10, true},
+		{"11", 0, false}, // 범위 밖
+		{"", 0, false},
+		{"잘 모르겠다", 0, false},
+		{"src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts", 0, false},
+		{"3점 정도가 적당하다고 봅니다", 0, false}, // 숫자가 하나여도 문장은 안 읽는다
+		{"v1 의 3", 0, false},
 	}
 	for _, c := range cases {
-		if got := parseOwnerPick(c.raw, order); got != c.want {
-			t.Errorf("%q → %d, 기대 %d", c.raw, got, c.want)
+		n, read := parseScore(c.raw)
+		if n != c.n || read != c.read {
+			t.Errorf("%q → (%d, %v), 기대 (%d, %v)", c.raw, n, read, c.n, c.read)
 		}
 	}
 }
 
-// 물음은 닫혀 있어야 하고, 그 계약에 적힌 말이 실려야 한다.
-func TestContractPickPromptIsClosed(t *testing.T) {
-	order := []string{
-		"src/lib/server/protos/ceowebapis/ceoweb/v1/ceo.service.ts",
-		"src/lib/server/protos/ceowebapis/ceoweb/v1/connect.service.ts",
+// 가장 높은 하나를 고르되, 같은 점수가 둘이면 고르지 않는다.
+func TestBestByScore(t *testing.T) {
+	order := []string{"a", "b", "c"}
+	cases := []struct {
+		name   string
+		scores map[string]int
+		best   string
+		top    int
+		read   bool
+	}{
+		{"하나가 높다", map[string]int{"a": 0, "b": 3, "c": 0}, "b", 3, true},
+		{"같은 점수가 둘", map[string]int{"a": 3, "b": 3, "c": 0}, "", 3, true},
+		{"모두 0", map[string]int{"a": 0, "b": 0, "c": 0}, "", 0, true},
+		{"하나도 못 읽음", map[string]int{"a": -1, "b": -1, "c": -1}, "", -1, false},
+		{"못 읽은 것은 건너뛴다", map[string]int{"a": -1, "b": 2, "c": -1}, "b", 2, true},
 	}
-	ev := map[string]string{
-		order[0]: "staff.ts → getStaffClient() → StaffInternalDefinition (proto-ceowebapis)\n     그 계약에 적힌 말: 읽기 전용이다. 조회에는 쓰지 마라",
-		order[1]: "connect.ts → getConnectClient() → ConnectCEOWebDefinition (proto-ceowebapis)",
+	for _, c := range cases {
+		best, top, _, read := bestByScore(order, c.scores)
+		if best != c.best || top != c.top || read != c.read {
+			t.Errorf("%s: (%q,%d,%v), 기대 (%q,%d,%v)", c.name, best, top, read, c.best, c.top, c.read)
+		}
 	}
-	p := contractPickPrompt(order, ev, []string{"연결 요청에 보류 상태를 담을 필드"})
+}
+
+// 물음에는 그 계약의 근거와 적힌 말이 실려야 한다.
+func TestContractScorePromptCarriesTheWarning(t *testing.T) {
+	p := contractScorePrompt(
+		"src/lib/server/protos/workstampapis/workstamp/v1/service.ts",
+		"getWorkStampAppClient() → WorkStampServiceDefinition (proto-workstampapis)\n     그 계약에 적힌 말: 🚨 근무 조회·쓰기에는 쓰지 마라.",
+		[]string{"연결 요청에 보류 상태를 담을 필드"})
 	for _, must := range []string{
-		"1) " + order[0], "2) " + order[1],
-		"getStaffClient()", "getConnectClient()",
-		"읽기 전용이다. 조회에는 쓰지 마라",
+		"workstampapis/workstamp/v1/service.ts",
+		"근무 조회·쓰기에는 쓰지 마라",
 		"연결 요청에 보류 상태를 담을 필드",
-		"번호 하나만",
+		"0 부터 10",
+		"쓰지 말라고 적혀 있으면 0",
 	} {
 		if !strings.Contains(p, must) {
 			t.Errorf("물음에 %q 가 없다", must)
@@ -88,7 +73,19 @@ func TestContractPickPromptIsClosed(t *testing.T) {
 	}
 }
 
-// 후보가 여럿이라고 손을 떼면 연쇄가 끊긴다. 하나뿐이어도 묻는다.
+// 예·아니오로 묻지 않는다 — 같은 모델이 무엇에든 아니오라고 답했다.
+func TestPickDoesNotAskYesNo(t *testing.T) {
+	for _, f := range []string{"owner_pick.go", "shortlist.go"} {
+		src := readSource(t, f)
+		if strings.Contains(src, "예 또는 아니오") {
+			t.Errorf("%s 가 아직 예·아니오로 묻는다", f)
+		}
+	}
+	if !strings.Contains(readSource(t, "owner_pick.go"), "scoreContracts") {
+		t.Error("점수로 고르지 않는다")
+	}
+}
+
 func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	src := readSource(t, "owner_of_state.go")
 	if strings.Contains(src, "어느 쪽인지 알 수 없다") {
@@ -102,15 +99,12 @@ func TestAmbiguousOwnerIsAsked(t *testing.T) {
 	if !strings.Contains(src, "scan.complete()") {
 		t.Error("잘린 목록을 온전한 것처럼 내놓는다")
 	}
-	// 고르지 못했다고 손을 떼면 연쇄가 끊긴다 — 옛 길로 내려가야 한다.
 	if !strings.Contains(src, "CONTRACT_PICK_NONE") {
 		t.Error("못 골랐을 때 타입을 묻는 길로 내려가지 않는다")
 	}
-	// 「어느 것도 아니다」 라고 답했으면 따라간 것을 대신 쓰면 안 된다.
 	if !strings.Contains(src, "!rejected && len(traced) == 1") {
 		t.Error("거절을 미결정과 같이 다뤄 따라간 계약이 확정된다")
 	}
-	// 따라간 것에도 계약에 적힌 말을 옮겨야 한다.
 	if !strings.Contains(src, "c.note = from.note") {
 		t.Error("따라간 계약에 경고가 실리지 않는다")
 	}
