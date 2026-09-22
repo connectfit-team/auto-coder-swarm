@@ -84,7 +84,10 @@ func TestPickDoesNotAskYesNo(t *testing.T) {
 		t.Error("점수로 고르지 않는다")
 	}
 	// 물음에 단서를 덧붙이면 정답까지 0점이 된다 — 재어서 확인했다.
-	if strings.Contains(readSource(t, "shortlist.go"), "쓰지 말라고 적혀 있으면 0") {
+	// 소스가 아니라 **만들어진 물음**을 본다. 주석은 그 사실을 적어 두는
+	// 자리이므로 거기 같은 낱말이 있어도 물음이 아니다.
+	p := contractScorePrompt("x.ts", "근거", []string{"무엇"})
+	if strings.Contains(p, "쓰지 말라고") {
 		t.Error("점수 물음에 단서가 들어갔다 — 그 줄 하나로 후보가 모두 0점이 된다")
 	}
 }
