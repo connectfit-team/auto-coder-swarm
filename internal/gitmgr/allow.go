@@ -25,7 +25,24 @@ import (
 //	SWARM_PUSH_ALLOW=cms,worker  적힌 곳만
 
 // pushAllowed 는 그 저장소로 밀어도 되는지 본다.
+// 계약 저장소에는 **무슨 설정이든 밀지 않는다.**
+//
+// 계약은 앱·웹·서버가 함께 쓴다. 잘못 밀리면 한 곳이 아니라 전부 깨지고,
+// 되돌리는 것도 서비스마다 따로 해야 한다. 펴내는 길은 사람이 protogen 에서
+// `make push-*apis` 를 돌리는 것 하나뿐이다 — 그것이 컴파일하고 서브모듈을
+// 커밋·푸시한다.
+//
+// 그래서 이 저장소들은 허용 목록보다 위에 둔다. `SWARM_PUSH_ALLOW=*` 여도
+// 막힌다. 목록에 실수로 들어가는 것만으로 사고가 나서는 안 된다.
+func neverPush(repoName string) bool {
+	n := strings.ToLower(strings.TrimSpace(repoName))
+	return n == "protogen" || strings.HasPrefix(n, "proto-")
+}
+
 func pushAllowed(repoName string) (bool, string) {
+	if neverPush(repoName) {
+		return false, repoName + " 는 계약 저장소다 — 펴내기는 사람이 protogen 에서 make push-*apis 로만 한다"
+	}
 	raw := strings.TrimSpace(os.Getenv("SWARM_PUSH_ALLOW"))
 	if raw == "" {
 		return false, "SWARM_PUSH_ALLOW 가 비어 있다 — 어느 저장소로도 밀지 않는다"
