@@ -65,7 +65,6 @@ func TestContractScorePromptCarriesTheWarning(t *testing.T) {
 		"근무 조회·쓰기에는 쓰지 마라",
 		"연결 요청에 보류 상태를 담을 필드",
 		"0 부터 10",
-		"쓰지 말라고 적혀 있으면 0",
 	} {
 		if !strings.Contains(p, must) {
 			t.Errorf("물음에 %q 가 없다", must)
@@ -83,6 +82,10 @@ func TestPickDoesNotAskYesNo(t *testing.T) {
 	}
 	if !strings.Contains(readSource(t, "owner_pick.go"), "scoreContracts") {
 		t.Error("점수로 고르지 않는다")
+	}
+	// 물음에 단서를 덧붙이면 정답까지 0점이 된다 — 재어서 확인했다.
+	if strings.Contains(readSource(t, "shortlist.go"), "쓰지 말라고 적혀 있으면 0") {
+		t.Error("점수 물음에 단서가 들어갔다 — 그 줄 하나로 후보가 모두 0점이 된다")
 	}
 }
 
