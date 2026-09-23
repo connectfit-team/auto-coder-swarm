@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 	"log"
 	"time"
 	"unicode/utf8"
@@ -24,7 +25,9 @@ func (o *SwarmOrchestrator) logDeepTechnical(ctx context.Context, taskID string,
 		task, _ := o.store.GetTaskByID(taskID)
 		if task != nil {
 			newState := fmt.Sprintf("%s\n[%s] %s: %s", task.ContextState, time.Now().Format("15:04:05"), stage, message)
-			o.store.UpdateContextState(taskID, newState)
+			// 한 작업이 여러 번 시도되면 같은 줄이 그만큼 쌓인다. 되풀이를
+			// 걷어내 두지 않으면 행이 끝없이 자란다.
+			o.store.UpdateContextState(taskID, agent.CompactContext(newState, contextStateLimit))
 		}
 	}
 }
@@ -42,3 +45,7 @@ func clipLog(s string) string {
 	}
 	return s + "\n… (생략)"
 }
+
+// 작업 하나가 남겨 둘 단계 기록의 상한. 프롬프트에 들어가는 몫보다 넉넉히
+// 두어 진단에는 쓸 수 있게 하되, 끝없이 자라지는 않게 한다.
+const contextStateLimit = 16000

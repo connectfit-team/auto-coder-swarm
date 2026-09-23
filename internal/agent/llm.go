@@ -17,7 +17,8 @@ func CallLLM(ctx context.Context, m model.LLM, agentName, prompt string) (string
 	taskID, _ := ctx.Value("task_id").(string)
 	enrichedPrompt := prompt
 	if taskID != "" && GlobalStorage != nil {
-		if state := GlobalStorage.GetContextState(taskID); state != "" {
+		// 쌓인 기록을 그대로 붙이지 않는다 — 되풀이를 걷어내고 예산만큼만 넣는다.
+		if state := CompactContext(GlobalStorage.GetContextState(taskID), pastContextBudget()); state != "" {
 			enrichedPrompt = fmt.Sprintf("[PAST CONTEXT & DECISIONS]\n%s\n\n[CURRENT TASK]\n%s", state, prompt)
 		}
 	}
