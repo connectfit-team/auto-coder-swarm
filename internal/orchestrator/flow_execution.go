@@ -73,7 +73,9 @@ func (t *taskContext) stepExecution(attempt int) error {
 			continue
 		}
 
-		if _, err := t.coder.ModifyFile(t.ctx, full, instr); err != nil {
+		if _, err := t.coder.ModifyFile(t.ctx, full, instr); err == nil {
+			t.noteApproxRung(change.FilePath)
+		} else {
 			// **파일 하나 때문에 나머지를 버리지 않는다.**
 			//
 			// 다섯 파일 가운데 하나를 못 고치면 그 회차 전체가 "반쪽 상태"
@@ -96,6 +98,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 			} else {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_RETRIED_OK",
 					fmt.Sprintf("[%s] 두 번째에 고쳤습니다", change.FilePath), "", "")
+				t.noteApproxRung(change.FilePath)
 			}
 		}
 	}
@@ -148,4 +151,15 @@ func (t *taskContext) stepExecution(attempt int) error {
 		return nil
 	}
 	return fmt.Errorf("계획한 파일 %d개를 하나도 고치지 못했다", len(plan.Changes))
+}
+
+// noteApproxRung 은 **닮은 정도로 자리를 찾았을 때** 그 사실을 남긴다.
+//
+// 사다리의 아랫단은 정확히 맞지 않은 자리에 넣는다. 맞을 때가 많아서 쓰지만,
+// 조용히 지나가면 틀렸을 때 까닭을 찾을 수가 없다.
+func (t *taskContext) noteApproxRung(file string) {
+	if why := agent.LastApproxRung(); why != "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "MATCH_APPROX",
+			fmt.Sprintf("[%s] 정확히 맞는 자리가 없어 닮은 자리에 넣었다", file), "", why)
+	}
 }
