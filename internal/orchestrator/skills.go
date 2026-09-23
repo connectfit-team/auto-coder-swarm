@@ -128,6 +128,7 @@ func checkProcedureViolations(diff string) []string {
 					"손으로 고치면 다음 생성 때 조용히 덮어써진다. 원본(.proto 등)을 고쳐라.", p))
 		}
 	}
+	out = append(out, restatingComments(diff)...)
 	return out
 }
 
