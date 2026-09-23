@@ -44,6 +44,7 @@ func CheckProtoChange(repoPath, diff string) []guard.Violation {
 	out = append(out, fieldNumberGaps(repoPath, files, diff)...)
 	out = append(out, enumZeroMeansSomething(diff)...)
 	out = append(out, sameNameDifferentType(diff)...)
+	out = append(out, emptyNewMessage(diff)...)
 	return out
 }
 
