@@ -194,18 +194,14 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		return "", fmt.Errorf("찾을 내용이 비었다")
 	}
 
-	var at []int
-	for i := 0; i+len(wantLines) <= len(srcLines); i++ {
-		ok := true
-		for j, w := range wantLines {
-			if strings.TrimSpace(srcLines[i+j]) != w {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			at = append(at, i)
-		}
+	at := findTrimmed(srcLines, wantLines, func(s string) string { return s })
+	if len(at) == 0 {
+		// **문장부호를 고른 꼴로 맞춰 한 번 더 본다.**
+		//
+		// 이 저장소의 주석에는 —·「」·… 가 흔한데, 모델은 그것을 -·"" 로
+		// 받아 적는다. 글자 하나 때문에 「원문에 없는 줄」 이 된다.
+		// codex 도 마지막 단에서 같은 것을 한다(seek_sequence.rs).
+		at = findTrimmed(srcLines, wantLines, normalizePunct)
 	}
 
 	switch {
@@ -456,3 +452,35 @@ func firstAnchorLine(near string) string {
 	}
 	return ""
 }
+
+// findTrimmed 는 줄마다 앞뒤 공백을 턴 것으로 견줘 맞는 자리를 준다.
+// norm 으로 한 번 더 고른 꼴로 만들 수 있다.
+func findTrimmed(srcLines, wantLines []string, norm func(string) string) []int {
+	var at []int
+	for i := 0; i+len(wantLines) <= len(srcLines); i++ {
+		ok := true
+		for j, w := range wantLines {
+			if norm(strings.TrimSpace(srcLines[i+j])) != norm(w) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			at = append(at, i)
+		}
+	}
+	return at
+}
+
+// 모델이 자주 바꿔 적는 문장부호. 뜻은 같고 글자만 다르다.
+var punctFolds = strings.NewReplacer(
+	"\u2010", "-", "\u2011", "-", "\u2012", "-", "\u2013", "-", "\u2014", "-", "\u2015", "-", "\u2212", "-",
+	"\u2018", "'", "\u2019", "'", "\u201a", "'", "\u201b", "'",
+	"\u201c", `"`, "\u201d", `"`, "\u201e", `"`, "\u201f", `"`,
+	"\u300c", `"`, "\u300d", `"`, "\u300e", `"`, "\u300f", `"`,
+	"\u00b7", "·", "\u2027", "·", "\u30fb", "·",
+	"\u2026", "...", "\u00a0", " ",
+)
+
+// normalizePunct 는 뜻이 같은 문장부호를 한 꼴로 맞춘다.
+func normalizePunct(s string) string { return punctFolds.Replace(s) }
