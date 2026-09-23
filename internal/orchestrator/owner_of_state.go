@@ -56,10 +56,34 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 	// 오는지는 적혀 있는 사실이다. 다만 **확정은 아니다** — 한 파일이 계약을
 	// 여럿 쓰기도 하고, 계획이 짚은 파일이 앱 공용 계약만 부르기도 한다.
 	// 따라간 것은 목록에 표로 남기고, 고르는 것은 계약에 적힌 말까지 보고 한다.
-	traced, seen := traceContracts(files, func(f string) []tracedContract {
+	follow := func(f string) []tracedContract {
 		got, _ := protoContractsDeep(t.repoPath, f, 2)
 		return got
-	})
+	}
+	traced, seen := traceContracts(files, follow)
+
+	// **계획이 짚은 파일에서 아무 데도 안 닿으면 더 넓게 따라간다.**
+	//
+	// 계획은 파일 두어 개만 고른다. 그 둘이 계약을 안 부르면 따라간 것이
+	// 0개가 되고, 그러면 차림표가 저장소 전체 훑기뿐이라 열여덟 개가 모두
+	// 같은 점수로 나온다(실측 W-42583). 그 뒤는 모델에게 타입을 묻는 길인데
+	// 거기서 ConnectionInfo → ceo.service.proto 라는 엉뚱한 답이 나왔다.
+	//
+	// 분석이 짚어 둔 자리(actionablePath)는 이미 요청과 관련해서 고른 것이다.
+	// 계획보다 넓고 저장소 전체보다는 좁다 — 근거가 통째로 사라지느니 여기서
+	// 한 번 더 따라간다.
+	if len(traced) == 0 && len(t.actionablePath) > 0 {
+		wider := t.actionablePath
+		if len(wider) > maxWidenedTrace {
+			wider = wider[:maxWidenedTrace]
+		}
+		traced, seen = traceContracts(wider, follow)
+		if len(traced) > 0 {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_TRACE_WIDENED",
+				fmt.Sprintf("계획이 짚은 파일에서 계약에 못 닿아 분석이 짚은 %d곳에서 다시 따라갔다 — %d개 닿았다",
+					len(wider), len(traced)), strings.Join(clipList(wider), " · "), strings.Join(traced, " · "))
+		}
+	}
 
 	// 고르는 자리에는 저장소가 쓰는 계약을 다 보인다. 계획이 짚은 파일로
 	// 미리 좁히면 계획이 빗나간 회차에 후보가 통째로 사라지거나 엉뚱한
@@ -228,3 +252,7 @@ func tracedSubset(traced []string, seen map[string]tracedContract, ev map[string
 	sort.Strings(sub)
 	return sub, subEv
 }
+
+// 넓혀 따라갈 때 볼 파일 수의 상한. 저장소 전체를 따라가면 느리기만 하고
+// 근거도 흐려진다 — 분석이 앞에 놓은 것이 더 관련 있다.
+const maxWidenedTrace = 12
