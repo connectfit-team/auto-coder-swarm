@@ -73,7 +73,9 @@ func applyEditBlocks(original, raw string) (string, error) {
 			applied++
 			continue
 		case n > 1:
-			return "", fmt.Errorf("원문에 여러 번 나오지만 너무 짧아 어디인지 알 수 없다:\n%s", clipRunes(search, 200))
+			return "", fmt.Errorf("원문에 여러 번 나오지만 너무 짧아 어디인지 알 수 없다:\n%s\n\n%s",
+				clipRunes(search, 200),
+				matchLocations(strings.Split(out, "\n"), alignedMatchLines(out, search)))
 		default:
 			// **들여쓰기까지 똑같이 옮겨 적기를 바랄 수는 없다.**
 			//
@@ -213,8 +215,8 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		// 원문의 네 줄과 줄 단위로는 영영 안 맞는다.
 		return replaceFlattened(srcLines, search, replace)
 	case len(at) > 1 && !isSubstantial(search):
-		return "", fmt.Errorf("공백을 무시하면 %d군데가 맞는데 너무 짧아 어디인지 알 수 없다:\n%s",
-			len(at), clipRunes(search, 200))
+		return "", fmt.Errorf("공백을 무시하면 여러 군데가 맞는데 너무 짧아 어디인지 알 수 없다:\n%s\n\n%s",
+			clipRunes(search, 200), matchLocations(srcLines, at))
 	}
 
 	spans := make([]int, len(at))

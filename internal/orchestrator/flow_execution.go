@@ -12,6 +12,7 @@ import (
 func (t *taskContext) stepExecution(attempt int) error {
 	plan := t.ctx.Value("current_plan").(agent.Plan)
 	var failures []string
+	var lostPlace bool // 자리를 못 찾은 것뿐인가
 	for _, change := range plan.Changes {
 		// 생성물은 고치기 전에 막는다. 고쳐도 다음 생성 때 덮어써져 조용히
 		// 사라지고, 그 사이 소비하는 서비스만 깨진다.
@@ -87,6 +88,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_FAILED",
 					fmt.Sprintf("[%s] 두 번 다 고치지 못했습니다", change.FilePath), "", err2.Error())
 				failures = append(failures, err2.Error())
+				lostPlace = lostPlace || agent.IsEditBlockProblem(err2)
 			} else {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_RETRIED_OK",
 					fmt.Sprintf("[%s] 두 번째에 고쳤습니다", change.FilePath), "", "")
@@ -106,9 +108,18 @@ func (t *taskContext) stepExecution(attempt int) error {
 	//
 	// 되먹임을 들고 계획으로 돌아간다. 횟수는 이미 셋으로 묶여 있다 —
 	// 새 고리를 만드는 것이 아니다.
+	// **왜 못 고쳤는지에 따라 시킬 것이 다르다.**
+	//
+	// 자리를 못 찾은 것뿐인데 "고칠 수 있는 파일만 골라라" 라고 하면 고칠 수
+	// 있는 파일을 버린다. 그때 필요한 것은 SEARCH 를 다시 적는 것이다.
+	what := "고칠 수 있는 파일만 골라 다시 계획하라."
+	if lostPlace {
+		what = "**그 파일을 빼지 마라.** 고칠 자리를 못 찾았을 뿐이다 — " +
+			"아래에 걸린 자리가 적혀 있으니, 그것을 가르는 줄을 앞뒤로 더 넣어 SEARCH 를 길게 적어라."
+	}
 	t.lastFeedback = fmt.Sprintf(
-		"CODER FAILED: 계획한 파일 %d개 가운데 %d개를 고치지 못했다. 고칠 수 있는 파일만 골라 다시 계획하라.\n%s",
-		len(plan.Changes), len(failures), strings.Join(failures, "\n"))
+		"CODER FAILED: 계획한 파일 %d개 가운데 %d개를 고치지 못했다. %s\n%s",
+		len(plan.Changes), len(failures), what, strings.Join(failures, "\n"))
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_PARTIAL",
 		fmt.Sprintf("파일 %d개 가운데 %d개를 못 고쳤다 — 반쪽 상태로 빌드하지 않는다",
 			len(plan.Changes), len(failures)), "", strings.Join(failures, "\n"))
