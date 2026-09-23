@@ -268,6 +268,17 @@ func replaceFlattened(srcLines []string, search, replace string) (string, error)
 			appendedNote = why
 			return out, nil
 		}
+		// **이미 들어가 있는 것을 또 넣으려는 것인지 먼저 본다.**
+		//
+		// aider 가 같은 자리에서 이렇게 말한다 — 「Are you sure you need this
+		// SEARCH/REPLACE block? The REPLACE lines are already in {path}!」.
+		// 「원문에 없다」 고만 하면 모델은 찾을 줄을 다시 지어내는데, 실은
+		// 할 일이 남지 않은 것이다. 실측으로 자식이 같은 것을 세 번 넣으려
+		// 했다.
+		if alreadyThere(srcLines, replace) {
+			return "", fmt.Errorf("바꿔 넣으려는 내용이 이미 원문에 있다 — 이 블록은 할 일이 없다:\n%s",
+				clipRunes(replace, 200))
+		}
 		// 원문에 무엇이 있는지 함께 준다. 없다고만 말하면 다시 계획해도
 		// 같은 것을 지어낸다(실측 W-70980: 세 시도가 같은 자리에서 죽었다).
 		msg := fmt.Sprintf("원문에 없는 내용을 찾으라고 했다:\n%s", clipRunes(search, 200))
@@ -484,3 +495,16 @@ var punctFolds = strings.NewReplacer(
 
 // normalizePunct 는 뜻이 같은 문장부호를 한 꼴로 맞춘다.
 func normalizePunct(s string) string { return punctFolds.Replace(s) }
+
+// alreadyThere 는 바꿔 넣으려는 내용이 이미 원문에 있는지 본다.
+//
+// 공백과 문장부호는 접어서 견준다 — 맞추는 자와 같은 자를 써야 「있는데
+// 없다고 한다」 가 생기지 않는다. 한 줄짜리는 보지 않는다. 짧은 줄은
+// 어디에나 있어 「이미 있다」 가 거짓이 되기 쉽다.
+func alreadyThere(srcLines []string, replace string) bool {
+	want := trimEach(strings.Split(strings.TrimRight(replace, "\n"), "\n"))
+	if len(want) < 2 {
+		return false
+	}
+	return len(findTrimmed(srcLines, want, normalizePunct)) > 0
+}
