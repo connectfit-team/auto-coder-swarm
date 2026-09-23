@@ -10,7 +10,8 @@ import (
 const (
 	// 고칠 자리 앞뒤로 함께 보여 줄 줄 수.
 	regionContext = 12
-	// 보여 줄 줄 수의 상한. 이보다 많으면 통째로 보는 것과 다를 바 없다.
+	// 예산을 못 재는 자리(시험 따위)에서 쓰는 줄 수 상한.
+	// 실제 호출은 창 예산에서 역산한 값을 넘긴다.
 	regionMaxLines = 140
 )
 
@@ -24,6 +25,14 @@ var identifierRe = regexp.MustCompile(`[A-Za-z_$][A-Za-z0-9_$]{2,}`)
 //
 // 관련 줄을 못 찾으면 빈 문자열을 준다. 부르는 쪽이 통째로 보여 주면 된다.
 func relevantRegions(original, instructions string) string {
+	return relevantRegionsWithin(original, instructions, regionMaxLines)
+}
+
+// relevantRegionsWithin 은 보여 줄 줄 수의 상한을 받는다.
+func relevantRegionsWithin(original, instructions string, maxLines int) string {
+	if maxLines < 40 {
+		maxLines = 40
+	}
 	lines := strings.Split(original, "\n")
 
 	wanted := map[string]bool{}
@@ -52,9 +61,9 @@ func relevantRegions(original, instructions string) string {
 		return ""
 	}
 	// 너무 많이 걸리면 창을 좁혀 다시 고른다. 포기하고 통째로 넘기면
-	// 프롬프트가 창을 넘어 400 이 난다(실측 13,997/8,192 토큰).
-	if len(keep) > regionMaxLines {
-		keep = narrowTo(lines, wanted, regionMaxLines)
+	// 프롬프트가 창을 넘어 400 이 난다.
+	if len(keep) > maxLines {
+		keep = narrowTo(lines, wanted, maxLines)
 		if len(keep) == 0 {
 			return ""
 		}
