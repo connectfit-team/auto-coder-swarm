@@ -78,10 +78,26 @@ func NewFeatureBrief(request, knowledge string, candidates []string, addsState b
 	if addsState {
 		b.WriteString("**없는 것이 당연하다 — 그것을 만들라고 온 일이다.**\n")
 	}
-	b.WriteString("그러니 **고칠 자리를 찾지 말고, 가장 비슷한 기존 코드를 본떠 새로 만든다.**\n\n")
+	// **본뜰 것과 고칠 것을 섞지 않는다.**
+	//
+	// "가장 비슷한 기존 코드를 본떠 새로 만든다" 는 소비하는 저장소에 맞는
+	// 말이다. 계약 저장소에서는 그 "비슷한 코드" 가 바로 **고쳐야 할 파일**
+	// 인데, 본뜨라고 하면 그 옆에 같은 것을 하나 더 만든다 — 실측으로 있는
+	// service 옆에 새 service 가 생겼다.
+	editInPlace := addsState && len(candidates) > 0
+	if editInPlace {
+		b.WriteString("그러니 **아래 「고칠 파일」 을 고쳐서 담을 자리를 만든다.**\n")
+		b.WriteString("본뜨는 것이 아니다 — 그 파일 자체를 고친다.\n\n")
+	} else {
+		b.WriteString("그러니 **고칠 자리를 찾지 말고, 가장 비슷한 기존 코드를 본떠 새로 만든다.**\n\n")
+	}
 	b.WriteString("지켜야 할 것:\n")
 	b.WriteString("1. 원문에 있는 코드만 닻으로 쓴다. 없는 함수·타입을 찾으라고 하면 그 자리는 버려진다.\n")
-	b.WriteString("2. 새 파일을 만들어도 된다. 다만 그 폴더는 실제로 있어야 한다.\n")
+	if editInPlace {
+		b.WriteString("2. **새 파일을 만들지 않는다.** 담을 자리는 아래 파일 안에 만든다.\n")
+	} else {
+		b.WriteString("2. 새 파일을 만들어도 된다. 다만 그 폴더는 실제로 있어야 한다.\n")
+	}
 	b.WriteString("3. 이름·구조는 같은 저장소의 이웃 코드와 같은 꼴로 맞춘다.\n")
 	// **넘길 곳이 여기면 넘기지 않는다.**
 	//
@@ -104,7 +120,11 @@ func NewFeatureBrief(request, knowledge string, candidates []string, addsState b
 		b.WriteString("요청의 뜻이 갈리면 지어내지 말고 사람에게 넘긴다고 적는다.\n")
 	}
 	if len(candidates) > 0 {
-		b.WriteString("\n[본뜰 만한 이웃 코드]\n")
+		if editInPlace {
+			b.WriteString("\n[고칠 파일 — 이 안에서 고른다]\n")
+		} else {
+			b.WriteString("\n[본뜰 만한 이웃 코드]\n")
+		}
 		for i, c := range candidates {
 			if i >= 12 {
 				break
