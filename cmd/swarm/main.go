@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
@@ -120,8 +121,18 @@ func taskWorker(id int, orc *orchestrator.SwarmOrchestrator, store *storage.Stor
 				store.UpdateTaskStatus(task.ID, storage.StatusFailed, "", err.Error())
 			}
 		} else if res.WaitingApproval {
-			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, "", "")
-			sendToSlack(slackWebhook, fmt.Sprintf("⏳ *Task %s 검증 완료*: 승인이 필요합니다.", task.ID))
+			// **승인 대기에도 결과를 남긴다.**
+			//
+			// 여기서 ""  를 넘겨 버리고 있었다. 그래서 계약 저장소 일이 승인을
+			// 기다리며 멈출 때 화면에 **다음 걸음이 비어** 있었다 — 이 저장소는
+			// 밀어서 펴내는 것이 아니라 protogen 에서 make push-*apis 로
+			// 펴낸다는 사실이 어디에도 안 보였다(실측 W-13896).
+			store.UpdateTaskStatus(task.ID, storage.StatusWaitingApproval, res.Result, "")
+			note := "⏳ *Task %s 검증 완료*: 승인이 필요합니다."
+			if strings.TrimSpace(res.Result) != "" {
+				note += "\n" + res.Result
+			}
+			sendToSlack(slackWebhook, fmt.Sprintf(note, task.ID))
 		} else {
 			sendToSlack(slackWebhook, fmt.Sprintf("✅ *Task %s 성공!*\n📍 *Repo*: %s\n🔗 *결과*: %s", task.ID, res.RepoName, res.Result))
 			store.UpdateTaskStatus(task.ID, storage.StatusCompleted, res.Result, "")
