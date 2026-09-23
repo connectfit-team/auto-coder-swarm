@@ -227,7 +227,7 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 	if whole := CleanCodeOutput(raw); shown == original && looksLikeWholeFile(original, whole) {
 		return whole, nil
 	}
-	return "", fmt.Errorf("%s: %w", filepath.Base(filePath), err)
+	return "", &editBlockProblem{fmt.Errorf("%s: %w", filepath.Base(filePath), err)}
 }
 
 func (a *CoderAgent) GenerateTestFile(ctx context.Context, sourcePath string) (string, error) {
