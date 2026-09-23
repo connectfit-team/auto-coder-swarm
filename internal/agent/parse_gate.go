@@ -38,6 +38,9 @@ func CheckSyntax(path, content string) error {
 	if strings.TrimSpace(content) == "" {
 		return &ParseError{Path: path, Msg: "빈 내용이다"}
 	}
+	if strings.HasSuffix(path, ".proto") {
+		return checkProtoSyntax(path, content)
+	}
 	if !strings.HasSuffix(path, ".go") {
 		return nil
 	}
