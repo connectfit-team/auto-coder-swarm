@@ -60,3 +60,18 @@ func apisAndRest(generated string) (apis, rest string) {
 	apis = strings.TrimPrefix(rest[:i], "proto-")
 	return apis, rest[i+1:]
 }
+
+// howToPublishRepo 는 계약 저장소 이름에서 펴내는 법을 만든다.
+//
+// 계약을 고친 일이 승인을 기다리며 멈추면 결과가 비어 있었다. 사람이 볼
+// 화면에 **다음 걸음**이 없는 것이다 — 이 저장소는 밀어서 펴내는 것이 아니라
+// protogen 에서 make 로 펴낸다는 사실이 코드 어디에도 안 적혀 있다.
+func howToPublishRepo(repoName string) string {
+	apis := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(repoName)), "proto-")
+	if apis == "" || apis == strings.ToLower(strings.TrimSpace(repoName)) {
+		return ""
+	}
+	return "이 계약은 밀어서 펴내지 않는다. **protogen 에서 `make push-" + apis + "`** 를 돌리면\n" +
+		"컴파일하고 커밋·푸시까지 한다. 소비하는 저장소는 그 뒤에 go get 한다.\n" +
+		"protoc 를 직접 돌리거나 생성물(*.pb.go·생성된 .ts)을 손으로 커밋하지 않는다."
+}

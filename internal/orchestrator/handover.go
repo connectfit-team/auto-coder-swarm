@@ -108,5 +108,11 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 		return RunResult{RepoName: t.targetRepo, Result: url}, true
 	}
 
-	return RunResult{RepoName: t.targetRepo, WaitingApproval: true}, true
+	// 계약 저장소는 승인 뒤에도 밀어서 펴내는 것이 아니다. 사람이 볼 화면에
+	// 다음 걸음을 적어 둔다 — 비워 두면 여기서 일이 멈춘다.
+	return RunResult{
+		RepoName:        t.targetRepo,
+		Result:          howToPublishRepo(t.targetRepo),
+		WaitingApproval: true,
+	}, true
 }
