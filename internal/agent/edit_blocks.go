@@ -136,6 +136,38 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		folded = len(at) > 0
 	}
 
+	// **모델이 진짜 줄바꿈 대신 `\n` 을 적어 보낸 경우.**
+	//
+	// 흔하다. 그러면 원문과는 영영 안 맞는다. 펴서 한 번 더 본다.
+	if len(at) == 0 {
+		if un := unescapeLiterals(search); un != search {
+			unLines := trimEach(strings.Split(strings.TrimRight(un, "\n"), "\n"))
+			if a := findTrimmed(srcLines, unLines, normalizePunct); len(a) > 0 {
+				at, wantLines, folded = a, unLines, true
+			}
+		}
+	}
+
+	// **여기부터는 닮은 정도로 찾는다 — 딱 하나일 때만 쓴다.**
+	//
+	// hermes 가 그렇게 한다: 「approximately resemble old_string — fine for one
+	// unique replacement, never safe under replace_all」. 비슷한 자리 여럿을
+	// 한꺼번에 바꾸면 엉뚱한 곳이 함께 바뀐다.
+	approx := ""
+	if len(at) == 0 {
+		if a := blockAnchorAt(srcLines, wantLines); len(a) == 1 {
+			at, approx = a, "앞뒤 줄을 닻으로 삼고 가운데를 닮은 정도로 맞췄다"
+		}
+	}
+	if len(at) == 0 {
+		if a := contextAwareAt(srcLines, wantLines); len(a) == 1 {
+			at, approx = a, "줄마다 닮은 정도로 맞췄다(0.80 이상)"
+		}
+	}
+	if approx != "" {
+		lastApproxRung = approx
+	}
+
 	switch {
 	case len(at) == 0:
 		// 줄바꿈까지 다를 수 있다. 분석이 코드를 한 줄로 펴서 적어 주면
@@ -150,7 +182,9 @@ func replaceLoosely(src, search, replace string) (string, error) {
 	for i := range spans {
 		spans[i] = len(wantLines)
 	}
-	if folded {
+	// 정확히 안 맞은 자리에 넣을 때는 원문 글자를 되살린다. 닮은 정도로 찾은
+	// 자리도 마찬가지다 — 그쪽이 더 다르다.
+	if folded || approx != "" {
 		replace = restorePunct(srcLines[at[0]:at[0]+len(wantLines)], replace)
 	}
 	return spliceAll(srcLines, at, spans, replace), nil
@@ -198,6 +232,19 @@ var appendedNote string
 
 // AppendedNote 는 방금 붙인 선언에 대한 말을 준다.
 func AppendedNote() string { return appendedNote }
+
+// lastApproxRung 은 마지막으로 **닮은 정도**로 자리를 찾았을 때의 말이다.
+//
+// 이 단들은 사다리에서 가장 위험하다 — 정확히 맞지 않은 자리에 넣는다.
+// 조용히 지나가면 안 되므로 로그에 남긴다.
+var lastApproxRung string
+
+// LastApproxRung 은 그 말을 주고 비운다. 한 번만 알린다.
+func LastApproxRung() string {
+	s := lastApproxRung
+	lastApproxRung = ""
+	return s
+}
 
 func replaceFlattened(srcLines []string, search, replace string) (string, error) {
 	want := flattenCode(search)
