@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -29,11 +30,10 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 	if filepath.Ext(file) != ".proto" || maxPairs <= 0 {
 		return ""
 	}
-	b, err := os.ReadFile(filepath.Join(repoPath, file))
-	if err != nil {
+	src := protoAtHead(repoPath, file)
+	if src == "" {
 		return ""
 	}
-	src := string(b)
 	blocks := protoBlocks(src)
 
 	var out []string
@@ -68,11 +68,10 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 // 시도를 다 쓰고 죽었다). 새 service 는 쓰는 쪽이 부르지 않으므로 조용히
 // 아무 일도 일어나지 않는다.
 func protoServiceExample(repoPath, file string) string {
-	b, err := os.ReadFile(filepath.Join(repoPath, file))
-	if err != nil {
+	src := protoAtHead(repoPath, file)
+	if src == "" {
 		return ""
 	}
-	src := string(b)
 	m := protoServiceRe.FindStringSubmatchIndex(src)
 	if m == nil {
 		return ""
@@ -121,11 +120,11 @@ func protoEnumExample(repoPath, file string) string {
 		}
 	}
 	for _, p := range paths {
-		b, err := os.ReadFile(p)
+		rel, err := filepath.Rel(repoPath, p)
 		if err != nil {
 			continue
 		}
-		if shown := firstEnumDigest(string(b)); shown != "" {
+		if shown := firstEnumDigest(protoAtHead(repoPath, rel)); shown != "" {
 			return "[이 계약이 enum 을 쓰는 꼴 — 0 번은 반드시 「정해지지 않음」 이다]\n" +
 				shown +
 				"0 번에 뜻을 넣으면 여태 있던 것이 모두 그 값으로 읽힌다.\n\n"
@@ -186,4 +185,24 @@ func protoBlocks(src string) map[string]string {
 		}
 	}
 	return blocks
+}
+
+// protoAtHead 는 **고치기 전**의 그 파일을 준다.
+//
+// 작업 트리에서 읽으면 안 된다. 관문에 막혀 다시 시킬 때 트리에는 앞 시도의
+// 수정이 그대로 남아 있으므로(고친 것을 버리지 않는다), 이웃 예시로 **모델이
+// 제 실수를 내밀게 된다** — 앞 시도에서 잘못 만든 메시지를 이 계약의 관행인
+// 양 본떠 쓰게 된다.
+//
+// HEAD 를 못 읽으면 트리에서 읽는다. 예시가 아예 없는 것보다는 낫다.
+func protoAtHead(repoPath, rel string) string {
+	out, err := exec.Command("git", "-C", repoPath, "show", "HEAD:"+rel).Output()
+	if err == nil && len(out) > 0 {
+		return string(out)
+	}
+	b, err := os.ReadFile(filepath.Join(repoPath, rel))
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
