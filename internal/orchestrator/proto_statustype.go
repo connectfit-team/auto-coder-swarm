@@ -33,6 +33,21 @@ var (
 // 없는 것을 새로 들일 때만 문다. 어느 계약이 string 을 쓰고 있다면 그 계약에
 // 서는 아무 말도 하지 않는다.
 func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
+	// **새로 넣은 것은 습관에서 뺀다.**
+	//
+	// 관문이 도는 자리에서 작업 트리에는 **이미 이번 수정이 들어가 있다.**
+	// 그대로 세면 새 필드가 자기 자신을 습관으로 투표한다 — 실측 W-65042 가
+	// `string status = 15` 를 넣고 그 한 표로 빠져나갔다.
+	adding := map[string]int{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if t, n, ok := protoField(line[1:]); ok && reStateFieldName.MatchString(n) {
+			adding[t]++
+		}
+	}
+
 	habit := map[string]int{}
 	forEachProto(repoPath, func(rel, src string) {
 		for _, line := range strings.Split(src, "\n") {
@@ -41,6 +56,11 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 			}
 		}
 	})
+	for t, n := range adding {
+		if habit[t] -= n; habit[t] <= 0 {
+			delete(habit, t)
+		}
+	}
 	// 표본이 너무 적으면 그것은 습관이 아니다. 한두 자리를 보고 단정하면
 	// 멀쩡한 수정을 물게 된다.
 	total := 0
@@ -61,7 +81,7 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 			continue
 		}
 		out = append(out, guard.Violation{
-			Why: fmt.Sprintf("%s 를 %s 로 넣었다 — 이 계약은 상태·유형을 그 타입으로 담지 않는다", n, t),
+			Why: fmt.Sprintf("%s 를 %s 로 넣었다 — 이 계약은 상태를 그 타입으로 담지 않는다", n, t),
 			Evidence: []string{
 				"이 계약이 실제로 쓰는 것: " + habitNote(habit),
 				"값이 굳지 않으면 부르는 쪽마다 다른 것을 넣는다. 위 가운데서 골라 쓰거나 enum 을 만들어라.",
