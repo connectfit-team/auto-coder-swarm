@@ -126,6 +126,9 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 		where += fmt.Sprintf("**%s 는 이미 있다. 그것을 고쳐라 — 같은 이름으로 새로 만들지 마라.**\n", msg)
 	}
 	where += protoConvention(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
+	// 이미 무엇이 있는지 보여 준다. 자식이 「이미 있는지 확인하지 못했다」 로
+	// 죽지 않게 — 모델이 뒤져서 알아낼 일이 아니라 세어서 주면 되는 것이다.
+	where += protoOutline(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(
 			"%s 저장소에 이것을 더해라: %s\n%s"+
