@@ -138,7 +138,14 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 				"[배경] %s 에서 「%s」 를 만들려는데 담을 자리가 없어 막혔다.",
 			owner, strings.Join(missing, ", "), where,
 			t.targetRepo, strings.TrimSpace(t.req.UserRequest)),
-		TargetRepo:   owner,
+		TargetRepo: owner,
+		// **짚어 둔 파일을 실어 보낸다.**
+		//
+		// 글로만 적어 보냈더니 자식이 요청문에서 경로를 **다시 알아맞혔고**
+		// 엉뚱한 파일을 골랐다(실측 W-20646: connect.communication.proto 대신
+		// message.proto). 여기서 이미 정확히 알고 있는 것을 모델에게 다시
+		// 물을 까닭이 없다.
+		TargetFiles:  nonEmptyUnique(msgPath, svcPath),
 		AddsState:    true,
 		Depth:        t.req.Depth - 1,
 		ParentRepos:  append(t.req.ParentRepos, t.targetRepo),
@@ -223,4 +230,17 @@ func protoConvention(repoPath, msgPath, svcPath string) string {
 		return ""
 	}
 	return "[이 계약의 관행]\n" + strings.Join(out, "\n") + "\n"
+}
+
+// nonEmptyUnique 는 빈 것과 겹치는 것을 뺀 목록이다.
+func nonEmptyUnique(paths ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range paths {
+		if p = strings.TrimSpace(p); p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
 }
