@@ -26,8 +26,8 @@ type SkillDoc = insightclient.SkillDoc
 //  2. **넣어도 안 지킨다.** 그래서 기계로 검사할 수 있는 항목은 검사한다
 //     (checkProcedureViolations).
 
-// 컨텍스트가 8192 토큰뿐이다. 코더 프롬프트에는 파일 본문이 통째로 들어가므로
-// 절차 블록이 커지면 정작 고쳐야 할 코드가 잘린다.
+// 코더 프롬프트에는 파일 본문도 들어간다(창 예산은 agent.InputTokenBudget).
+// 절차 블록이 커지면 그만큼 고쳐야 할 코드가 적게 보인다.
 const (
 	skillBudgetCoder  = 1500 // 프롬프트에는 파일 본문도 들어간다
 	skillBudgetPerDoc = 500

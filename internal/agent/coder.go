@@ -60,10 +60,6 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 	return fmt.Sprintf("Repaired %s", filePath), nil
 }
 
-// 코더에게 한 번에 보여 줄 코드의 상한. 창이 8,192 토큰이라 이보다 크면
-// 지시문·형식 설명과 합쳐 창을 넘긴다.
-const maxShownChars = 4500
-
 func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
@@ -156,7 +152,7 @@ func (a *CoderAgent) rewriteWholeFile(ctx context.Context, filePath, original, i
 
 // editByBlocks 는 큰 파일을 **고칠 자리만** 받아서 고친다.
 //
-// 창이 8,192 토큰이라 536줄짜리 파일을 넣고 다시 전부 출력하게 하면 반드시
+// 출력 몫이 4,096 토큰이라 536줄짜리 파일을 넣고 다시 전부 출력하게 하면 반드시
 // 잘린다. 원본은 읽히기만 하면 되므로 입력에는 들어가고, 출력은 바꿀 자리만
 // 받으면 짧다. 어디를 고치는지도 기계로 확인된다.
 func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instructions string) (string, error) {
@@ -165,15 +161,30 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 	// 426줄을 통째로 읽히고 "고칠 자리만 내라" 고 했더니 형식을 무시하고
 	// 잘린 파일을 냈다. 지시문에 나온 이름이 있는 줄 둘레만 보여 주면
 	// 볼 것이 줄고 어디를 고칠지가 분명해진다.
+	// **파일의 뼈대를 함께 준다.** (아래 설명 참고)
+	outline := FileOutline(filePath, original)
+
+	// **보여 줄 양을 예산에서 역산한다.**
+	//
+	// 오래 140줄로 박혀 있었다. 그래서 구조체 선언이 창에 안 들어와 없는
+	// 필드를 지어냈고(실측 W-49301), 그걸 FileOutline 으로 덧댔다. 창은
+	// 실제로 16,384 이고 남는 자리가 있다 — 남는 만큼 더 보여 준다.
+	rest := a.conventions + outline + instructions + editBlockRules
+	room := InputTokenBudget() - EstimateTokens(rest) - pastContextReserve()
+	// 절차·뼈대·지시문이 예산을 다 먹어도 코드는 보여 줘야 한다. 그것이 없으면
+	// 모델이 고칠 것을 못 본다 — 창을 조금 넘기는 편이 낫다.
+	if room < minShownTokens {
+		room = minShownTokens
+	}
+
 	shown, note := original, "[Original Code: "+filePath+"]"
-	if r := relevantRegions(original, instructions); r != "" {
+	if r := relevantRegionsWithin(original, instructions, linesForBudget(original, room)); r != "" {
 		shown = r
 		note = "[관련 부분만 보여 준다. 앞의 숫자는 줄 번호이니 SEARCH 에는 빼고 적어라: " + filePath + "]"
 	}
-	// **창을 넘기면 아예 답이 안 온다.** 실측으로 13,997 토큰을 보내 400 이
-	// 났다. 관련 부분을 못 좁힌 경우가 그렇다. 글자 수로 마지막 빗장을 건다.
-	if r := []rune(shown); len(r) > maxShownChars {
-		shown = string(r[:maxShownChars]) + "\n... (이 뒤는 생략됨)"
+	// **창을 넘기면 아예 답이 안 온다.** 마지막 빗장은 글자 수가 아니라 토큰이다.
+	if clipped, cut := ClipToTokens(shown, room); cut {
+		shown = clipped + "\n... (이 뒤는 생략됨)"
 		note = "[파일 앞부분만 보여 준다: " + filePath + "]"
 	}
 
@@ -181,12 +192,9 @@ func (a *CoderAgent) editByBlocks(ctx context.Context, filePath, original, instr
 	//
 	// 앞에 두었더니 9B 가 코드를 읽는 동안 잊고 코드 리뷰 에세이를 썼다.
 	// 모델은 끝에 있는 말을 더 잘 지킨다. 시작 글자까지 못 박는다.
-	// **파일의 뼈대를 함께 준다.**
 	//
-	// 관련 부분만 보여 주면 그 창에 구조체 선언과 이미 있는 메서드가 안
-	// 들어온다. 그래서 없는 필드(c.repo)와 이미 있는 이름을 지어낸다
-	// (실측 W-49301). 뼈대는 짧고, 그것만 있으면 지어낼 이유가 없다.
-	outline := FileOutline(filePath, original)
+	// 뼈대(outline)는 관련 부분만 보여 줄 때 구조체 선언이 빠지는 것을 메운다.
+	// 짧고, 그것만 있으면 이름을 지어낼 이유가 없다.
 	prompt := fmt.Sprintf("%s%s%s\n%s\n\n[고쳐야 할 것]\n%s\n\n%s",
 		a.conventions, outline,
 		note, shown, instructions, editBlockRules)

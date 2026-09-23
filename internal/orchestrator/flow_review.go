@@ -103,7 +103,7 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 		}
 	}
 
-	// 컨텍스트가 8,192 토큰이다. diff 와 벤치 출력이 그걸 넘기면 모델이
+	// 창은 16,384 토큰이다. diff 와 벤치 출력이 그걸 넘기면 모델이
 	// 빈 응답을 낸다 — 그게 거절로 읽혀 작업이 통째로 버려졌다.
 	reviewInput := fmt.Sprintf("DIFF:\n%s\n\nPRE-BENCH:\n%s\n\nPOST-BENCH:\n%s%s",
 		clip(t.finalDiff, 6000), clip(t.preBench, 800), clip(t.postBench, 800), securityFeedback.String())

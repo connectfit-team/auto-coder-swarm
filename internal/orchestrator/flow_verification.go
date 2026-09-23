@@ -84,7 +84,7 @@ func (t *taskContext) stepVerification() (bool, error) {
 		// **경고를 걷어내고 오류만 넘긴다.**
 		//
 		// vite 는 손대지도 않은 파일의 A11y 경고를 앞에 잔뜩 찍는다. 그 앞부분이
-		// 그대로 치유기에 들어가서, 8,192 토큰이 경고로 차고 진짜 오류는 잘려
+		// 그대로 치유기에 들어가서, 창이 경고로 차고 진짜 오류는 잘려
 		// 나갔다. 기준 빌드는 같은 경고를 달고도 통과했으니 그건 원인이 아니다.
 		failure := distillBuildError(string(buildOut))
 
