@@ -294,7 +294,13 @@ func (t *taskContext) prepareAnalysis() error {
 	if why, notFound := AnalysisSaysNotFound(res); notFound {
 		// **새로 만들라는 요청에는 "못 찾았다" 가 당연하다.** 없으니까
 		// 만드는 것이다. 거기서 멈추면 시킨 일을 아예 못 한다.
-		if IsNewFeatureRequest(t.req.UserRequest) {
+		//
+		// AddsState 를 먼저 본다. 그 일은 **담을 자리를 만드는 일**이라고
+		// 부모가 이미 표시해 둔 것이므로, 요청문의 낱말로 다시 알아맞힐
+		// 까닭이 없다. 실제로 이어진 일의 요청문은 우리가 쓴 "…저장소에
+		// 이것을 더해라" 인데 「더해라」가 newFeatureRe 에 없어 고장 수리로
+		// 분류됐고, 계약을 고치는 일이 여기서 통째로 죽었다(실측 W-99175).
+		if t.req.AddsState || IsNewFeatureRequest(t.req.UserRequest) {
 			t.newFeature = true
 			brief := NewFeatureBrief(t.req.UserRequest, t.ckhKnowledge, t.actionablePath)
 			t.analysis = brief + "\n[분석이 확인한 것]\n" + res
