@@ -129,6 +129,29 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 				"고르지 못해 따라간 계약을 쓴다", why, c.contract)
 			return t.resolveTracedOwner(c)
 		}
+		// **못 가르면 따라간 것 안에서 다시 고른다.**
+		//
+		// 차림표를 다 보이는 것은 일부러다 — 미리 좁히면 계획이 빗나간 회차에
+		// 후보가 통째로 사라진다. 그런데 이 모델은 계약을 줄 세우지 못해서
+		// 실측으로 **후보 18개가 모두 2점**이 나왔다(W-42583). 그 뒤는 타입을
+		// 묻는 길인데, 거기서 ConnectionInfo → ceo.service.proto 라는 엉뚱한
+		// 답이 나왔다. 정답은 ReceivedRequest → connect 쪽이다.
+		//
+		// 따라간 것은 **파일에 적힌 사실**이다. 못 가른 자리에서는 그 사실로
+		// 가른다 — 미리 좁히는 것이 아니라, 안 갈린 뒤에 쓰는 가늠자다.
+		if !rejected && len(traced) > 1 {
+			sub, subEv := tracedSubset(traced, seen, ev)
+			if len(sub) > 1 {
+				if p2, why2, _ := t.pickContractAmong(sub, subEv, missing); p2 != "" {
+					c := seen[p2]
+					c.why = fmt.Sprintf("%s · %s", c.why, why2)
+					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_TRACED",
+						fmt.Sprintf("차림표 %d개가 안 갈려 따라간 %d개 안에서 골랐다", len(order), len(sub)),
+						why2, p2)
+					return t.resolveTracedOwner(c)
+				}
+			}
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_NONE",
 			"계약을 고르지 못해 타입을 묻는다", why, "")
 	}
@@ -183,4 +206,25 @@ func (t *taskContext) resolveTracedOwner(c tracedContract) (string, string) {
 		return "", fmt.Sprintf("%s 가 이 시스템에 없다 — 사본을 받아야 한다 (%s)", c.owner, c.why)
 	}
 	return c.owner, c.why
+}
+
+// tracedSubset 은 따라가 닿은 것만 추려 다시 고를 차림표를 만든다.
+//
+// 차례를 못 박아 둔다 — 같은 입력에 같은 차림표가 나와야 회차마다 답이
+// 흔들리지 않는다.
+func tracedSubset(traced []string, seen map[string]tracedContract, ev map[string]string) ([]string, map[string]string) {
+	sub := make([]string, 0, len(traced))
+	subEv := make(map[string]string, len(traced))
+	for _, k := range traced {
+		if _, ok := seen[k]; !ok {
+			continue
+		}
+		if _, dup := subEv[k]; dup {
+			continue
+		}
+		sub = append(sub, k)
+		subEv[k] = ev[k]
+	}
+	sort.Strings(sub)
+	return sub, subEv
 }
