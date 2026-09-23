@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -123,6 +125,7 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 	if msg != "" {
 		where += fmt.Sprintf("**%s 는 이미 있다. 그것을 고쳐라 — 같은 이름으로 새로 만들지 마라.**\n", msg)
 	}
+	where += protoConvention(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(
 			"%s 저장소에 이것을 더해라: %s\n%s"+
@@ -153,4 +156,68 @@ func protoFileDeclaring(repoPath, message string) string {
 		}
 	})
 	return found
+}
+
+// protoConvention 은 그 계약이 지켜 온 이름 관행을 세어서 알려 준다.
+//
+// 자식이 되풀이해 이 저장소에 없는 모양을 만들었다 — service ConnectService
+// 를 새로 만들고(모든 꾸러미의 서비스는 Internal 하나뿐이다), 메시지를
+// XxxRequest 접미형으로 지었다(이 계약은 RequestXxx 접두형이 201개,
+// 접미형이 5개다). 새 서비스는 아무도 구현하지 않으므로 그대로 펴내면
+// 부르는 쪽이 unimplemented 로 죽는다.
+//
+// 관행은 물어볼 것이 아니라 세면 되는 것이다.
+func protoConvention(repoPath, msgPath, svcPath string) string {
+	if repoPath == "" {
+		return ""
+	}
+	dirs := map[string]bool{}
+	for _, p := range []string{msgPath, svcPath} {
+		if p != "" {
+			dirs[path.Dir(p)] = true
+		}
+	}
+
+	services := map[string]int{}
+	pre, suf := 0, 0
+	forEachProto(repoPath, func(rel, src string) {
+		if len(dirs) > 0 && !dirs[path.Dir(rel)] {
+			return
+		}
+		for _, m := range reServiceDecl.FindAllStringSubmatch(src, -1) {
+			services[m[1]]++
+		}
+		for _, m := range reProtoDecl.FindAllStringSubmatch(src, -1) {
+			if m[1] != "message" {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(m[2], "Request"), strings.HasPrefix(m[2], "Response"):
+				pre++
+			case strings.HasSuffix(m[2], "Request"), strings.HasSuffix(m[2], "Response"):
+				suf++
+			}
+		}
+	})
+
+	var out []string
+	if len(services) == 1 {
+		for name := range services {
+			out = append(out, fmt.Sprintf("이 계약의 서비스는 %s 하나뿐이다 — **새 서비스를 만들지 말고 그 안에 rpc 를 더해라.** 새 서비스는 아무도 구현하지 않는다.", name))
+		}
+	} else if len(services) > 1 {
+		var names []string
+		for name := range services {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		out = append(out, fmt.Sprintf("이 계약의 서비스는 %s 다 — 그 가운데 하나에 rpc 를 더해라.", strings.Join(names, " · ")))
+	}
+	if pre+suf > 0 && pre > suf*2 {
+		out = append(out, fmt.Sprintf("메시지 이름은 RequestXxx·ResponseXxx 접두형이다(%d개, 접미형 %d개).", pre, suf))
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return "[이 계약의 관행]\n" + strings.Join(out, "\n") + "\n"
 }
