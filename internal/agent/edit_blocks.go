@@ -194,6 +194,7 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		return "", fmt.Errorf("찾을 내용이 비었다")
 	}
 
+	folded := false
 	at := findTrimmed(srcLines, wantLines, func(s string) string { return s })
 	if len(at) == 0 {
 		// **문장부호를 고른 꼴로 맞춰 한 번 더 본다.**
@@ -202,6 +203,7 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		// 받아 적는다. 글자 하나 때문에 「원문에 없는 줄」 이 된다.
 		// codex 도 마지막 단에서 같은 것을 한다(seek_sequence.rs).
 		at = findTrimmed(srcLines, wantLines, normalizePunct)
+		folded = len(at) > 0
 	}
 
 	switch {
@@ -218,7 +220,42 @@ func replaceLoosely(src, search, replace string) (string, error) {
 	for i := range spans {
 		spans[i] = len(wantLines)
 	}
+	if folded {
+		replace = restorePunct(srcLines[at[0]:at[0]+len(wantLines)], replace)
+	}
 	return spliceAll(srcLines, at, spans, replace), nil
+}
+
+// restorePunct 는 문장부호만 다른 줄을 원문 글자로 되돌린다.
+//
+// 문장부호를 고른 꼴로 맞춰 **찾은** 자리에는 모델이 낸 줄이 그대로 들어간다.
+// 그런데 모델이 —·「」·… 를 -·""·... 로 받아 적었기 때문에 그 자리가 맞은
+// 것이므로, 손대려 하지 않은 줄까지 그 꼴로 덮어써진다. 빌드도 lostExports 도
+// 이것은 못 잡는다 — 한글 문구라면 사용자에게 보이는 글자가 조용히 바뀐다.
+//
+// 그래서 바꿀 줄이 원문의 어느 줄과 **문장부호만 빼고 같으면** 원문 글자를
+// 쓴다. 들여쓰기는 모델의 것을 둔다 — 그건 일부러 바꿨을 수 있다.
+func restorePunct(origSpan []string, replace string) string {
+	byFold := make(map[string]string, len(origSpan))
+	for _, ln := range origSpan {
+		t := strings.TrimSpace(ln)
+		if t != "" {
+			byFold[normalizePunct(t)] = t
+		}
+	}
+	lines := strings.Split(replace, "\n")
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if t == "" {
+			continue
+		}
+		orig, ok := byFold[normalizePunct(t)]
+		if !ok || orig == t {
+			continue
+		}
+		lines[i] = ln[:len(ln)-len(strings.TrimLeft(ln, " \t"))] + orig
+	}
+	return strings.Join(lines, "\n")
 }
 
 // replaceFlattened 는 줄바꿈까지 무시하고 바꾼다.
