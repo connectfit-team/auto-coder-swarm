@@ -36,7 +36,7 @@ func TestIsNewFeatureRequest(t *testing.T) {
 }
 
 func TestNewFeatureBrief(t *testing.T) {
-	b := NewFeatureBrief("연결보류 기능 추가", "연결하는 건 일단 보류하기로 했는데", []string{"internal_v2/business/connect.go"})
+	b := NewFeatureBrief("연결보류 기능 추가", "연결하는 건 일단 보류하기로 했는데", []string{"internal_v2/business/connect.go"}, false)
 	for _, must := range []string{
 		"새로 만드는 일이다",
 		"본떠",             // 무에서 지어내지 말라는 것이 핵심
@@ -50,7 +50,7 @@ func TestNewFeatureBrief(t *testing.T) {
 		}
 	}
 	// 지식이 없으면 그 사실을 적어야 한다.
-	if !strings.Contains(NewFeatureBrief("x 추가", "", nil), "사내지식을 못 받았다") {
+	if !strings.Contains(NewFeatureBrief("x 추가", "", nil, false), "사내지식을 못 받았다") {
 		t.Error("지식 없이 설계하는 것을 안 알린다")
 	}
 }

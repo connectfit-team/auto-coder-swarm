@@ -302,7 +302,7 @@ func (t *taskContext) prepareAnalysis() error {
 		// 분류됐고, 계약을 고치는 일이 여기서 통째로 죽었다(실측 W-99175).
 		if t.req.AddsState || IsNewFeatureRequest(t.req.UserRequest) {
 			t.newFeature = true
-			brief := NewFeatureBrief(t.req.UserRequest, t.ckhKnowledge, t.actionablePath)
+			brief := NewFeatureBrief(t.req.UserRequest, t.ckhKnowledge, t.actionablePath, t.req.AddsState)
 			t.analysis = brief + "\n[분석이 확인한 것]\n" + res
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NEW_FEATURE",
 				"없는 기능을 새로 만드는 일이다 — 이웃 코드를 본떠 만든다", "", brief)

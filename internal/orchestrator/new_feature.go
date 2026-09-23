@@ -71,16 +71,30 @@ func CoderNewFeatureHint() string {
 //
 // 프롬프트에 그대로 실린다. 「본떠 만들라」 가 핵심이다 — 무에서 지어내면
 // 없는 이름을 부르는 코드가 나온다.
-func NewFeatureBrief(request, knowledge string, candidates []string) string {
+func NewFeatureBrief(request, knowledge string, candidates []string, addsState bool) string {
 	var b strings.Builder
 	b.WriteString("[새로 만드는 일이다]\n")
 	b.WriteString("이 저장소에 그 기능은 아직 없다. 분석이 못 찾은 것이 맞다.\n")
+	if addsState {
+		b.WriteString("**없는 것이 당연하다 — 그것을 만들라고 온 일이다.**\n")
+	}
 	b.WriteString("그러니 **고칠 자리를 찾지 말고, 가장 비슷한 기존 코드를 본떠 새로 만든다.**\n\n")
 	b.WriteString("지켜야 할 것:\n")
 	b.WriteString("1. 원문에 있는 코드만 닻으로 쓴다. 없는 함수·타입을 찾으라고 하면 그 자리는 버려진다.\n")
 	b.WriteString("2. 새 파일을 만들어도 된다. 다만 그 폴더는 실제로 있어야 한다.\n")
 	b.WriteString("3. 이름·구조는 같은 저장소의 이웃 코드와 같은 꼴로 맞춘다.\n")
-	b.WriteString("4. proto 메시지·필드가 필요하면 코드에 지어내지 말고 사람에게 넘긴다고 적는다.\n")
+	// **넘길 곳이 여기면 넘기지 않는다.**
+	//
+	// 4번은 소비하는 저장소(웹 따위)에 맞는 말이다. 계약 저장소에서 그대로
+	// 읽히면 제 일을 남에게 다시 넘기게 된다 — 그러라고 만든 이어진 일인데
+	// 그 자리에서 또 멈춘다.
+	if addsState {
+		b.WriteString("4. **담을 자리를 만드는 것이 이 일이다.** 필요한 메시지·필드·RPC 를 여기서 더한다.\n")
+		b.WriteString("   남에게 넘기지 마라 — 넘길 곳이 여기다.\n")
+		b.WriteString("   있던 메시지는 고쳐 쓰고 같은 이름으로 새로 만들지 않는다. 있던 필드 번호는 건드리지 않는다.\n")
+	} else {
+		b.WriteString("4. proto 메시지·필드가 필요하면 코드에 지어내지 말고 사람에게 넘긴다고 적는다.\n")
+	}
 	if knowledge != "" {
 		b.WriteString("\n[사내지식 — 이 말이 요청의 뜻을 정한다]\n")
 		b.WriteString(clip(knowledge, 2500))
