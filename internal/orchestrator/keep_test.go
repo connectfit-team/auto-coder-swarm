@@ -1,22 +1,29 @@
 package orchestrator
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestKeepRejectedDiff(t *testing.T) {
-	tc := &taskContext{}
-
-	// 반려 직전의 고침을 남긴다.
-	tc.finalDiff = "diff --git a/x.ts b/x.ts\n-lt\n+lte\n"
-	tc.keepRejectedDiff()
-	if tc.lastRejectedDiff != tc.finalDiff {
-		t.Error("되돌리기 전에 고침을 안 남겼다")
+// 계약 수정은 대개 대부분 맞고 한두 가지가 틀리다. 통째로 되돌리면 맞게
+// 한 것까지 사라져 다음 시도가 처음부터 간다.
+func TestProtoGateKeepsWhatWasFixed(t *testing.T) {
+	src := readSource(t, "handover.go")
+	i := strings.Index(src, "CheckProtoChange(t.repoPath, diff)")
+	if i < 0 {
+		t.Fatal("계약 관문이 없다")
 	}
-
-	// 빈 diff 로는 덮어쓰지 않는다 — 되돌린 뒤에 불려도 남은 것이 살아야 한다.
-	kept := tc.lastRejectedDiff
-	tc.finalDiff = "   \n"
-	tc.keepRejectedDiff()
-	if tc.lastRejectedDiff != kept {
-		t.Error("빈 diff 가 남아 있던 고침을 지웠다")
+	// 그 관문 안에서 작업 트리를 되돌리면 안 된다.
+	block := src[i:]
+	if j := strings.Index(block, "\n\tif bad := CheckToolLeak"); j > 0 {
+		block = block[:j]
+	}
+	if strings.Contains(block, `"checkout", "."`) {
+		t.Error("계약 관문이 고친 것을 통째로 되돌린다 — 맞게 한 것까지 사라진다")
+	}
+	for _, must := range []string{"위에 적힌 자리만 고쳐라", "처음부터 다시 쓰지 마라"} {
+		if !strings.Contains(block, must) {
+			t.Errorf("되먹임에 %q 가 없다", must)
+		}
 	}
 }

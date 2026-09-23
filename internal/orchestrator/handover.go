@@ -70,10 +70,19 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 	// go build 는 통과한다.
 	if bad := CheckProtoChange(t.repoPath, diff); len(bad) > 0 {
 		note := AlignmentNote(bad)
+		// **고친 것을 버리지 않는다.**
+		//
+		// 계약 수정은 대개 대부분 맞고 한두 가지가 틀리다 — 필드는 바르게
+		// 더해 놓고 rpc 를 새 service 에 넣는 식이다. 통째로 되돌리면 맞게
+		// 한 것까지 사라져 다음 시도가 처음부터 간다. aider 는 맞은 블록을
+		// 써 두고 「나머지는 다시 보내지 마라」 고 일러 준다.
+		//
+		// 되돌리지 않으면 작업 트리가 지저분해 restoreBest 가 건너뛰므로,
+		// 다음 시도는 저절로 이 위에서 이어진다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PROTO_BROKEN",
-			"계약이 깨진다 — 넘기지 않는다", why, note)
-		t.lastFeedback = "PROTO: " + note
-		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
+			"계약이 깨진다 — 고친 것은 두고 그 자리만 다시 시킨다", why, note)
+		t.lastFeedback = "PROTO: " + note +
+			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
 		return RunResult{}, false
 	}
 
