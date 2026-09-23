@@ -21,7 +21,19 @@ import (
 //  1. 파일·줄을 대야 한다
 //  2. 그 파일이 **실제로 이번 diff 에 있어야** 한다 — 지어낸 자리는 근거가 아니다
 
-var gateLocation = regexp.MustCompile(`[\w./-]+\.(go|ts|tsx|dart|sql|yaml|yml|prisma)(:\d+)?`)
+// 검토자가 댄 자리를 알아보는 자.
+//
+// **우리가 고치는 말은 여기 다 있어야 한다.** proto 가 빠져 있어서,
+// 검토자가 「ceoweb/v1/connect.service.proto, 줄 45-46 — 있는 Internal 에
+// 더해야 한다」 고 정확히 짚었는데 「파일·줄을 대지 못했습니다」 로 버렸다.
+// 맞는 지적이 세 회차 내내 버려졌다.
+//
+// 넓게 잡아도 괜찮다 — 뽑은 자리는 **이번 변경에 있는 파일**인지 한 번 더
+// 거른다. 그래서 글 속의 아무 낱말이 섞여도 통과하지 못한다.
+//
+// 긴 것을 앞에 둔다 — js 가 앞에 있으면 json 이 js 로 잘린다.
+var gateLocation = regexp.MustCompile(
+	`[\w./-]+\.(svelte|prisma|proto|json|java|yaml|toml|dart|mjs|tsx|yml|sql|go|ts|js|py|rs|kt|sh|md)(:\d+)?`)
 
 // diff 의 `+++ b/path` 에서 바뀐 파일을 뽑는다.
 var gateDiffFile = regexp.MustCompile(`(?m)^\+\+\+ b/(.+)$`)
