@@ -30,6 +30,9 @@ var reDeclGo = regexp.MustCompile(`^(func|type)\s+(` + identPat + `)`)
 // duplicateDecls 는 겉껍질에서 두 번 이상 선언된 이름을 준다.
 func duplicateDecls(path, content string) []string {
 	ext := filepath.Ext(path)
+	if ext == ".proto" {
+		return duplicateProtoDecls(content)
+	}
 	js := ext == ".ts" || ext == ".js" || ext == ".mjs" || ext == ".svelte" || ext == ".tsx"
 	if !js && ext != ".go" {
 		return nil
@@ -76,4 +79,27 @@ func duplicateDecls(path, content string) []string {
 		}
 	}
 	return dup
+}
+
+// duplicateProtoDecls 는 한 계약 파일 안에서 같은 이름을 두 번 선언했는지 본다.
+//
+// 통째로 다시 쓰게 하면 모델이 있는 메시지를 지우지 않은 채 같은 이름으로
+// 하나 더 만든다. 빌드는 계약을 안 보므로 아무도 못 막는다 — 쓰기 전에 본다.
+func duplicateProtoDecls(content string) []string {
+	re := regexp.MustCompile(`(?m)^\s*(?:message|enum|service)\s+([A-Za-z_]\w*)`)
+	seen := map[string]int{}
+	var order []string
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		if seen[m[1]] == 0 {
+			order = append(order, m[1])
+		}
+		seen[m[1]]++
+	}
+	var out []string
+	for _, name := range order {
+		if seen[name] > 1 {
+			out = append(out, name)
+		}
+	}
+	return out
 }

@@ -97,8 +97,8 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	// 통짜로 다시 쓰게 하면 모델이 조용히 함수를 빠뜨린다. 실측으로
 	// attendance.ts 에서 getAttendanceRecords 가 사라져 빌드가 깨졌고,
 	// 자가 치유 세 번을 태운 뒤에야 드러났다. 여기서 막고 이유를 말한다.
-	if lost := lostExports(original, updated); len(lost) > 0 {
-		return "", fmt.Errorf("%s: 원래 있던 export 가 사라졌다 — %s. 고칠 줄만 바꾸고 나머지는 그대로 둬라",
+	if lost := lostExportsFor(filePath, original, updated); len(lost) > 0 {
+		return "", fmt.Errorf("%s: 원래 있던 이름이 사라졌다 — %s. 고칠 줄만 바꾸고 나머지는 그대로 둬라",
 			filepath.Base(filePath), strings.Join(lost, ", "))
 	}
 
