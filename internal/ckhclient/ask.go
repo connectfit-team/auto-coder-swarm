@@ -27,10 +27,26 @@ import (
 // 「연결보류」는 기능 이름이 아니라 **연결 기능을 보류한 결정**이다. 그것을
 // 알았다면 코드를 쓰기 전에 사람에게 물었을 것이다.
 
-const (
-	askPollEvery = 5 * time.Second
-	askWaitMax   = 3 * time.Minute
-)
+const askPollEvery = 5 * time.Second
+
+// askWaitDefault 는 사내지식을 기다리는 시간이다.
+//
+// 3분으로 박혀 있었다. 그런데 사내지식의 요약도 **코딩 자동화와 같은 모델
+// 하나**를 쓴다. 저쪽이 물고 있으면 줄에서 기다리고, 그 사이 이쪽은 포기해
+// 지식 없이 코드를 쓴다 — 정책도 과거 결정도 모른 채 설계하는 것이다.
+//
+// 기다리는 편이 낫다. 실제로 「연결보류」는 기능 이름이 아니라 연결 기능을
+// 보류한 결정이었다(2020-12-14). 그것을 모르고 쓴 코드는 빨라도 틀린 것이다.
+const askWaitDefault = 8 * time.Minute
+
+func askWaitMax() time.Duration {
+	if v := os.Getenv("CKH_WAIT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return askWaitDefault
+}
 
 type askRequest struct {
 	Query  string `json:"query"`
@@ -91,10 +107,11 @@ func (c *Client) Ask(ctx context.Context, query, effort string) (string, error) 
 		return "", fmt.Errorf("사내지식이 작업 번호를 안 준다: %s", env.Error)
 	}
 
-	deadline := time.Now().Add(askWaitMax)
+	wait := askWaitMax()
+	deadline := time.Now().Add(wait)
 	for {
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("사내지식이 %s 안에 답하지 않았다 (작업 %d)", askWaitMax, env.Data.TaskID)
+			return "", fmt.Errorf("사내지식이 %s 안에 답하지 않았다 (작업 %d)", wait, env.Data.TaskID)
 		}
 		select {
 		case <-ctx.Done():
