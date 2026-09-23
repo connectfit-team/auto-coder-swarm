@@ -72,6 +72,18 @@ func (t *taskContext) prepareAnalysis() error {
 			"", strings.Join(t.orchestrator.wsMgr.Repos(), " "))
 		scope.Repo = ""
 	}
+	// **시킨 파일이 있으면 그것이 이긴다.** 저장소와 같은 까닭이다.
+	//
+	// 넘긴 쪽은 어느 파일의 어느 메시지인지까지 세어서 알고 있다. 자식이
+	// 요청문을 읽고 다시 알아맞히면 엉뚱한 파일을 고른다(실측 W-20646).
+	if len(t.req.TargetFiles) > 0 {
+		if scope.Path != "" && scope.Path != t.req.TargetFiles[0] {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "SCOPE_FORCED",
+				fmt.Sprintf("시킨 파일을 쓴다: %s (모델은 %q 를 골랐다)",
+					strings.Join(t.req.TargetFiles, ", "), scope.Path), "", "")
+		}
+		scope.Path = t.req.TargetFiles[0]
+	}
 	if scope.Path == "" {
 		scope.Path = "전체"
 	}
@@ -254,6 +266,11 @@ func (t *taskContext) prepareAnalysis() error {
 		strategy.ActionablePath = kept
 	}
 	t.actionablePath = strategy.ActionablePath
+	// 시킨 파일은 전략이 무엇을 내놓든 목록의 맨 앞에 둔다 — 고칠 자리가
+	// 그것이라는 것을 이미 알고 왔다.
+	if len(t.req.TargetFiles) > 0 {
+		t.actionablePath = nonEmptyUnique(append(append([]string{}, t.req.TargetFiles...), t.actionablePath...)...)
+	}
 
 	if len(strategy.ActionablePath) == 0 && strategy.TotalFiles == 0 {
 		return fmt.Errorf("전략이 비어 있다 — 고칠 파일을 하나도 지목하지 못했다")
