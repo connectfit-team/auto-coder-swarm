@@ -33,10 +33,10 @@ func TestParseABIgnoresLettersInsideWords(t *testing.T) {
 // 후보가 하나뿐이면 판을 벌이지 않는다.
 func TestTournamentTrivialCases(t *testing.T) {
 	tc := &taskContext{}
-	if p, _ := tc.tournamentPick(nil, nil, nil); p != "" {
+	if p, _ := tc.tournamentPick(nil, nil); p != "" {
 		t.Fatalf("빈 후보에서 무언가 나온다: %q", p)
 	}
-	p, why := tc.tournamentPick([]string{"only.ts"}, nil, nil)
+	p, why := tc.tournamentPick([]string{"only.ts"}, nil)
 	if p != "only.ts" || !strings.Contains(why, "하나뿐") {
 		t.Fatalf("하나뿐인데 판을 벌였다: %q %q", p, why)
 	}

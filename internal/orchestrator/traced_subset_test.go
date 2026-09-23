@@ -7,8 +7,8 @@ import (
 
 func TestTracedSubsetKeepsOnlyTraced(t *testing.T) {
 	seen := map[string]tracedContract{
-		"ceoweb/v1/connect.service.ts":  {contract: "ceoweb/v1/connect.service.ts", why: "따라감"},
-		"ceoweb/v1/worker.service.ts":   {contract: "ceoweb/v1/worker.service.ts", why: "따라감"},
+		"ceoweb/v1/connect.service.ts": {contract: "ceoweb/v1/connect.service.ts", why: "따라감"},
+		"ceoweb/v1/worker.service.ts":  {contract: "ceoweb/v1/worker.service.ts", why: "따라감"},
 	}
 	ev := map[string]string{
 		"ceoweb/v1/connect.service.ts": "근거 A",

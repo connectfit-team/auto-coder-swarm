@@ -14,15 +14,25 @@ import (
 // 후보 18개에 점수를 매기게 했더니 **전부 2점**이었다(실측 W-42583). 그 뒤는
 // 모델에게 타입을 묻는 길이고, 거기서 엉뚱한 계약이 나왔다.
 //
-// 같은 모델에 둘만 주고 물으면 답한다. 재어 보니 이랬다.
-//
-//	connect vs ceo      → A 3표   (정답 A)
-//	ceo     vs connect  → B 3표   (정답 B)  ← 자리를 바꿔도 같은 답이다
-//	connect vs worker   → A 3표   (정답 A)
-//	connect vs manager  → A 3표   (정답 A)
+// 같은 모델에 둘만 주고 물으면 답한다. 여덟 쌍을 자리까지 바꿔 재 보니
+// **8/8 만장일치**였다(connect vs ceo·notif·purchase·manager·worker, 양쪽 순서).
 //
 // 열여덟을 줄 세우는 것과 둘 중 하나를 고르는 것은 다른 물음이다. 작업을
 // 쪼개면 되는 일을, 못 한다고 접을 까닭이 없다.
+//
+// **근거 글은 붙이지 않는다 — 경로만 준다.**
+//
+// 점수 쪽에서 이미 알려진 병이 여기에도 그대로 있다. 근거(따라간 경로·계약에
+// 적힌 말)를 붙여 재 보니 4쌍 가운데 2쌍이 틀렸고, 살펴보니 관련성이 아니라
+// **덧붙은 말이 있느냐·긴가**에 반응했다 — 경고가 적힌 계약을 골랐다.
+//
+//	근거 붙임: connect vs ceo → A(맞음) · ceo vs connect → A(틀림)
+//	           connect vs notif → B(틀림) · worker vs connect → B(맞음)
+//	경로만   : 여덟 쌍 전부 맞음
+//
+// 경고를 못 보고 고르는 것 아니냐 — 경고는 점수 쪽이 본다. 토너먼트는 점수가
+// 갈리지 못했을 때만 열리고, 경로만으로도 경고가 붙은 계약(notif)을 양쪽
+// 순서에서 다 물리쳤다.
 
 const (
 	// 한 판을 몇 번 묻는가. 한 번은 자리를 바꿔 물어 위치에 쏠렸는지 본다.
@@ -32,7 +42,7 @@ const (
 )
 
 // tournamentPick 은 둘씩 견주어 하나를 남긴다. 고르지 못하면 빈 문자열이다.
-func (t *taskContext) tournamentPick(order []string, evidence map[string]string, missing []string) (string, string) {
+func (t *taskContext) tournamentPick(order []string, missing []string) (string, string) {
 	field := order
 	if len(field) > maxTournamentCandidates {
 		field = field[:maxTournamentCandidates]
@@ -54,7 +64,7 @@ func (t *taskContext) tournamentPick(order []string, evidence map[string]string,
 			}
 			a, b := field[i], field[i+1]
 			matches++
-			win, decided := t.playMatch(a, b, evidence, missing)
+			win, decided := t.playMatch(a, b, missing)
 			if !decided {
 				ties++
 				win = a // 갈리지 않으면 앞의 것을 남긴다 — 차례가 정해져 있어야 답이 안 흔들린다
@@ -75,7 +85,7 @@ func (t *taskContext) tournamentPick(order []string, evidence map[string]string,
 //
 // 한 번은 **자리를 바꿔** 묻는다. 늘 앞의 것을 고르는 것인지 아닌지가
 // 그렇게만 드러난다.
-func (t *taskContext) playMatch(a, b string, evidence map[string]string, missing []string) (string, bool) {
+func (t *taskContext) playMatch(a, b string, missing []string) (string, bool) {
 	votes := map[string]int{}
 	for i := 0; i < matchVotes; i++ {
 		x, y := a, b
@@ -83,7 +93,7 @@ func (t *taskContext) playMatch(a, b string, evidence map[string]string, missing
 		if swapped {
 			x, y = b, a
 		}
-		pick, ok := t.askMatch(x, y, evidence, missing)
+		pick, ok := t.askMatch(x, y, missing)
 		if !ok {
 			continue
 		}
@@ -103,21 +113,20 @@ func (t *taskContext) playMatch(a, b string, evidence map[string]string, missing
 }
 
 // askMatch 는 A·B 한 글자를 받는다.
-func (t *taskContext) askMatch(a, b string, evidence map[string]string, missing []string) (string, bool) {
+func (t *taskContext) askMatch(a, b string, missing []string) (string, bool) {
+	// 근거 글을 붙이지 않는다(위 설명 참고). 경로만 준다.
 	prompt := fmt.Sprintf(`[없어서 못 만드는 것]
 %s
 
 [계약 A]
 %s
-%s
 
 [계약 B]
-%s
 %s
 
 둘 중 어느 계약에 위 상태를 담아야 하는가? A 또는 B 한 글자만 적어라.
 다른 말은 쓰지 마라.`,
-		strings.Join(missing, "\n"), a, evidence[a], b, evidence[b])
+		strings.Join(missing, "\n"), a, b)
 
 	ctx, cancel := context.WithTimeout(t.ctx, stateCheckTimeout)
 	defer cancel()
