@@ -23,6 +23,9 @@ var (
 	tokenizerHC   = &http.Client{Timeout: 5 * time.Second}
 	tokenizerDead bool
 	tokenizerMu   sync.Mutex
+
+	modelOnce   sync.Once
+	servedModel string
 )
 
 func tokenizeEndpoint() string {
@@ -36,9 +39,31 @@ func tokenizeEndpoint() string {
 	return tokenizerURL
 }
 
+// modelName 은 /tokenize 에 실어 보낼 모델 이름이다.
+//
+// 코드에 박아 두면 서버가 다른 모델로 뜨는 날 말없이 어긋난다 — 400 이 나고
+// 어림으로 물러서는데, 그 물러섬은 **보이지 않는다.** 서버에 물어서 쓴다.
 func modelName() string {
 	if n := strings.TrimSpace(os.Getenv("LLM_MODEL")); n != "" {
 		return n
+	}
+	modelOnce.Do(func() {
+		resp, err := tokenizerHC.Get(strings.TrimSuffix(tokenizeEndpoint(), "/tokenize") + "/v1/models")
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		var out struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&out) == nil && len(out.Data) > 0 {
+			servedModel = out.Data[0].ID
+		}
+	})
+	if servedModel != "" {
+		return servedModel
 	}
 	return "gemma4:31b"
 }
@@ -69,6 +94,11 @@ func CountTokens(s string) int {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// 400 은 대개 모델 이름이 안 맞는 것이다 — 고쳐지지 않으니 되풀이하지
+		// 않는다. 한 번 세지 못했다고 프롬프트마다 헛걸음할 까닭이 없다.
+		tokenizerMu.Lock()
+		tokenizerDead = true
+		tokenizerMu.Unlock()
 		return EstimateTokens(s)
 	}
 	var out struct {
