@@ -17,6 +17,7 @@ var (
 	// 그것까지 한 무리로 묶으면 string 이 습관에 들어와 검사가 조용히 꺼진다.
 	// `*_status`·`*_state` 는 세 곳 모두 int32 다.
 	reStateFieldName = regexp.MustCompile(`(?i)(?:^|_)(status|state)$`)
+	protoEnumDecl    = regexp.MustCompile(`^\s*enum\s+([A-Za-z_]\w*)\s*\{`)
 	reTypedField     = regexp.MustCompile(`^\s*(?:repeated\s+|optional\s+)?([\w.]+)\s+(\w+)\s*=\s*(\d+)\s*;`)
 )
 
@@ -24,10 +25,14 @@ var (
 // 잡는다.
 //
 // 실측 W-13896 이 `string pending_status = 15;` 를 넣었다. 그런데 이 계약의
-// 상태·유형 필드는 **하나도 빠짐없이** int32 이거나 제대로 된 enum 이다
-// (`int32 status`, `int32 job_type`, `CEOPolicyType policy_type` …).
-// string 으로 두면 무엇이든 담을 수 있어 값이 굳지 않는다 — 부르는 쪽마다
-// 다른 글자를 넣고, 서버는 그것을 다 받는다.
+// 상태 필드는 **하나도 빠짐없이** int32 다. string 으로 두면 무엇이든 담을 수
+// 있어 값이 굳지 않는다 — 부르는 쪽마다 다른 글자를 넣고, 서버는 그것을 다
+// 받는다.
+//
+// **enum 은 막지 않는다.** 처음 판이 이것을 막았는데 그게 틀렸다 —
+// `ConnectRequestStatus status` 를 「습관 밖」 이라고 물었다(실측 W-98684).
+// enum 은 int32 보다 나은 답이고, ACCEPTANCE.md 가 「이 모양을 기준으로 본다」
+// 고 적어 둔 것도 enum 꼴이다. 값이 굳느냐가 기준이지 글자가 같냐가 아니다.
 //
 // **규칙을 박아 두지 않는다.** 이 저장소가 실제로 쓰는 타입을 세어서, 거기
 // 없는 것을 새로 들일 때만 문다. 어느 계약이 string 을 쓰고 있다면 그 계약에
@@ -48,9 +53,23 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 		}
 	}
 
+	// 이 계약에 있는 enum 이름. 여기에 드는 타입은 값이 굳으므로 막지 않는다.
+	enums := map[string]bool{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if m := protoEnumDecl.FindStringSubmatch(line[1:]); m != nil {
+			enums[m[1]] = true
+		}
+	}
+
 	habit := map[string]int{}
 	forEachProto(repoPath, func(rel, src string) {
 		for _, line := range strings.Split(src, "\n") {
+			if m := protoEnumDecl.FindStringSubmatch(line); m != nil {
+				enums[m[1]] = true
+			}
 			if t, n, ok := protoField(line); ok && reStateFieldName.MatchString(n) {
 				habit[t]++
 			}
@@ -77,14 +96,14 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 			continue
 		}
 		t, n, ok := protoField(line[1:])
-		if !ok || !reStateFieldName.MatchString(n) || habit[t] > 0 {
+		if !ok || !reStateFieldName.MatchString(n) || habit[t] > 0 || enums[t] {
 			continue
 		}
 		out = append(out, guard.Violation{
 			Why: fmt.Sprintf("%s 를 %s 로 넣었다 — 이 계약은 상태를 그 타입으로 담지 않는다", n, t),
 			Evidence: []string{
 				"이 계약이 실제로 쓰는 것: " + habitNote(habit),
-				"값이 굳지 않으면 부르는 쪽마다 다른 것을 넣는다. 위 가운데서 골라 쓰거나 enum 을 만들어라.",
+				"값이 굳지 않으면 부르는 쪽마다 다른 것을 넣는다. 위 가운데서 골라 쓰거나 enum 을 만들어라 — enum 은 막지 않는다.",
 			},
 		})
 	}
