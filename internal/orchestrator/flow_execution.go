@@ -44,6 +44,10 @@ func (t *taskContext) stepExecution(attempt int) error {
 		if ex := siblingExample(t.repoPath, change.FilePath, 30); ex != "" {
 			instr = ex + instr
 		}
+		// 계약은 이웃 짝이 곧 규칙이다 — 이름 규칙만 일러 주면 모양을 지어낸다.
+		if ex := protoConventionExample(t.repoPath, change.FilePath, 2); ex != "" {
+			instr = ex + instr
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
