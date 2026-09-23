@@ -30,7 +30,7 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 	case best == "":
 		// **줄 세우지 못하면 둘씩 견준다.** 열여덟을 줄 세우는 것과 둘 중
 		// 하나를 고르는 것은 다른 물음이다(tournament.go 의 실측 참고).
-		if p, why := t.tournamentPick(order, evidence, missing); p != "" {
+		if p, why := t.tournamentPick(order, missing); p != "" {
 			return p, fmt.Sprintf("%d점이 둘 이상이라 %s", top, why), false
 		}
 		return "", fmt.Sprintf("계약 후보 %d 가운데 %d점이 둘 이상이다 — 차례가 갈리지 않는다", len(order), top), false
@@ -45,7 +45,7 @@ func (t *taskContext) pickContractAmong(order []string, evidence map[string]stri
 		// 한 점 차이로 고르면 그 흔들림이 그대로 답이 된다. 뚜렷할 때만
 		// 쓰고, 아니면 따라간 것과 타입을 묻는 길에 맡긴다 — 그쪽이 파일에
 		// 적힌 사실이다.
-		if p, why := t.tournamentPick(order, evidence, missing); p != "" {
+		if p, why := t.tournamentPick(order, missing); p != "" {
 			return p, fmt.Sprintf("%d점과 %d점이라 뚜렷하지 않아 %s", top, second, why), false
 		}
 		return "", fmt.Sprintf("계약 후보 %d 가운데 가장 높은 것이 %d점, 다음이 %d점이다 — 뚜렷하지 않다",
