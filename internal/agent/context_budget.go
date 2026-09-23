@@ -33,8 +33,14 @@ func pastContextBudget() int {
 //
 // 말이 달라도 단계가 같으면 지운다. `STRATEGY_PARSED: 파일 0개` 뒤에
 // `STRATEGY_PARSED: 파일 3개` 가 오면 앞의 것은 이미 틀린 사실인데, 둘을
-// 나란히 넣으면 모델이 지난 것을 지금으로 읽는다. 지운 줄은 깊은 로그
-// (AddDeepLog)에 그대로 남으므로 진단에서 잃는 것은 없다.
+// 나란히 넣으면 모델이 지난 것을 지금으로 읽는다.
+//
+// 값을 치르는 곳도 있다. `CODING` 은 한 작업에서 파일마다 한 줄을 내므로
+// (실측 한 작업에 넉 줄) 마지막 파일만 남는다. 그래도 그렇게 둔다 — 코더
+// 프롬프트는 파일 하나로 닫혀 있어 나머지 파일 이름이 거기서 할 일이 없고,
+// 옛 사실을 지금으로 읽히는 쪽이 훨씬 비싸다.
+//
+// 지운 줄은 깊은 로그(AddDeepLog)에 그대로 남으므로 진단에서 잃는 것은 없다.
 func CompactContext(state string, limit int) string {
 	if limit <= 0 || strings.TrimSpace(state) == "" {
 		return ""

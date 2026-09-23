@@ -54,6 +54,8 @@ type taskContext struct {
 	targetRepo    string
 	currentBranch string
 	lastFeedback  string
+	// 같은 이유로 몇 번 막혔는지. "최대 시도 초과" 가 까닭을 가리지 않게 한다.
+	denials map[string]int
 	// 없는 기능을 새로 만드는 일인가. 계획·PR 이 이것을 알아야 한다.
 	newFeature bool
 	// 사내지식을 못 받은 까닭. 비어 있으면 받았다는 뜻이다.

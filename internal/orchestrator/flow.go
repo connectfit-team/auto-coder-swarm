@@ -53,6 +53,11 @@ func (t *taskContext) execute() (res RunResult, err error) {
 
 	for attempt := 1; attempt <= 3; attempt++ {
 		log.Printf("🔄 [ACS] Task %s: Execution Attempt %d/3", t.taskID, attempt)
+		// 앞 시도를 되돌린 까닭을 센다. 같은 말이 되풀이되면 되먹임이 닿지
+		// 않고 있는 것이고, 그 사실이 "최대 시도 초과" 보다 훨씬 쓸모 있다.
+		if attempt > 1 {
+			t.noteFeedback()
+		}
 		if t.ctx.Err() != nil {
 			return RunResult{}, t.ctx.Err()
 		}
@@ -216,6 +221,11 @@ func (t *taskContext) execute() (res RunResult, err error) {
 	}
 
 	log.Printf("❌ [ACS] Task %s failed after maximum attempts.", t.taskID)
+	// **무엇이 막았는지 먼저 말한다.** 세 시도 내내 같은 말을 들었는데도
+	// 사람에게는 "최대 시도 초과" 만 갔다(실측 W-33314·W-24124).
+	if err := t.whyStuck(); err != nil {
+		return RunResult{RepoName: t.targetRepo}, err
+	}
 	if t.bestErrors > 0 {
 		return RunResult{RepoName: t.targetRepo}, fmt.Errorf(
 			"최대 시도 초과 — 가장 가까웠던 것은 시도 %d 이고 오류 %d개가 남아 있었다",
