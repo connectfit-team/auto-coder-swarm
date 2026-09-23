@@ -98,5 +98,15 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 	if diff != "" {
 		t.orchestrator.store.UpdateTaskProposedDiff(t.taskID, diff)
 	}
+
+	// **관문을 다 지났으면 스스로 PR 까지 간다 — 켜 둔 저장소에서만.**
+	//
+	// 오픈소스 코딩 에이전트는 고치고 검사하고 내놓는 것까지 한 흐름이다.
+	// 여기서 멈추면 사람이 누르기 전에는 아무 일도 일어나지 않는다.
+	// 머지는 하지 않는다 — 초안으로 열고 사람이 본다.
+	if url, ok := t.openPRMyself(why); ok {
+		return RunResult{RepoName: t.targetRepo, Result: url}, true
+	}
+
 	return RunResult{RepoName: t.targetRepo, WaitingApproval: true}, true
 }
