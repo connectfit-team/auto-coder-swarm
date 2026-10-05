@@ -83,14 +83,26 @@ func applyEditBlocks(original, raw string) (string, error) {
 			// 줄 끝 공백을 털고 줄 단위로 견줘 한 군데만 맞으면 그 자리를 쓴다.
 			replaced, err := replaceLoosely(out, search, replace)
 			if err != nil {
-				// **이미 고친 자리를 또 고치라는 블록은 그냥 넘긴다.**
+				// **이미 고친 자리를 또 고치라는 블록만 넘긴다.**
 				//
 				// 같은 코드가 두 곳에 복사돼 있으면 모델이 블록을 두 번 낸다.
 				// 첫 블록이 두 곳을 다 고치고 나면 두 번째 블록은 찾을 것이
 				// 없다. 그걸 오류로 보면 **맞게 고친 것까지 통째로 버려진다** —
 				// 실제로 workplace.ts 의 말일 경계 수정이 그렇게 날아갔다.
-				if applied > 0 && isNotFound(err) {
+				//
+				// **다만 「바꿀 내용이 이미 거기 있는지」 를 보고 넘긴다.**
+				// 앞서는 그것을 안 보고 넘겼다. 그래서 진짜로 못 찾은 블록도
+				// 다른 블록이 하나라도 붙었으면 조용히 사라졌다 — 파일은
+				// 고쳐진 것처럼 쓰이고, 빠진 자리는 아무도 모른다.
+				// aider 는 이럴 때 반드시 알린다("The other N blocks were
+				// applied successfully. Just reply with fixed versions of the
+				// blocks above that failed to match.").
+				if applied > 0 && isNotFound(err) && alreadyThere(strings.Split(out, "\n"), replace) {
 					continue
+				}
+				if applied > 0 && isNotFound(err) {
+					return "", fmt.Errorf("%w\n\n앞의 블록 %d개는 붙였다 — **그것은 다시 보내지 마라.** "+
+						"위에 적힌 블록만 고쳐서 다시 내라.", err, applied)
 				}
 				return "", err
 			}
@@ -493,7 +505,13 @@ var punctFolds = strings.NewReplacer(
 	"\u201c", `"`, "\u201d", `"`, "\u201e", `"`, "\u201f", `"`,
 	"\u300c", `"`, "\u300d", `"`, "\u300e", `"`, "\u300f", `"`,
 	"\u00b7", "·", "\u2027", "·", "\u30fb", "·",
-	"\u2026", "...", "\u00a0", " ",
+	"\u2026", "...",
+	// 공백 갈래(Unicode Zs). 이것이 빠지면 그런 글자가 든 파일은 정확한 단에서
+	// 다 지고 **닮은 정도로 찾는 아랫단까지 떨어진다** — hermes 가 주석으로
+	// 적어 둔 그대로다. \u3000(전각 공백)은 한글·일본어 글에 흔하다.
+	"\u00a0", " ", "\u2000", " ", "\u2001", " ", "\u2002", " ", "\u2003", " ",
+	"\u2004", " ", "\u2005", " ", "\u2006", " ", "\u2007", " ", "\u2008", " ",
+	"\u2009", " ", "\u200a", " ", "\u202f", " ", "\u205f", " ", "\u3000", " ",
 )
 
 // normalizePunct 는 뜻이 같은 문장부호를 한 꼴로 맞춘다.
