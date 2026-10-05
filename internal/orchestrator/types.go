@@ -36,6 +36,12 @@ type StatelessRequest struct {
 	// 그렇지 않으면 「담을 자리가 없나」 를 물어 스스로 「없다」 고 답하고
 	// 다시 남에게 넘긴다 — 자기가 할 일을 다시 넘기는 것이다.
 	AddsState bool `json:"adds_state,omitempty"`
+	// 그 상태를 담을 **이미 있는 메시지**의 이름.
+	//
+	// 글로만 적어 보냈더니 자식이 새 메시지를 만들고 거기 넣었다 — 아무도
+	// 안 쓰는 메시지라 상태가 담길 자리가 없다(실측 W-53071 의
+	// `message RequestConnect`). 이름을 실어 보내 관문이 확인한다.
+	StateType string `json:"state_type,omitempty"`
 }
 
 type TaskStrategy struct {

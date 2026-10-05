@@ -57,6 +57,13 @@ diff --git a/ceoweb/v1/connect.service.proto b/ceoweb/v1/connect.service.proto
 		t.Fatalf("관문이 이상적인 답을 %d개 이유로 막는다 — 넘을 수 없는 관문이다", len(bad))
 	}
 
+	if v := fieldWentIntoNewMessage(ideal, "ReceivedRequest"); len(v) > 0 {
+		for _, x := range v {
+			fmt.Println("  담을 자리:", x.Why)
+		}
+		t.Fatalf("담을 자리 관문이 이상적인 답을 막는다: %d개", len(v))
+	}
+
 	if v := checkProcedureViolations(ideal); len(v) > 0 {
 		for _, s := range v {
 			fmt.Println("  절차 위반:", s)
