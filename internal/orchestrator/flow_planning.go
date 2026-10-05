@@ -105,6 +105,25 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 		return fmt.Errorf("계획에 고칠 파일이 하나도 없다")
 	}
 
+	// **짚어 준 자리가 둘인데 하나만 고르면 반쪽이다.**
+	//
+	// 계약은 필드와 RPC 를 다른 파일에 둔다 — 필드는 메시지가 선언된 파일에,
+	// RPC 는 서비스가 선언된 파일에. 넘길 때 그 둘을 세어서 짚어 주는데도
+	// (TargetFiles) 계획이 하나만 고른다. 그러면 모델은 한 파일에 둘 다
+	// 밀어 넣고, 있는 메시지를 다른 파일에 또 선언해 관문에 막힌다
+	// (실측 W-70015 — 모든 것을 connect.service.proto 에 넣었다).
+	if miss := missingTargetFiles(t.req.TargetFiles, plan); len(miss) > 0 && attempt < 3 {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PLAN_MISSES_TARGET",
+			fmt.Sprintf("짚어 준 자리 %d곳 가운데 %d곳이 계획에 없다", len(t.req.TargetFiles), len(miss)),
+			strings.Join(t.req.TargetFiles, " · "), strings.Join(miss, " · "))
+		t.lastFeedback = "PLAN REJECTED: 넘길 때 짚어 준 자리가 계획에 빠졌다 — " +
+			strings.Join(miss, ", ") + "\n" +
+			"필드는 메시지가 선언된 파일에, RPC 는 서비스가 선언된 파일에 들어간다. " +
+			"한 파일에 둘 다 밀어 넣지 마라 — 있는 메시지를 또 선언하게 된다.\n" +
+			"짚어 준 파일을 **모두** 계획에 넣어라."
+		return errRetryPlanning
+	}
+
 	if attempt == 1 {
 		t.targetRepo = plan.RepoName
 		if t.req.TargetRepo != "" {
@@ -267,4 +286,34 @@ func planSummary(changes []agent.FileChange) string {
 		b.WriteString("- " + c.FilePath + "\n")
 	}
 	return b.String()
+}
+
+// missingTargetFiles 는 짚어 준 자리 가운데 계획에 없는 것을 준다.
+//
+// 경로를 그대로 견주지 않는다 — 계획이 `./ceoweb/v1/x.proto` 처럼 적어 오거나
+// 저장소 앞쪽을 붙여 오는 일이 있다. 끝부분이 맞으면 같은 자리로 본다.
+func missingTargetFiles(targets []string, plan agent.Plan) []string {
+	if len(targets) < 2 {
+		return nil // 하나면 고를 것이 없다
+	}
+	var miss []string
+	for _, want := range targets {
+		found := false
+		for _, c := range plan.Changes {
+			if sameProtoPath(c.FilePath, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			miss = append(miss, want)
+		}
+	}
+	return miss
+}
+
+func sameProtoPath(got, want string) bool {
+	g, w := strings.TrimPrefix(strings.TrimSpace(got), "./"), strings.TrimSpace(want)
+	return g == w || strings.HasSuffix(g, "/"+w) || strings.HasSuffix(w, "/"+g) ||
+		filepath.Base(g) == filepath.Base(w)
 }
