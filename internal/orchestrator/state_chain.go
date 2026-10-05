@@ -126,6 +126,15 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 		where += fmt.Sprintf("**%s 는 이미 있다. 그것을 고쳐라 — 같은 이름으로 새로 만들지 마라.**\n", msg)
 	}
 	where += protoConvention(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
+	// **상태를 무엇으로 담는지 넘길 때 알려 준다.**
+	//
+	// 자식이 `string status` 를 내고 관문에 막히기를 세 시도 내내 되풀이했다
+	// (실측 W-70015·W-96305·W-62264). 코드를 쓸 때 보여 주는 것(#170)만으로는
+	// 늦다 — **계획이 이미 「string 으로 담는다」 로 서 있으면** 코더는 계획을
+	// 따른다. 넘길 때 알려 줘야 계획이 처음부터 바르게 선다.
+	//
+	// 이것은 알아맞힐 일이 아니라 세면 되는 것이다(#154 와 같은 원리).
+	where += protoStateFieldExample(t.orchestrator.wsMgr.RepoPath(owner))
 	// 이미 무엇이 있는지 보여 준다. 자식이 「이미 있는지 확인하지 못했다」 로
 	// 죽지 않게 — 모델이 뒤져서 알아낼 일이 아니라 세어서 주면 되는 것이다.
 	where += protoOutline(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
