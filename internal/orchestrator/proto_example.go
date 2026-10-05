@@ -57,6 +57,7 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 	return "[이 계약이 요청·응답을 쓰는 꼴 — 그대로 본떠라]\n" +
 		strings.Join(out, "\n") +
 		"\n응답은 이 꼴을 벗어나지 마라. 이 계약에 없는 필드 이름을 지어내지 마라.\n\n" +
+		protoStateFieldExample(repoPath) +
 		protoEnumExample(repoPath, file) +
 		protoServiceExample(repoPath, file)
 }
