@@ -117,7 +117,14 @@ func blockAnchorAt(srcLines, wantLines []string) []int {
 // 막는다. 원본의 설명 그대로다.
 func contextAwareAt(srcLines, wantLines []string) []int {
 	n := len(wantLines)
-	if n == 0 || n > len(srcLines) {
+	// **한 줄짜리는 보지 않는다.**
+	//
+	// 한 줄은 닮은 정도로 너무 쉽게 맞는다. 실측으로
+	// `await expect(body).not.toContainText('보류');` 가
+	// `await expect(body).toContainText('연결');` 에 0.80 넘게 닮아
+	// **없는 줄을 있다고 하고 엉뚱한 자리를 고쳤다.** 시험이 잡았다.
+	// hermes 의 블록 앵커도 두 줄 이상만 본다.
+	if n < 2 || n > len(srcLines) {
 		return nil
 	}
 	const near = 0.80
@@ -149,4 +156,30 @@ func contextAwareAt(srcLines, wantLines []string) []int {
 		}
 	}
 	return out
+}
+
+// alreadyThere 는 **바꿔 넣으려는 것이 이미 거기 있는지** 본다.
+//
+// 같은 코드가 두 곳에 복사돼 있으면 모델이 블록을 두 번 낸다. 첫 블록이 두
+// 곳을 다 고치고 나면 두 번째 블록은 찾을 것이 없다 — 그것은 넘겨도 된다.
+//
+// 그런데 「찾을 것이 없다」 만 보고 넘기면 **진짜로 못 찾은 블록도 조용히
+// 사라진다.** 그래서 바꿀 내용이 이미 들어가 있는지까지 보고 가른다.
+// aider 도 같은 것을 본다("The REPLACE lines are already in {path}!").
+//
+// 짧은 것은 우연히 맞기 쉬워서 보지 않는다. 다만 **줄 수가 아니라 길이**로
+// 본다 — 한 줄이어도 `lt: new Date(y, m + 1, 1)` 처럼 길면 우연이 아니다.
+// 줄 수로 걸렀더니 같은 코드가 두 곳에 복사된 흔한 경우를 오류로 만들었다.
+func alreadyThere(srcLines []string, replace string) bool {
+	want := trimEach(strings.Split(strings.TrimRight(replace, "\n"), "\n"))
+	for len(want) > 0 && want[0] == "" {
+		want = want[1:]
+	}
+	for len(want) > 0 && want[len(want)-1] == "" {
+		want = want[:len(want)-1]
+	}
+	if len(want) == 0 || !isSubstantial(strings.Join(want, "\n")) {
+		return false
+	}
+	return len(findTrimmed(srcLines, want, normalizePunct)) > 0
 }
