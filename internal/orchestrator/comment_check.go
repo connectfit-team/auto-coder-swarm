@@ -46,6 +46,19 @@ var boilerplateWords = map[string]bool{
 // 뒤에 붙는 조사. 붙은 채로는 뼈대 낱말인지 알 수 없다.
 var particles = []string{"으로", "에서", "에게", "이라", "라는", "를", "을", "는", "은", "이", "가", "의", "에", "로", "와", "과", "도"}
 
+// 뒤에 붙는 용언 어미.
+//
+// 낱말 목록으로만 거르면 **끝없이 샌다.** 실제로 `추가한다`·`합니다` 는
+// 목록에 있었는데 `추가합니다` 가 없어서, `// RequestX 메시지를 추가합니다.`
+// 같은 주석이 그대로 통과했다(실측 W-53071). 어미를 떼고 줄기를 보면 하나씩
+// 줄 필요가 없다 — `추가합니다`·`추가하여`·`추가했다` 가 모두 `추가` 가 된다.
+//
+// 긴 것부터 뗀다. `합니다` 를 먼저 떼야 `다` 로 잘못 안 뗀다.
+var verbEndings = []string{
+	"하였습니다", "되었습니다", "합니다", "입니다", "됩니다", "하였다", "되었다",
+	"하여야", "해야", "하여", "하고", "한다", "했다", "된다", "됐다", "하기", "되기",
+}
+
 // restatingComments 는 선언을 그대로 옮겨 적은 주석을 준다.
 func restatingComments(diff string) []string {
 	var out []string
@@ -97,7 +110,10 @@ func restatesDecl(comment, name string) bool {
 			sawName = true
 			continue
 		}
-		if boilerplateWords[strings.ToLower(base)] || boilerplateWords[strings.ToLower(w)] {
+		stem := trimVerbEnding(base)
+		if boilerplateWords[strings.ToLower(base)] ||
+			boilerplateWords[strings.ToLower(w)] ||
+			boilerplateWords[strings.ToLower(stem)] {
 			continue
 		}
 		meaningful++
@@ -110,6 +126,16 @@ func trimParticle(w string) string {
 	for _, p := range particles {
 		if len([]rune(w)) > len([]rune(p)) && strings.HasSuffix(w, p) {
 			return strings.TrimSuffix(w, p)
+		}
+	}
+	return w
+}
+
+// trimVerbEnding 은 용언 어미를 뗀다. 줄기가 뼈대 낱말인지 보려는 것이다.
+func trimVerbEnding(w string) string {
+	for _, e := range verbEndings {
+		if len([]rune(w)) > len([]rune(e)) && strings.HasSuffix(w, e) {
+			return strings.TrimSuffix(w, e)
 		}
 	}
 	return w

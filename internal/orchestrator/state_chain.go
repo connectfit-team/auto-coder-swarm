@@ -155,6 +155,7 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 		// message.proto). 여기서 이미 정확히 알고 있는 것을 모델에게 다시
 		// 물을 까닭이 없다.
 		TargetFiles:  nonEmptyUnique(msgPath, svcPath),
+		StateType:    msg,
 		AddsState:    true,
 		Depth:        t.req.Depth - 1,
 		ParentRepos:  append(t.req.ParentRepos, t.targetRepo),
