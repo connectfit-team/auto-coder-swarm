@@ -142,6 +142,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			}
 			c := menu[picked]
 			c.why = fmt.Sprintf("%s · %s", c.why, why)
+			t.fillStateType(files, missing)
 			return t.resolveTracedOwner(c)
 		}
 		// **거절과 미결정을 가른다.** 「이 가운데 없다」 고 답했으면 따라간
@@ -151,6 +152,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			c.why = fmt.Sprintf("%s · 고르지 못해 따라간 것을 쓴다", c.why)
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_FALLBACK",
 				"고르지 못해 따라간 계약을 쓴다", why, c.contract)
+			t.fillStateType(files, missing)
 			return t.resolveTracedOwner(c)
 		}
 		// **못 가르면 따라간 것 안에서 다시 고른다.**
@@ -169,6 +171,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 				if p2, why2, _ := t.pickContractAmong(sub, subEv, missing); p2 != "" {
 					c := seen[p2]
 					c.why = fmt.Sprintf("%s · %s", c.why, why2)
+					t.fillStateType(files, missing)
 					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_TRACED",
 						fmt.Sprintf("차림표 %d개가 안 갈려 따라간 %d개 안에서 골랐다", len(order), len(sub)),
 						why2, p2)
@@ -256,3 +259,35 @@ func tracedSubset(traced []string, seen map[string]tracedContract, ev map[string
 // 넓혀 따라갈 때 볼 파일 수의 상한. 저장소 전체를 따라가면 느리기만 하고
 // 근거도 흐려진다 — 분석이 앞에 놓은 것이 더 관련 있다.
 const maxWidenedTrace = 12
+
+// fillStateType 은 **어느 메시지에 붙이는지**를 채운다.
+//
+// 이것이 비면 넘길 쪽지에서 메시지 이름과 그 파일이 통째로 빠진다
+// (state_chain.go 의 `svcPath, msg := t.protoPath, t.stateType`). 그러면
+// 자식은 넣을 메시지가 없어 **새로 만들고 거기 넣는다** — 아무도 안 쓰는
+// 자리다(실측 W-84122·W-84910·W-38172·W-30147, 넷 다 그랬다).
+//
+// 여태 이 값은 **타입을 묻는 갈래에서만** 채워졌다. 계약 고르기가 되게
+// 되자(#156·#157·#158) 그 갈래를 안 타게 되었고, 고친 것이 다른 것을 끊었다.
+// 계약을 어느 길로 정했든 이 물음은 따로 한다.
+func (t *taskContext) fillStateType(files, missing []string) {
+	if t.stateType != "" {
+		return
+	}
+	name := t.askTypeForState(files, missing)
+	if name == "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_UNKNOWN",
+			"어느 메시지에 붙이는지 못 받았다 — 자식이 새로 만들 수 있다", "", "")
+		return
+	}
+	// **있는 이름인지 확인하고 쓴다.** 지어낸 이름을 넘기면 자식이 그것을
+	// 찾다가 못 찾고, 결국 새로 만든다.
+	if typeHome(t.repoPath, name) == "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_UNKNOWN",
+			fmt.Sprintf("%s 는 이 저장소에 없다 — 넘기지 않는다", name), "", "")
+		return
+	}
+	t.stateType = name
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE",
+		fmt.Sprintf("담을 자리는 %s 다 — 넘길 때 알려 준다", name), "", "")
+}
