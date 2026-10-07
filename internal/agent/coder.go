@@ -12,19 +12,22 @@ import (
 
 type CoderAgent struct {
 	llm model.LLM
+	// 이 작업에서 턴 주석 줄 수.
+	//
+	// **전역이면 안 된다.** 일꾼이 셋이라(cmd/swarm 의 workerCount) 작업이
+	// 동시에 돌고, 전역이면 경합이 날 뿐 아니라 **로그가 엉뚱한 작업에
+	// 붙는다.** 코더는 작업마다 새로 만들어지므로(task_context.go) 여기 두면
+	// 둘 다 사라진다.
+	stripped int
 	// 팀의 작업 절차. 힐러가 부르는 수리 경로도 같은 규약을 받아야 해서
 	// 호출 인자가 아니라 필드다 — 한 군데서 빠뜨리면 그 경로만 규약 없이 돈다.
 	conventions string
 }
 
-// strippedComments 는 마지막으로 턴 주석 줄 수다. 조용히 고치지 않으려고
-// 부르는 쪽에 알린다.
-var strippedComments int
-
-// StrippedComments 는 그 수를 주고 비운다. 한 번만 알린다.
-func StrippedComments() int {
-	n := strippedComments
-	strippedComments = 0
+// StrippedComments 는 이 작업에서 턴 주석 줄 수를 주고 비운다. 한 번만 알린다.
+func (a *CoderAgent) StrippedComments() int {
+	n := a.stripped
+	a.stripped = 0
 	return n
 }
 
@@ -68,7 +71,7 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 	repaired := CleanCodeOutput(raw)
 	if cleaned, n := StripRestatingComments(repaired); n > 0 {
 		repaired = cleaned
-		strippedComments += n
+		a.stripped += n
 	}
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(repaired)), 0644); err != nil {
 		return "", err
@@ -142,7 +145,7 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	// 모델에게 세 번 더 물어볼 일이 아니다.
 	if cleaned, n := StripRestatingComments(updated); n > 0 {
 		updated = cleaned
-		strippedComments += n
+		a.stripped += n
 	}
 
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(updated)), 0644); err != nil {

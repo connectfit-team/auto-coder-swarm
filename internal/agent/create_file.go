@@ -58,7 +58,7 @@ func (a *CoderAgent) CreateFile(ctx context.Context, filePath, instructions, out
 	// 여기만 빠지면 새 파일에서 관문에 막혀 시도가 날아간다.
 	if cleaned, n := StripRestatingComments(content); n > 0 {
 		content = cleaned
-		strippedComments += n
+		a.stripped += n
 	}
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(content)), 0644); err != nil {
 		return "", fmt.Errorf("새 파일을 못 썼다: %w", err)

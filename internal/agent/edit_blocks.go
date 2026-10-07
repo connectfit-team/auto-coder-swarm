@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // 원본을 통째로 다시 쓰게 해도 되는 크기. 글자 수 기준이다.
@@ -177,7 +178,7 @@ func replaceLoosely(src, search, replace string) (string, error) {
 		}
 	}
 	if approx != "" {
-		lastApproxRung = approx
+		noteApproxRung(approx)
 	}
 
 	switch {
@@ -249,10 +250,28 @@ func AppendedNote() string { return appendedNote }
 //
 // 이 단들은 사다리에서 가장 위험하다 — 정확히 맞지 않은 자리에 넣는다.
 // 조용히 지나가면 안 되므로 로그에 남긴다.
-var lastApproxRung string
+//
+// **일꾼이 셋이라 작업이 동시에 돈다**(cmd/swarm 의 workerCount). 이 값을
+// 설정하는 자리가 메서드가 아니라 자유 함수(replaceLoosely)라 작업별로 둘
+// 수가 없다 — 자물쇠로 경합만 막는다. 드물게 다른 작업의 말이 섞일 수 있고,
+// 그래도 「닮은 정도로 찾았다」 는 사실 자체는 맞다. 진단용 한 줄이라 그
+// 값으로 둔다. 작업별로 가르려면 applyEditBlocks 가 그 말을 **돌려주게**
+// 고쳐야 한다.
+var (
+	approxMu       sync.Mutex
+	lastApproxRung string
+)
+
+func noteApproxRung(s string) {
+	approxMu.Lock()
+	lastApproxRung = s
+	approxMu.Unlock()
+}
 
 // LastApproxRung 은 그 말을 주고 비운다. 한 번만 알린다.
 func LastApproxRung() string {
+	approxMu.Lock()
+	defer approxMu.Unlock()
 	s := lastApproxRung
 	lastApproxRung = ""
 	return s
