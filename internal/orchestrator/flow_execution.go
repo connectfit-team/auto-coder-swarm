@@ -161,7 +161,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 // 조용히 지나가면 틀렸을 때 까닭을 찾을 수가 없다.
 // noteStrippedComments 는 기계가 턴 주석을 남긴다. 조용히 고치지 않는다.
 func (t *taskContext) noteStrippedComments(file string) {
-	if n := agent.StrippedComments(); n > 0 {
+	if n := t.coder.StrippedComments(); n > 0 {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMMENT_STRIPPED",
 			fmt.Sprintf("[%s] 코드를 옮겨 적은 주석 %d줄을 지웠다", file, n), "",
 			"선언 이름과 뼈대 낱말뿐인 주석이라 잃는 것이 없다. 막고 다시 시키는 것보다 싸다.")

@@ -31,13 +31,26 @@ func TestEveryWritePathStrips(t *testing.T) {
 
 // 턴 수는 쌓여야 한다. 한 작업에서 파일을 여럿 고치면 그 합을 알려야 한다.
 func TestStrippedCountAccumulatesAndResets(t *testing.T) {
-	StrippedComments() // 비우고 시작
-	strippedComments += 2
-	strippedComments += 3
-	if n := StrippedComments(); n != 5 {
+	a := &CoderAgent{}
+	a.stripped += 2
+	a.stripped += 3
+	if n := a.StrippedComments(); n != 5 {
 		t.Fatalf("쌓이지 않는다: %d", n)
 	}
-	if n := StrippedComments(); n != 0 {
+	if n := a.StrippedComments(); n != 0 {
 		t.Fatalf("한 번 알린 뒤 안 비운다: %d", n)
+	}
+}
+
+// **작업마다 따로여야 한다.** 일꾼이 셋이라 동시에 돈다 — 전역이면 로그가
+// 엉뚱한 작업에 붙는다.
+func TestStripCountIsPerTask(t *testing.T) {
+	a, b := &CoderAgent{}, &CoderAgent{}
+	a.stripped += 3
+	if n := b.StrippedComments(); n != 0 {
+		t.Fatalf("다른 작업의 수가 섞인다: %d", n)
+	}
+	if n := a.StrippedComments(); n != 3 {
+		t.Fatalf("제 수를 못 센다: %d", n)
 	}
 }
