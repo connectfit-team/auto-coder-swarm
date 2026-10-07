@@ -124,7 +124,7 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 		return errRetryPlanning
 	}
 
-	if attempt == 1 {
+	if t.needsWorkspaceSetup(attempt) {
 		t.targetRepo = plan.RepoName
 		if t.req.TargetRepo != "" {
 			t.targetRepo = t.req.TargetRepo
@@ -134,7 +134,7 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 		}
 
 		t.repoPath = filepath.Join(t.wsPath, "repo")
-		t.currentBranch = fmt.Sprintf("acs-fix-%s", time.Now().Format("0102150405"))
+		t.currentBranch = fmt.Sprintf("acs-fix-%s-%s", time.Now().Format("0102150405"), branchSafe(t.taskID))
 		// 워크트리를 못 만들었으면 여기서 멈춘다. 그냥 지나가면 빈 폴더에서
 		// 빌드를 돌리고, 그 실패가 "환경 문제" 로 보고된다(W-82668).
 		if err := t.orchestrator.wsMgr.CreateWorktree(t.targetRepo, t.repoPath, t.currentBranch); err != nil {
@@ -316,4 +316,30 @@ func sameProtoPath(got, want string) bool {
 	g, w := strings.TrimPrefix(strings.TrimSpace(got), "./"), strings.TrimSpace(want)
 	return g == w || strings.HasSuffix(g, "/"+w) || strings.HasSuffix(w, "/"+g) ||
 		filepath.Base(g) == filepath.Base(w)
+}
+
+// needsWorkspaceSetup 은 작업 사본을 아직 안 만들었는지 본다.
+//
+// `attempt == 1` 만 보면 1회차가 사본을 만들기 **전에** 돌아갈 때 좌초한다.
+// 짚어 준 자리를 계획이 빠뜨리면(#173) 그 검사가 이 블록보다 먼저 반환하고,
+// 2회차부터는 조건이 꺼져 사본을 영영 안 만든다. 그 뒤로는 빈 경로에 대고
+// 쓰므로 "폴더가 없다" 로 끝난다 — W-62666 이 그래서 0바이트였다.
+func (t *taskContext) needsWorkspaceSetup(attempt int) bool {
+	return attempt == 1 || t.repoPath == ""
+}
+
+// branchSafe 는 가지 이름에 쓸 수 있는 글자만 남긴다.
+//
+// 시각만 쓰면 초 단위라, 일꾼이 셋이어서(`workerCount := 3`) 같은 초에 시작한
+// 두 작업이 같은 이름을 받는다. 그러면 뒤엣것의 `worktree add -b` 가 "이미
+// 있다" 로 떨어지고, 되돌이 길은 남이 쓰고 있는 가지를 달라고 해서 또
+// 떨어진다. 작업 번호를 붙이면 겹치지 않고, 어느 작업의 가지인지도 보인다.
+func branchSafe(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		}
+		return -1
+	}, s)
 }
