@@ -52,6 +52,13 @@ func (t *taskContext) stepExecution(attempt int) error {
 		if ex := targetMessageIn(t.repoPath, t.req.StateType, change.FilePath); ex != "" {
 			instr = ex + instr
 		}
+		// 직전에 제가 무엇을 썼는지 코더는 모른다 — 같은 이름을 두 파일에
+		// 두 번 만든다(W-96045·W-11906). 이번에 더한 선언을 일러 준다.
+		if strings.HasSuffix(change.FilePath, ".proto") {
+			if ex := alreadyAddedNote(declsAddedThisTurn(t.repoPath), change.FilePath); ex != "" {
+				instr = ex + instr
+			}
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
