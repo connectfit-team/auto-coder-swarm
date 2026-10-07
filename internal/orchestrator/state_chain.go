@@ -138,6 +138,8 @@ func (t *taskContext) stateChainRequest(owner string, missing []string) Stateles
 	// 이미 무엇이 있는지 보여 준다. 자식이 「이미 있는지 확인하지 못했다」 로
 	// 죽지 않게 — 모델이 뒤져서 알아낼 일이 아니라 세어서 주면 되는 것이다.
 	where += protoOutline(t.orchestrator.wsMgr.RepoPath(owner), msgPath, svcPath)
+	// 이름만 대면 모양을 지어낸다 — 넣을 메시지의 몸통과 다음 빈 번호를 보여 준다.
+	where += targetMessageBody(t.orchestrator.wsMgr.RepoPath(owner), msg)
 	return StatelessRequest{
 		UserRequest: fmt.Sprintf(
 			"%s 저장소에 이것을 더해라: %s\n%s"+

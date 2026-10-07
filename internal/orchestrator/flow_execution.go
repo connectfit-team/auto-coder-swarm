@@ -48,6 +48,10 @@ func (t *taskContext) stepExecution(attempt int) error {
 		if ex := protoConventionExample(t.repoPath, change.FilePath, 2); ex != "" {
 			instr = ex + instr
 		}
+		// 넣을 자리는 그 메시지가 있는 파일을 고칠 때 보여 준다.
+		if ex := targetMessageIn(t.repoPath, t.req.StateType, change.FilePath); ex != "" {
+			instr = ex + instr
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
