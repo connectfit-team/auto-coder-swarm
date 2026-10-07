@@ -59,6 +59,20 @@ func (t *taskContext) stepExecution(attempt int) error {
 				instr = ex + instr
 			}
 		}
+		// **본보기 없이 계약을 쓰게 두지 않는다 — 적어도 조용히는.**
+		//
+		// 실측에서 `connect.service.proto` 를 고치는 코더가 안내문을 **44자**
+		// 받았다. 여섯 블록 가운데 하나도 없었다. 그런데 RPC 와 새 요청·응답
+		// 메시지를 만드는 자리가 바로 그 파일이다 — 이 계약이 상태를 무엇으로
+		// 담는지 한 번도 못 보고 `bool hold_status` 를 썼다(W-16789).
+		//
+		// 안내문은 전부터 로그에 남아 있었다. 아무도 안 봤을 뿐이다. 빠진 것을
+		// **세어서 말하면** 다음 사람은 보게 된다.
+		if missing := missingProtoGuides(change.FilePath, instr); missing != "" {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_THIN_GUIDE",
+				fmt.Sprintf("[%s] 본보기가 빠진 채로 쓴다 — %s", change.FilePath, missing),
+				"", fmt.Sprintf("안내문 %d자", len([]rune(instr))))
+		}
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING", fmt.Sprintf("[%s] 수정", change.FilePath), instr, "")
 		// **못 고쳤으면 못 고쳤다고 남긴다.**
 		//
