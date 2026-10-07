@@ -3,8 +3,10 @@ package orchestrator
 import (
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -34,13 +36,52 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 	if src == "" {
 		return ""
 	}
-	blocks := protoBlocks(src)
+
+	out := requestPairsIn(protoBlocks(src), maxPairs)
+	// **짝이 그 파일에 없으면 이웃 파일에서 가져온다.**
+	//
+	// 관행은 파일이 아니라 꾸러미의 것이다. 이 계약의 service 파일에는
+	// 메시지가 하나도 없고(`service Internal` 뿐이다) 요청·응답은 전부
+	// communication 파일에 있다. 그런데 새 Request/Response 를 만드는 자리는
+	// 바로 그 service 파일이다 — 본보기가 가장 필요한 곳에 본보기가 없었다.
+	if len(out) == 0 {
+		out = requestPairsNearby(repoPath, file, maxPairs)
+	}
+
+	var b strings.Builder
+	if len(out) > 0 {
+		b.WriteString("[이 계약이 요청·응답을 쓰는 꼴 — 그대로 본떠라]\n")
+		b.WriteString(strings.Join(out, "\n"))
+		b.WriteString("\n응답은 이 꼴을 벗어나지 마라. 이 계약에 없는 필드 이름을 지어내지 마라.\n\n")
+	}
+	// **짝이 없다고 나머지까지 버리지 않는다.**
+	//
+	// 전에는 짝이 없으면 통째로 빈 문자열을 냈다. 그래서 service 파일을 고치는
+	// 코더가 상태 타입 예시(#170)도, service 예시(#152)도, enum 예시도 **하나도
+	// 못 받았다.** 실측 W-83289 가 `string status`, W-16789 가 `bool hold_status`
+	// 를 낸 자리가 정확히 거기다. 셋은 짝과 아무 상관이 없다.
+	b.WriteString(protoStateFieldExample(repoPath))
+	b.WriteString(protoEnumExample(repoPath, file))
+	b.WriteString(protoServiceExample(repoPath, file))
+	return b.String()
+}
+
+// requestPairsIn 은 한 파일 안의 짧은 Request/Response 짝을 고른다.
+func requestPairsIn(blocks map[string]string, maxPairs int) []string {
+	var names []string
+	for name := range blocks {
+		if strings.HasPrefix(name, "Request") {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names) // 회차마다 같은 글이 되게
 
 	var out []string
-	for name, body := range blocks {
-		if len(out) >= maxPairs || !strings.HasPrefix(name, "Request") {
-			continue
+	for _, name := range names {
+		if len(out) >= maxPairs {
+			break
 		}
+		body := blocks[name]
 		resp, ok := blocks["Response"+strings.TrimPrefix(name, "Request")]
 		if !ok {
 			continue
@@ -51,15 +92,31 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 		}
 		out = append(out, body+"\n"+resp)
 	}
-	if len(out) == 0 {
-		return ""
+	return out
+}
+
+// requestPairsNearby 는 같은 폴더(= 같은 꾸러미)의 이웃 파일에서 짝을 찾는다.
+func requestPairsNearby(repoPath, file string, maxPairs int) []string {
+	dir := path.Dir(filepath.ToSlash(file))
+	var rels []string
+	forEachProto(repoPath, func(rel, _ string) {
+		if rel != filepath.ToSlash(file) && path.Dir(rel) == dir {
+			rels = append(rels, rel)
+		}
+	})
+	sort.Strings(rels)
+	var out []string
+	for _, rel := range rels {
+		if len(out) >= maxPairs {
+			break
+		}
+		src := protoAtHead(repoPath, rel)
+		if src == "" {
+			continue
+		}
+		out = append(out, requestPairsIn(protoBlocks(src), maxPairs-len(out))...)
 	}
-	return "[이 계약이 요청·응답을 쓰는 꼴 — 그대로 본떠라]\n" +
-		strings.Join(out, "\n") +
-		"\n응답은 이 꼴을 벗어나지 마라. 이 계약에 없는 필드 이름을 지어내지 마라.\n\n" +
-		protoStateFieldExample(repoPath) +
-		protoEnumExample(repoPath, file) +
-		protoServiceExample(repoPath, file)
+	return out
 }
 
 // protoServiceExample 은 이 파일에 이미 있는 service 를 짧게 보여 준다.
