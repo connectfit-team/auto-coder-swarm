@@ -75,6 +75,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 
 		if _, err := t.coder.ModifyFile(t.ctx, full, instr); err == nil {
 			t.noteApproxRung(change.FilePath)
+			t.noteStrippedComments(change.FilePath)
 		} else {
 			// **파일 하나 때문에 나머지를 버리지 않는다.**
 			//
@@ -99,6 +100,7 @@ func (t *taskContext) stepExecution(attempt int) error {
 				t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CODING_RETRIED_OK",
 					fmt.Sprintf("[%s] 두 번째에 고쳤습니다", change.FilePath), "", "")
 				t.noteApproxRung(change.FilePath)
+				t.noteStrippedComments(change.FilePath)
 			}
 		}
 	}
@@ -157,6 +159,15 @@ func (t *taskContext) stepExecution(attempt int) error {
 //
 // 사다리의 아랫단은 정확히 맞지 않은 자리에 넣는다. 맞을 때가 많아서 쓰지만,
 // 조용히 지나가면 틀렸을 때 까닭을 찾을 수가 없다.
+// noteStrippedComments 는 기계가 턴 주석을 남긴다. 조용히 고치지 않는다.
+func (t *taskContext) noteStrippedComments(file string) {
+	if n := agent.StrippedComments(); n > 0 {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "COMMENT_STRIPPED",
+			fmt.Sprintf("[%s] 코드를 옮겨 적은 주석 %d줄을 지웠다", file, n), "",
+			"선언 이름과 뼈대 낱말뿐인 주석이라 잃는 것이 없다. 막고 다시 시키는 것보다 싸다.")
+	}
+}
+
 func (t *taskContext) noteApproxRung(file string) {
 	if why := agent.LastApproxRung(); why != "" {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "MATCH_APPROX",
