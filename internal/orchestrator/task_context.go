@@ -53,7 +53,10 @@ type taskContext struct {
 	repoPath      string
 	targetRepo    string
 	currentBranch string
-	lastFeedback  string
+	// lastStateSheet 는 「담을 자리」를 물을 때 모델이 본 목록이다.
+	// 답만 남기고 입력을 버리면 왜 그렇게 골랐는지 알 수 없다.
+	lastStateSheet string
+	lastFeedback   string
 	// 같은 이유로 몇 번 막혔는지. "최대 시도 초과" 가 까닭을 가리지 않게 한다.
 	denials map[string]int
 	// 없는 기능을 새로 만드는 일인가. 계획·PR 이 이것을 알아야 한다.

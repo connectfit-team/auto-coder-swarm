@@ -23,6 +23,7 @@ func (t *taskContext) askTypeForStateOnce(files []string, missing []string) stri
 	if strings.TrimSpace(sheet) == "" {
 		return ""
 	}
+	t.lastStateSheet = sheet
 	prompt := fmt.Sprintf(`아래는 이 일과 맞닿은 자리에 **실제로 있는 이름과 타입의 필드**다.
 
 %s
@@ -79,9 +80,15 @@ func (t *taskContext) askTypeForState(files []string, missing []string) string {
 	if votes*2 <= len(answers) {
 		stage = "STATE_TYPE_SPLIT"
 	}
+	// **무엇을 보고 그렇게 골랐는지 함께 남긴다.**
+	//
+	// 이 물음의 입력(stateSheet)이 로그에 없어서 진단이 막혔다. 범위도 후보도
+	// 계약 점수도 똑같은 두 판이 한쪽은 `ReceivedRequest`, 한쪽은 `TradeInfo`
+	// 를 **만장일치로** 냈는데(W-28792 vs W-71577), 무엇이 달랐는지 볼 수가
+	// 없었다. 답만 남기고 입력을 버리면 다음 사람도 같은 자리에서 막힌다.
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, stage,
 		fmt.Sprintf("%s %d표 / 물어본 %d번", best, votes, len(answers)),
-		"", strings.Join(answers, " · "))
+		t.lastStateSheet, strings.Join(answers, " · "))
 	return best
 }
 
