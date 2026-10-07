@@ -49,7 +49,7 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 			continue
 		}
 		if t, n, ok := protoField(line[1:]); ok && reStateFieldName.MatchString(n) {
-			adding[t]++
+			adding[baseTypeName(t)]++
 		}
 	}
 
@@ -71,7 +71,7 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 				enums[m[1]] = true
 			}
 			if t, n, ok := protoField(line); ok && reStateFieldName.MatchString(n) {
-				habit[t]++
+				habit[baseTypeName(t)]++
 			}
 		}
 	})
@@ -96,7 +96,10 @@ func stateFieldTypeOffHabit(repoPath, diff string) []guard.Violation {
 			continue
 		}
 		t, n, ok := protoField(line[1:])
-		if !ok || !reStateFieldName.MatchString(n) || habit[t] > 0 || enums[t] {
+		// **꾸러미를 떼고 견준다.** 글자 그대로 보면 enum 인데 enum 이 아니라고
+		// 막는다 — 아래 baseTypeName 참고.
+		base := baseTypeName(t)
+		if !ok || !reStateFieldName.MatchString(n) || habit[base] > 0 || enums[base] {
 			continue
 		}
 		out = append(out, guard.Violation{
@@ -152,3 +155,20 @@ func habitNote(habit map[string]int) string {
 
 // 습관이라고 말하려면 이만큼은 있어야 한다.
 const minHabitSamples = 3
+
+// baseTypeName 은 꾸러미를 떼고 타입 이름만 남긴다.
+//
+// 계약에서는 같은 타입을 `ConnectionStatus` 로도 `ceoweb.v1.ConnectionStatus`
+// 로도 적는다. 글자 그대로 견주면 **enum 인데 enum 이 아니라고 막는다.**
+// 실측에서 자식이 낸 `ceoweb.v1.ConnectionStatus status` 와
+// `ConnectRequestStatus status` 가 그렇게 막혔다 — 이 관문이 계약 자식의
+// 실패 25건 가운데 9건으로 가장 큰 벽이었다.
+//
+// #167 이 「enum 은 막지 않는다」 로 고쳐 놓고 이름 모양 하나를 빠뜨린 것이다.
+// 관문이 **이상적인 답을 막는 것**은 이것으로 두 번째다.
+func baseTypeName(t string) string {
+	if i := strings.LastIndex(t, "."); i >= 0 {
+		return t[i+1:]
+	}
+	return t
+}
