@@ -297,14 +297,7 @@ func (t *taskContext) revertUnplannedFiles(plan agent.Plan) []string {
 		if f == "" {
 			continue
 		}
-		planned := false
-		for _, c := range plan.Changes {
-			if sameFilePath(c.FilePath, f) {
-				planned = true
-				break
-			}
-		}
-		if planned {
+		if t.plannedOrPointedAt(plan, f) {
 			continue
 		}
 		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", "--", f).Run()
@@ -368,4 +361,33 @@ func (t *taskContext) restoreBest() {
 	}
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "BEST_RESTORED",
 		fmt.Sprintf("시도 %d 를 되살렸다 (그때 남은 오류 %d개) — 여기서 이어간다", t.bestAttempt, t.bestErrors), "", "")
+}
+
+// plannedOrPointedAt 은 그 파일을 고쳐도 되는지 본다.
+//
+// **짚어 준 파일은 계획에 없어도 「계획에 없는 파일」이 아니다.**
+//
+// 연쇄가 넘길 때 고칠 자리를 콕 집어 준다(`TargetFiles` — #154). 그런데
+// 회차마다 계획을 다시 세우므로, 앞 회차에 바르게 고쳐 둔 파일이 이번
+// 계획에서 빠질 수 있다. 되돌리기를 없앤 뒤(#182) 그 수정이 작업 트리에
+// 남아 있다가 **여기서 지워졌다** — 실측 W-23965 가 `connect.service.proto`
+// 를 그렇게 잃고, 필드만 있고 **바꾸는 길(RPC)이 없는 반쪽**으로 승인
+// 대기까지 갔다. 관문도 비평가도 아무 말을 안 했다. 그 파일이 diff 에서
+// 통째로 사라졌으니 볼 것이 없었던 것이다.
+//
+// 「계획에 없는 파일」 관문의 뜻은 **요청하지 않은 자리가 딸려 오는 것**을
+// 막는 것이다(말일 경계 수정에 export API 가 딸려 온 일). 연쇄가 이름을 대어
+// 넘긴 파일은 그 뜻에 해당하지 않는다.
+func (t *taskContext) plannedOrPointedAt(plan agent.Plan, f string) bool {
+	for _, c := range plan.Changes {
+		if sameFilePath(c.FilePath, f) {
+			return true
+		}
+	}
+	for _, p := range t.req.TargetFiles {
+		if sameFilePath(p, f) {
+			return true
+		}
+	}
+	return false
 }
