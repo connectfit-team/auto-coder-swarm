@@ -131,9 +131,22 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 	cv := agent.ParseCriticVerdict(criticResp, t.finalDiff)
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CRITIC", cv.Why, "", criticResp)
 	if cv.Blocking {
-		t.lastFeedback = "CRITIC REJECTION: " + criticResp
+		// **맞게 쓴 것까지 버리지 않는다.**
+		//
+		// 되돌렸더니 실측 W-11906 이 이렇게 됐다 — 1·2회차에 필드와 RPC 를
+		// 둘 다 바르게 넣었는데, 비평가가 enum 중복 하나를 짚자 작업 트리가
+		// 통째로 지워졌다. 3회차는 처음부터 썼고 **RPC 를 되살리지 못했다.**
+		// 관문을 다 지나 승인 대기까지 갔지만 「바꾸는 길」이 없는 반쪽이다.
+		//
+		// 비평가는 파일·줄을 대야 막을 수 있다(ParseCriticVerdict). 즉 짚은
+		// 자리가 분명하다 — 통째로 되돌릴 까닭이 없다. 계약 관문은 이미 이렇게
+		// 한다.
+		//
+		// 되돌리지 않으면 작업 트리가 지저분해 restoreBest 가 건너뛰므로,
+		// 다음 시도는 저절로 이 위에서 이어진다.
+		t.lastFeedback = "CRITIC REJECTION: " + criticResp +
+			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
 		t.keepRejectedDiff()
-		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
 	}
 
@@ -175,9 +188,10 @@ func (t *taskContext) stepReview() (bool, RunResult, error) {
 			}
 			return true, res, nil
 		}
-		t.lastFeedback = "REVIEWER REJECTION: " + reviewResp
+		// 비평가와 같은 까닭으로 되돌리지 않는다 — 위 주석 참고.
+		t.lastFeedback = "REVIEWER REJECTION: " + reviewResp +
+			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
 		t.keepRejectedDiff()
-		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return false, RunResult{}, nil
 	}
 
