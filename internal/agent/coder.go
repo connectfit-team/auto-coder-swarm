@@ -64,7 +64,13 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 		return "", err
 	}
 
-	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(CleanCodeOutput(raw))), 0644); err != nil {
+	// 치유기도 통째로 다시 쓴다 — 여기서도 턴다(ACS#176).
+	repaired := CleanCodeOutput(raw)
+	if cleaned, n := StripRestatingComments(repaired); n > 0 {
+		repaired = cleaned
+		strippedComments += n
+	}
+	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(repaired)), 0644); err != nil {
 		return "", err
 	}
 	TidyFile(ctx, filePath)
@@ -136,7 +142,7 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	// 모델에게 세 번 더 물어볼 일이 아니다.
 	if cleaned, n := StripRestatingComments(updated); n > 0 {
 		updated = cleaned
-		strippedComments = n
+		strippedComments += n
 	}
 
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(updated)), 0644); err != nil {

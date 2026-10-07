@@ -54,6 +54,12 @@ func (a *CoderAgent) CreateFile(ctx context.Context, filePath, instructions, out
 	if err := CheckSyntax(filePath, content); err != nil {
 		return "", err
 	}
+	// 코드를 옮겨 적은 주석은 기계가 턴다 — 고치는 길과 같다(ACS#176).
+	// 여기만 빠지면 새 파일에서 관문에 막혀 시도가 날아간다.
+	if cleaned, n := StripRestatingComments(content); n > 0 {
+		content = cleaned
+		strippedComments += n
+	}
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(content)), 0644); err != nil {
 		return "", fmt.Errorf("새 파일을 못 썼다: %w", err)
 	}
