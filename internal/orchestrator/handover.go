@@ -73,6 +73,7 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_HAS_NO_HOME",
 			"담을 자리를 새 메시지에 만들었다 — 아무도 안 쓴다", why, note)
 		t.lastFeedback = "PROTO: " + note +
+			targetMessageBody(t.repoPath, t.req.StateType) +
 			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
 		return RunResult{}, false
 	}
