@@ -18,7 +18,7 @@ import (
 // 산문으로 저장소를 고르게 하면 빗나간다. 이름 하나를 묻고 경로를 읽는다.
 
 // askTypeForState 는 그 상태가 붙어야 할 **타입 이름 하나**를 묻는다.
-func (t *taskContext) askTypeForState(files []string, missing []string) string {
+func (t *taskContext) askTypeForStateOnce(files []string, missing []string) string {
 	sheet := t.stateSheet(files)
 	if strings.TrimSpace(sheet) == "" {
 		return ""
@@ -47,6 +47,67 @@ func (t *taskContext) askTypeForState(files []string, missing []string) string {
 		return ""
 	}
 	return name
+}
+
+// askTypeForState 는 **세 번 물어 다수결로 정한다.**
+//
+// 한 번만 물었다. 실제로 세어 보니 뿌리 작업 22번 가운데 20번(90%)은 바르게
+// `ReceivedRequest` 를 골랐지만, 한 번은 `TradeInfo`, 한 번은 `InviteCandidate`
+// 를 골랐다.
+//
+// 이 값이 틀리면 자식이 **엉뚱한 파일의 엉뚱한 메시지**를 고친다. 실측
+// W-79519 는 `TradeInfo` 를 받아 `message.proto` 를 열었고, 거기서 엉뚱한
+// `StaffImage` 에 필드를 넣고 있던 `origin_url` 을 지웠으며 번호도 건너뛰었다.
+// 출발점이 틀리면 그 뒤는 전부 어긋난다.
+//
+// 틀린 답이 **서로 다르다**는 것이 중요하다. 같은 오답으로 몰리지 않으므로
+// 다수결이 듣는다. askStateExists 와 같은 처방이다.
+func (t *taskContext) askTypeForState(files []string, missing []string) string {
+	const rounds = 3
+	var answers []string
+	for i := 0; i < rounds; i++ {
+		if n := t.askTypeForStateOnce(files, missing); n != "" {
+			answers = append(answers, n)
+		}
+	}
+	best, votes := majorityOf(answers)
+	if best == "" {
+		return ""
+	}
+	// **갈렸으면 갈렸다고 남긴다.** 과반 없이 고른 것은 한 번 물은 것과 같다.
+	stage := "STATE_TYPE_VOTE"
+	if votes*2 <= len(answers) {
+		stage = "STATE_TYPE_SPLIT"
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, stage,
+		fmt.Sprintf("%s %d표 / 물어본 %d번", best, votes, len(answers)),
+		"", strings.Join(answers, " · "))
+	return best
+}
+
+// majorityOf 는 가장 많이 나온 답과 그 표수를 준다.
+//
+// 동점이면 **먼저 나온 것**을 고른다. map 을 돌면 회차마다 다른 답이 나와
+// 같은 조건에서 잰 두 판을 견줄 수 없다.
+func majorityOf(answers []string) (string, int) {
+	count := map[string]int{}
+	var order []string
+	for _, a := range answers {
+		if count[a] == 0 {
+			order = append(order, a)
+		}
+		count[a]++
+	}
+	if len(order) == 0 {
+		return "", 0
+	}
+	best := order[0]
+	for _, n := range order[1:] {
+		if count[n] > count[best] {
+			best = n
+		}
+	}
+	return best, count[best]
 }
 
 // ownerRepoForState 는 그 상태가 붙을 타입의 임자 저장소를 준다.
