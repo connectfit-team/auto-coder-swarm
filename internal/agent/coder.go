@@ -17,6 +17,17 @@ type CoderAgent struct {
 	conventions string
 }
 
+// strippedComments 는 마지막으로 턴 주석 줄 수다. 조용히 고치지 않으려고
+// 부르는 쪽에 알린다.
+var strippedComments int
+
+// StrippedComments 는 그 수를 주고 비운다. 한 번만 알린다.
+func StrippedComments() int {
+	n := strippedComments
+	strippedComments = 0
+	return n
+}
+
 // SetConventions 는 이 작업에 적용할 절차를 심는다.
 func (a *CoderAgent) SetConventions(s string) { a.conventions = s }
 
@@ -116,6 +127,16 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	if dup := duplicateDecls(filePath, updated); len(dup) > 0 {
 		return "", fmt.Errorf("%s: 같은 이름을 두 번 선언했다 — %s. 이미 있는 것을 쓰고, 새로 만들지 마라",
 			filepath.Base(filePath), strings.Join(dup, ", "))
+	}
+
+	// **코드를 옮겨 적은 주석은 기계가 지운다.**
+	//
+	// 관문으로 막았더니 계약 수정이 다 맞았는데 주석 때문에 세 시도를 다 쓰고
+	// 죽었다(실측 W-71222). 지워도 잃는 것이 없는 주석이므로 여기서 턴다 —
+	// 모델에게 세 번 더 물어볼 일이 아니다.
+	if cleaned, n := StripRestatingComments(updated); n > 0 {
+		updated = cleaned
+		strippedComments = n
 	}
 
 	if err := os.WriteFile(filePath, []byte(ensureFinalNewline(updated)), 0644); err != nil {
