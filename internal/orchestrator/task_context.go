@@ -19,6 +19,9 @@ type taskContext struct {
 	repoLockFunc func(string) (bool, error)
 	// 계획이 없는 파일을 가리켰을 때 되돌려 줄 "실제로 있는 파일" 목록.
 	candidateHint string
+	// candidatePaths 는 분석이 찾아 준 후보 파일의 경로다.
+	// 계획이 짚은 파일에서 아무것도 못 캘 때 여기로 넓힌다.
+	candidatePaths []string
 	// 전략 단계가 짚은 고칠 파일. 계획이 이걸 무시하면 엉뚱한 데를 고친다.
 	actionablePath []string
 	// 분석이 원인과 고칠 값까지 짚어 준 계획인가. 그렇다면 검토자의 반대는
