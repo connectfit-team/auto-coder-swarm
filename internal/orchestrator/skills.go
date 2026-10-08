@@ -110,7 +110,10 @@ func trimRunes(s string, max int) string {
 // 조용히 사라지고, 그 사이 그 계약을 쓰는 쪽만 깨진다.
 var generatedFile = regexp.MustCompile(
 	`\.(pb|pb\.gw)\.go$|_grpc\.pb\.go$|\.g\.dart$|\.freezed\.dart$|\.pb\.dart$` +
-		`|\.dart\.js$|\.min\.(js|css)$|\.js\.map$|/(build|dist)/|/protos?/`)
+		`|\.dart\.js$|\.min\.(js|css)$|\.js\.map$|/(build|dist)/|/protos?/` +
+		// 파이썬 protobuf 스텁. gig_ai 에만 240개 있다 — 경로로도 대개 걸리지만
+		// 꼴로도 잡아 둔다(code-insight-engine#88 과 같은 목록).
+		`|_pb2\.pyi?$|_pb2_grpc\.pyi?$`)
 
 // diffFile 은 `+++ b/path` 줄에서 경로를 뽑는다.
 var diffFile = regexp.MustCompile(`(?m)^\+\+\+ b/(.+)$`)
