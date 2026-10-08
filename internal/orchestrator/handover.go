@@ -68,6 +68,18 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 	// 계약을 고쳤으면 계약을 읽어 본다. 빌드는 계약을 못 본다 —
 	// 생성물을 다시 만들지 않으므로 이미 있는 메시지를 다시 정의해도
 	// go build 는 통과한다.
+	// 담을 자리를 만드는 일인데 바꾸는 길이 없으면 반쪽이다.
+	if t.req.AddsState {
+		if bad := stateChangeNeedsAnRPC(t.repoPath, diff); len(bad) > 0 {
+			note := AlignmentNote(bad)
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_HAS_NO_WAY_TO_CHANGE",
+				"담을 자리만 만들고 바꾸는 길을 안 냈다", why, note)
+			t.lastFeedback = "PROTO: " + note +
+				"\n\n고친 것은 그대로 두었다. **rpc 만 더해라** — 처음부터 다시 쓰지 마라."
+			return RunResult{}, false
+		}
+	}
+
 	if bad := fieldWentIntoNewMessage(diff, t.req.StateType); len(bad) > 0 {
 		note := AlignmentNote(bad)
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_HAS_NO_HOME",
