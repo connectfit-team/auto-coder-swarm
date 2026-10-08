@@ -57,6 +57,11 @@ diff --git a/ceoweb/v1/connect.service.proto b/ceoweb/v1/connect.service.proto
 		t.Fatalf("관문이 이상적인 답을 %d개 이유로 막는다 — 넘을 수 없는 관문이다", len(bad))
 	}
 
+	// handover 관문도 함께 본다 — CheckProtoChange 바깥에 있다고 빼면
+	// 이 시험이 지키려는 것을 못 지킨다.
+	if v := stateChangeNeedsAnRPC(repo, ideal); len(v) > 0 {
+		t.Errorf("이상적인 답을 「바꾸는 길이 없다」 로 막는다: %s", v[0].Why)
+	}
 	if v := fieldWentIntoNewMessage(ideal, "ReceivedRequest"); len(v) > 0 {
 		for _, x := range v {
 			fmt.Println("  담을 자리:", x.Why)
