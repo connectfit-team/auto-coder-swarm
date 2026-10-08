@@ -139,11 +139,23 @@ func (t *taskContext) askStateOnce(files []string) (*stateAnswer, bool) {
 }
 
 // stateSheet 는 그 자리들의 이름·필드를 모은다. 쓰기 전에 주는 쪽지와 같은 것이다.
+// 담을 자리를 묻는 목록의 상한. **파일 수가 아니라 글자로 끊는다.**
+//
+// 앞의 3개 파일만 보던 것이 틀린 답의 원인이었다. 회차마다 files 의 차례가
+// 달라서, 어떤 판은 연결 관련 파일이 3개 안에 못 들어온다. 실측으로 같은
+// 요청에 목록이 1,197자(틀림)와 3,193자(맞음)로 갈렸고, **틀린 판의 목록은
+// 맞은 판의 부분집합**이었다 — 틀린 판에만 있는 줄이 0개다. 덜 보여 주고
+// 틀린 답을 받은 것이다.
+//
+// 6,000자는 어림 4,000토큰이다. 창 16,384 에 넉넉하다.
+const stateSheetChars = 6000
+const stateSheetFiles = 8
+
 func (t *taskContext) stateSheet(files []string) string {
 	var b strings.Builder
 	n := 0
 	for _, f := range files {
-		if n >= 3 {
+		if n >= stateSheetFiles || b.Len() >= stateSheetChars {
 			break
 		}
 		if s := AvailableNames(t.repoPath, f); s != "" {
