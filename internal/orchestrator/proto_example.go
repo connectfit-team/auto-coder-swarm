@@ -50,7 +50,15 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 
 	var b strings.Builder
 	if len(out) > 0 {
-		b.WriteString("[이 계약이 요청·응답을 쓰는 꼴 — 그대로 본떠라]\n")
+		// **「본떠라」 가 「베껴 넣어라」 로 읽혔다.**
+		//
+		// 실측 W-36577 이 본보기로 보여 준 `RequestCreateTrade`·
+		// `ResponseCreateTrade`·`RequestDeleteEndorsement`·
+		// `ResponseDeleteEndorsement` 를 **계약에 그대로 넣었다.** 넷 다 이미
+		// 있는 메시지다. 보여 주는 것이 값이 있었던 만큼, 보여 준 것을 베끼는
+		// 것도 막아야 한다.
+		b.WriteString("[이 계약이 요청·응답을 쓰는 꼴]\n")
+		b.WriteString("**아래는 이미 있는 것이다 — 베껴 넣지 마라.** 꼴만 보고, 이번 일에 필요한 것만 **새 이름으로** 지어라.\n")
 		b.WriteString(strings.Join(out, "\n"))
 		b.WriteString("\n응답은 이 꼴을 벗어나지 마라. 이 계약에 없는 필드 이름을 지어내지 마라.\n\n")
 	}
