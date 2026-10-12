@@ -34,7 +34,13 @@ func declsAddedThisTurn(repoPath string) map[string]string {
 	if repoPath == "" {
 		return out
 	}
-	b, err := exec.Command("git", "-C", repoPath, "diff", "--unified=0", "--", "*.proto").Output()
+	// **`git diff HEAD` 다 — 맨 `git diff` 가 아니다.**
+	//
+	// 흐름이 검토할 때 `stagedDiff` 로 `git add -A` 를 한다. 그 뒤로는 맨
+	// `git diff`(스테이지 안 된 것만)가 **빈 결과**를 낸다. 그래서 이 쪽지가
+	// 1회차에만 뜨고 2회차부터 눈이 멀었다 — 실측 W-68115 에서 2회차 두 호출
+	// 모두 쪽지가 없었고, 모델이 `enum RequestStatus` 를 두 파일에 또 넣었다.
+	b, err := exec.Command("git", "-C", repoPath, "diff", "HEAD", "--unified=0", "--", "*.proto").Output()
 	if err != nil {
 		return out
 	}
