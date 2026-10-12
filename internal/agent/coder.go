@@ -19,6 +19,8 @@ type CoderAgent struct {
 	// 붙는다.** 코더는 작업마다 새로 만들어지므로(task_context.go) 여기 두면
 	// 둘 다 사라진다.
 	stripped int
+	// baseline 은 「원래 있던 것」 을 읽는 길이다. SetBaseline 참고.
+	baseline func(path string) (string, bool)
 	// 팀의 작업 절차. 힐러가 부르는 수리 경로도 같은 규약을 받아야 해서
 	// 호출 인자가 아니라 필드다 — 한 군데서 빠뜨리면 그 경로만 규약 없이 돈다.
 	conventions string
@@ -80,6 +82,12 @@ func (a *CoderAgent) RepairFile(ctx context.Context, filePath, instructions, bui
 	return fmt.Sprintf("Repaired %s", filePath), nil
 }
 
+// SetBaseline 은 「원래 있던 것」 의 기준을 어디서 읽을지 정한다.
+//
+// 주지 않으면 디스크의 지금 내용을 기준으로 삼는다(전과 같다). 작업마다
+// CoderAgent 가 하나씩이라 일꾼이 셋이어도 섞이지 않는다.
+func (a *CoderAgent) SetBaseline(fn func(path string) (string, bool)) { a.baseline = fn }
+
 func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructions string) (string, error) {
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
@@ -113,7 +121,23 @@ func (a *CoderAgent) ModifyFile(ctx context.Context, filePath string, instructio
 	// 통짜로 다시 쓰게 하면 모델이 조용히 함수를 빠뜨린다. 실측으로
 	// attendance.ts 에서 getAttendanceRecords 가 사라져 빌드가 깨졌고,
 	// 자가 치유 세 번을 태운 뒤에야 드러났다. 여기서 막고 이유를 말한다.
-	if lost := lostExportsFor(filePath, original, updated); len(lost) > 0 {
+	// **「원래 있던 것」 은 HEAD 다 — 디스크의 지금 내용이 아니다.**
+	//
+	// 되돌리기를 없앤 뒤(#182) 앞 회차가 쓴 것이 파일에 남아 있다. 그것을
+	// 기준으로 삼으면, 앞 회차의 **잘못을 고치는 것**이 「있던 이름이
+	// 사라졌다」 가 된다. 실측 W-42846 이 그랬다 — #197 이 접두형으로 고치라고
+	// 해서 `UpdateHoldStatusRequest` 를 `RequestUpdateHoldStatus` 로 바꿨더니
+	// 이 검사가 막아 세 시도를 다 썼다. 관문끼리 부딪힌 것이다.
+	//
+	// HEAD 에 있던 것을 잃는 것만 막는다. 이번 작업이 만든 이름은 이번 작업이
+	// 고쳐도 된다.
+	base := original
+	if a.baseline != nil {
+		if b, ok := a.baseline(filePath); ok {
+			base = b
+		}
+	}
+	if lost := lostExportsFor(filePath, base, updated); len(lost) > 0 {
 		return "", fmt.Errorf("%s: 원래 있던 이름이 사라졌다 — %s. 고칠 줄만 바꾸고 나머지는 그대로 둬라",
 			filepath.Base(filePath), strings.Join(lost, ", "))
 	}

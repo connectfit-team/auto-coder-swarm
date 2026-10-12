@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -140,6 +141,9 @@ func (t *taskContext) finishPlanning(plan agent.Plan, attempt int) error {
 		if err := t.orchestrator.wsMgr.CreateWorktree(t.targetRepo, t.repoPath, t.currentBranch); err != nil {
 			return fmt.Errorf("%s 의 작업 사본을 만들지 못했다: %w", t.targetRepo, err)
 		}
+		// 「원래 있던 것」 의 기준을 HEAD 로 준다 — 앞 회차가 쓴 것을 기준으로
+		// 삼으면 그 잘못을 고치는 것이 「잃었다」 가 된다(coder.go 주석 참고).
+		t.coder.SetBaseline(headBaseline(t.repoPath))
 		t.meta = t.orchestrator.detectProjectTypeLLM(t.ctx, t.taskID, t.repoPath)
 		// 모델은 "N/A"·"none" 같은 말을 빌드 명령으로 낸다. 그것을 그대로
 		// 돌리면 sh 가 못 찾아 실패하고, 코드 탓으로 보고된다.
@@ -342,4 +346,25 @@ func branchSafe(s string) string {
 		}
 		return -1
 	}, s)
+}
+
+// headBaseline 은 파일의 **HEAD 시절 내용**을 읽어 주는 길을 만든다.
+//
+// HEAD 에 없는 파일(이번에 새로 만드는 것)은 못 찾았다고 답한다 — 그때는
+// 부르는 쪽이 디스크 내용을 기준으로 삼는다(전과 같다).
+func headBaseline(repoPath string) func(string) (string, bool) {
+	if repoPath == "" {
+		return nil
+	}
+	return func(full string) (string, bool) {
+		rel, err := filepath.Rel(repoPath, full)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return "", false
+		}
+		out, err := exec.Command("git", "-C", repoPath, "show", "HEAD:"+filepath.ToSlash(rel)).Output()
+		if err != nil {
+			return "", false
+		}
+		return string(out), true
+	}
 }
