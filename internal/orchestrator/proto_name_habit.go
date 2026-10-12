@@ -62,6 +62,18 @@ func suffixNameOffHabit(repoPath, diff string) []guard.Violation {
 		if strings.HasPrefix(name, "Request") || strings.HasPrefix(name, "Response") {
 			continue
 		}
+		// **이미 있는 메시지는 건드리지 않는다.**
+		//
+		// `ReceivedRequest` 는 이 계약의 멀쩡한 메시지인데 글자가 "Request"
+		// 로 끝난다. 자식이 그것을 **다시 선언**하면 diff 에 「새로 더한 것」
+		// 으로 보여, 「접미형으로 만들었다」 고 엉뚱한 말을 하게 된다.
+		// 실측 W-19603 이 그랬다.
+		//
+		// 그 말을 들으면 **있는 메시지의 이름을 바꾸려 든다** — 쓰는 쪽이 다
+		// 깨진다. 진짜 문제(중복 선언)는 duplicateDecls 가 바르게 말한다.
+		if declaringFileAtHead(repoPath, name) != "" {
+			continue
+		}
 		if strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") {
 			bad = append(bad, name)
 		}

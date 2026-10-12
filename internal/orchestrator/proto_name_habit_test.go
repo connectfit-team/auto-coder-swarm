@@ -95,3 +95,36 @@ func TestFlipToPrefix(t *testing.T) {
 		}
 	}
 }
+
+// **이미 있는 메시지를 「접미형」 이라고 하지 않는다.**
+//
+// `ReceivedRequest` 는 이 계약의 멀쩡한 메시지인데 글자가 "Request" 로 끝난다.
+// 자식이 그것을 **다시 선언**하면 diff 에 「새로 더한 것」 으로 보여, 엉뚱하게
+// 「접미형으로 만들었다」 고 말하게 된다(실측 W-19603).
+//
+// 그 말을 들으면 **있는 메시지의 이름을 바꾸려 든다** — 쓰는 쪽이 다 깨진다.
+// 진짜 문제(중복 선언)는 duplicateDecls 가 바르게 말한다.
+func TestExistingMessageIsNotCalledSuffix(t *testing.T) {
+	repo := "/home/cnf/cie-repos/proto-ceowebapis"
+	if _, err := os.Stat(repo); err != nil {
+		t.Skip("계약 사본이 없다")
+	}
+	diff := "+++ b/ceoweb/v1/connect.service.proto\n" +
+		"+message ReceivedRequest {\n+  int32 pending_status = 15;\n+}\n"
+	if bad := suffixNameOffHabit(repo, diff); len(bad) > 0 {
+		t.Fatalf("있는 메시지를 접미형이라 했다: %s", bad[0].Why)
+	}
+}
+
+// 새로 지은 접미형 이름은 그대로 문다 — 이 관문이 있는 까닭이다.
+func TestNewSuffixNameIsStillCaught(t *testing.T) {
+	repo := "/home/cnf/cie-repos/proto-ceowebapis"
+	if _, err := os.Stat(repo); err != nil {
+		t.Skip("계약 사본이 없다")
+	}
+	diff := "+++ b/ceoweb/v1/connect.service.proto\n" +
+		"+message UpdateHoldStatusRequest {\n+  int32 status = 1;\n+}\n"
+	if bad := suffixNameOffHabit(repo, diff); len(bad) == 0 {
+		t.Fatal("새로 지은 접미형을 안 막았다")
+	}
+}
