@@ -52,21 +52,7 @@ func suffixNameOffHabit(repoPath, diff string) []guard.Violation {
 		return nil
 	}
 
-	pre, suf := 0, 0
-	forEachProto(repoPath, func(rel, _ string) {
-		for _, line := range strings.Split(protoAtHead(repoPath, rel), "\n") {
-			m := reMessageOpen.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
-			switch {
-			case strings.HasPrefix(m[1], "Request"), strings.HasPrefix(m[1], "Response"):
-				pre++
-			case strings.HasSuffix(m[1], "Request"), strings.HasSuffix(m[1], "Response"):
-				suf++
-			}
-		}
-	})
+	pre, suf := nameHabit(repoPath)
 	if pre < minNameSamples || pre <= suf*nameDominance {
 		return nil
 	}
@@ -108,4 +94,45 @@ func flipToPrefix(name string) string {
 		}
 	}
 	return name
+}
+
+// nameHabit 은 이 계약이 메시지 이름을 어느 꼴로 짓는지 센다.
+//
+// HEAD 에서 센다 — 작업 트리에는 이번 수정이 들어 있어 새 이름이 제 표로
+// 관행을 만든다(#166 에서 겪은 그것).
+func nameHabit(repoPath string) (pre, suf int) {
+	if repoPath == "" {
+		return 0, 0
+	}
+	forEachProto(repoPath, func(rel, _ string) {
+		for _, line := range strings.Split(protoAtHead(repoPath, rel), "\n") {
+			m := reMessageOpen.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(m[1], "Request"), strings.HasPrefix(m[1], "Response"):
+				pre++
+			case strings.HasSuffix(m[1], "Request"), strings.HasSuffix(m[1], "Response"):
+				suf++
+			}
+		}
+	})
+	return pre, suf
+}
+
+// nameShapeLine 은 **새로 지을 이름의 꼴**을 세어서 한 줄로 일러 준다.
+//
+// 본보기를 베끼지 말라고만 하고(#195) 어떤 이름으로 지으라는 말은 없었다.
+// 그래서 모델이 `UpdatePendingStatusRequest` 꼴을 지어냈고, 관문(#192)이 물어도
+// 세 시도 안에 못 고쳤다 — 실측 12판에서 둘 다 이것으로 떨어졌다.
+//
+// 막는 자리와 일러 주는 자리가 **같은 셈**을 봐야 어긋나지 않는다.
+func nameShapeLine(repoPath string) string {
+	pre, suf := nameHabit(repoPath)
+	if pre < minNameSamples || pre <= suf*nameDominance {
+		return "" // 섞어 쓰는 계약에서는 말하지 않는다
+	}
+	return fmt.Sprintf("이름은 **`RequestXxx`·`ResponseXxx` 처럼 앞에 붙인다** — "+
+		"이 계약은 접두형 %d개, 접미형 %d개다. `XxxRequest` 꼴로 지으면 관문이 문다.\n", pre, suf)
 }

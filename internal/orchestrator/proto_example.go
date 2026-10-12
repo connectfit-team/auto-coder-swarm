@@ -58,7 +58,11 @@ func protoConventionExample(repoPath, file string, maxPairs int) string {
 		// 있는 메시지다. 보여 주는 것이 값이 있었던 만큼, 보여 준 것을 베끼는
 		// 것도 막아야 한다.
 		b.WriteString("[이 계약이 요청·응답을 쓰는 꼴]\n")
-		b.WriteString("**아래는 이미 있는 것이다 — 베껴 넣지 마라.** 꼴만 보고, 이번 일에 필요한 것만 **새 이름으로** 지어라.\n")
+		b.WriteString("**아래는 이미 있는 것이다 — 베껴 넣지 마라.** 꼴만 보고, 이번 일에 필요한 것만 새로 지어라.\n")
+		// **새로 지으라고만 하고 어떤 이름으로 지으라는 말이 없었다.**
+		// 그래서 `UpdatePendingStatusRequest` 꼴이 나왔고, 관문(#192)이 물어도
+		// 세 시도 안에 못 고쳤다(12판에서 둘 다 이것으로 떨어졌다).
+		b.WriteString(nameShapeLine(repoPath))
 		b.WriteString(strings.Join(out, "\n"))
 		b.WriteString("\n응답은 이 꼴을 벗어나지 마라. 이 계약에 없는 필드 이름을 지어내지 마라.\n\n")
 	}
