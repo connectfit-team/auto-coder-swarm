@@ -210,7 +210,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			}
 			c := menu[picked]
 			c.why = fmt.Sprintf("%s · %s", c.why, why)
-			t.fillStateType(files, missing)
+			t.fillStateType(files, missing, c.owner)
 			return t.resolveTracedOwner(c)
 		}
 		// **거절과 미결정을 가른다.** 「이 가운데 없다」 고 답했으면 따라간
@@ -220,7 +220,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 			c.why = fmt.Sprintf("%s · 고르지 못해 따라간 것을 쓴다", c.why)
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_FALLBACK",
 				"고르지 못해 따라간 계약을 쓴다", why, c.contract)
-			t.fillStateType(files, missing)
+			t.fillStateType(files, missing, c.owner)
 			return t.resolveTracedOwner(c)
 		}
 		// **못 가르면 따라간 것 안에서 다시 고른다.**
@@ -239,7 +239,7 @@ func (t *taskContext) ownerRepoForState(files, missing []string) (string, string
 				if p2, why2, _ := t.pickContractAmong(sub, subEv, missing); p2 != "" {
 					c := seen[p2]
 					c.why = fmt.Sprintf("%s · %s", c.why, why2)
-					t.fillStateType(files, missing)
+					t.fillStateType(files, missing, c.owner)
 					t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "CONTRACT_PICK_TRACED",
 						fmt.Sprintf("차림표 %d개가 안 갈려 따라간 %d개 안에서 골랐다", len(order), len(sub)),
 						why2, p2)
@@ -338,7 +338,7 @@ const maxWidenedTrace = 12
 // 여태 이 값은 **타입을 묻는 갈래에서만** 채워졌다. 계약 고르기가 되게
 // 되자(#156·#157·#158) 그 갈래를 안 타게 되었고, 고친 것이 다른 것을 끊었다.
 // 계약을 어느 길로 정했든 이 물음은 따로 한다.
-func (t *taskContext) fillStateType(files, missing []string) {
+func (t *taskContext) fillStateType(files, missing []string, owner string) {
 	if t.stateType != "" {
 		return
 	}
@@ -348,9 +348,30 @@ func (t *taskContext) fillStateType(files, missing []string) {
 			"어느 메시지에 붙이는지 못 받았다 — 자식이 새로 만들 수 있다", "", "")
 		return
 	}
-	// **있는 이름인지 확인하고 쓴다.** 지어낸 이름을 넘기면 자식이 그것을
-	// 찾다가 못 찾고, 결국 새로 만든다.
-	if typeHome(t.repoPath, name) == "" {
+	// **임자 저장소에 그 이름의 proto 메시지가 있어야 한다.**
+	//
+	// 전에는 `typeHome` 으로 **웹 저장소의 TypeScript 선언**을 봤다. 그래서
+	// `InviteCandidate`(gig_ceo_web/src/lib/types/connectinvite.ts 의 타입)가
+	// 「있다」 로 통과했는데, 그 이름은 **계약 저장소의 proto 메시지**로 쓰인다 —
+	// 거기엔 없다. 그러면 넣을 자리를 못 찾아 자식이 새로 만든다. 실측
+	// W-20458 → W-34815 가 그렇게 `ReceivedRequest` 를 service 파일에 다시
+	// 선언했다(판정 2b 불합격).
+	//
+	// 없으면 포기하지 말고 **그 저장소에 실제로 있는 메시지 가운데서** 다시
+	// 고르게 한다. 고를 것을 주지 않고 「틀렸다」 고만 하면 또 지어낸다.
+	ownerPath := t.orchestrator.wsMgr.RepoPath(owner)
+	if ownerPath != "" && declaringFileAtHead(ownerPath, name) == "" {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_NOT_IN_OWNER",
+			fmt.Sprintf("%s 는 %s 의 메시지가 아니다 — 거기 있는 것 가운데서 다시 고른다", name, owner),
+			"", "")
+		name = t.askTypeAmongOwnerMessages(ownerPath, missing)
+		if name == "" {
+			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_UNKNOWN",
+				"임자 저장소의 메시지 가운데서도 못 골랐다 — 넘기지 않는다", "", "")
+			return
+		}
+	} else if ownerPath == "" && typeHome(t.repoPath, name) == "" {
+		// 임자 사본이 없으면 전처럼 웹 쪽으로 본다.
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_UNKNOWN",
 			fmt.Sprintf("%s 는 이 저장소에 없다 — 넘기지 않는다", name), "", "")
 		return
@@ -359,3 +380,75 @@ func (t *taskContext) fillStateType(files, missing []string) {
 	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE",
 		fmt.Sprintf("담을 자리는 %s 다 — 넘길 때 알려 준다", name), "", "")
 }
+
+// askTypeAmongOwnerMessages 는 **임자 저장소에 실제로 있는 메시지** 가운데서 고르게 한다.
+//
+// 웹 저장소의 이름을 보고 고르게 하면 거기만의 타입(`InviteCandidate` 같은)을
+// 고른다. 계약에 없는 이름이라 자식이 찾지 못하고 새로 만든다.
+//
+// 고를 것을 주는 것이 「틀렸다」 고 말하는 것보다 낫다 — 이 세션 내내 같은
+// 교훈이었다.
+func (t *taskContext) askTypeAmongOwnerMessages(ownerPath string, missing []string) string {
+	names := ownerMessageNames(ownerPath)
+	if len(names) == 0 {
+		return ""
+	}
+	prompt := fmt.Sprintf(`아래는 이 계약에 **실제로 있는 메시지 이름**이다.
+
+%s
+
+[없어서 못 만드는 것]
+%s
+
+이 상태는 **어느 메시지에 붙여야 하나?** 위 목록에 있는 이름 하나만 적어라.
+목록에 없는 이름을 지어내지 마라. 다른 말은 쓰지 마라.`,
+		strings.Join(names, " · "), strings.Join(missing, "\n"))
+
+	ctx, cancel := context.WithTimeout(t.ctx, stateCheckTimeout)
+	defer cancel()
+	var answers []string
+	for i := 0; i < 3; i++ {
+		raw, err := agent.CallLLM(ctx, t.primaryLLM, "StateOwnerInContract", prompt)
+		if err != nil {
+			break
+		}
+		n := strings.Trim(strings.TrimSpace(strings.SplitN(strings.TrimSpace(raw), "\n", 2)[0]), "`'\"., ")
+		if i := strings.LastIndex(n, "."); i > 0 {
+			n = n[i+1:]
+		}
+		if n != "" && declaringFileAtHead(ownerPath, n) != "" {
+			answers = append(answers, n)
+		}
+	}
+	best, votes := majorityOf(answers)
+	if best == "" {
+		return ""
+	}
+	t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_FROM_OWNER",
+		fmt.Sprintf("%s %d표 / 물어본 %d번", best, votes, len(answers)),
+		strings.Join(names, " · "), strings.Join(answers, " · "))
+	return best
+}
+
+// ownerMessageNames 는 그 계약의 메시지 이름을 모은다. 길면 잘라 준다 —
+// 창을 넘기면 물음 자체가 실패한다.
+func ownerMessageNames(repoPath string) []string {
+	seen := map[string]bool{}
+	var out []string
+	forEachProto(repoPath, func(rel, _ string) {
+		for _, line := range strings.Split(protoAtHead(repoPath, rel), "\n") {
+			if m := reMessageOpen.FindStringSubmatch(line); m != nil && !seen[m[1]] {
+				seen[m[1]] = true
+				out = append(out, m[1])
+			}
+		}
+	})
+	sort.Strings(out)
+	if len(out) > ownerNameCap {
+		out = out[:ownerNameCap]
+	}
+	return out
+}
+
+// 목록 상한. 이 계약은 메시지가 200개가 넘는다 — 다 주면 창을 먹는다.
+const ownerNameCap = 120

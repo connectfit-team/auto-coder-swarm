@@ -21,7 +21,9 @@ func TestEveryContractPathFillsStateType(t *testing.T) {
 	calls := strings.Count(src, "return t.resolveTracedOwner(c)")
 	// 채우는 길은 둘이다 — 따로 묻거나(fillStateType), 이미 물어서 알거나
 	// (`t.stateType = typeName`, 타입을 묻는 갈래).
-	covered := strings.Count(src, "t.fillStateType(files, missing)") +
+	// **호출 모양이 아니라 호출 자체를 센다.** 인자가 늘면 셈이 어긋나,
+	// 지키려던 것과 상관없이 시험이 떨어진다(실제로 한 번 그랬다).
+	covered := strings.Count(src, "t.fillStateType(") +
 		strings.Count(src, "t.stateType = typeName")
 	if calls == 0 {
 		t.Fatal("계약을 정하는 자리를 못 찾았다 — 이 시험이 지키려던 것이 사라졌다")
@@ -43,8 +45,17 @@ func TestStateTypeIsValidatedBeforeHandoff(t *testing.T) {
 	if j := strings.Index(body, "\n}\n"); j > 0 {
 		body = body[:j]
 	}
-	if !strings.Contains(body, "typeHome(") {
-		t.Fatalf("있는 이름인지 확인하지 않는다:\n%s", body)
+	// **임자 저장소의 proto 메시지인지 본다.**
+	//
+	// 전에는 `typeHome` 으로 웹 저장소의 TypeScript 선언만 봤다. 그래서
+	// `InviteCandidate`(gig_ceo_web 의 타입)가 통과했는데, 그 이름은 계약
+	// 저장소의 proto 메시지로 쓰인다 — 거기엔 없다. 자식이 찾지 못해 새로
+	// 만들었다(실측 W-20458 → W-34815).
+	if !strings.Contains(body, "declaringFileAtHead(ownerPath") {
+		t.Fatalf("임자 저장소에 있는 메시지인지 확인하지 않는다:\n%s", body)
+	}
+	if !strings.Contains(body, "askTypeAmongOwnerMessages") {
+		t.Fatalf("틀렸을 때 그 저장소 메시지 가운데서 다시 고르게 하지 않는다:\n%s", body)
 	}
 	if !strings.Contains(body, "STATE_TYPE_UNKNOWN") {
 		t.Fatalf("못 정했을 때 그 사실을 안 남긴다:\n%s", body)
