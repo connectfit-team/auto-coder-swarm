@@ -49,7 +49,8 @@ func protoStateFieldExample(repoPath string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("[이 계약이 상태를 담는 꼴 — 그대로 따라라]\n")
+	b.WriteString("[이 계약이 상태를 담는 꼴]\n")
+	b.WriteString("**아래는 이미 있는 것이다 — 베껴 넣지 마라.** 꼴만 보고, 이번 일에 필요한 것만 **새 이름으로** 지어라.\n")
 	for _, d := range found {
 		fmt.Fprintf(&b, "  %s\n      (%s)\n", d.line, d.from)
 	}

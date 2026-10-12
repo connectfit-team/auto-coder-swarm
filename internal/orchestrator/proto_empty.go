@@ -89,7 +89,8 @@ func evidenceForEmpty(repoPath string) []string {
 		"이 계약에 이미 있는 짝을 본떠 필드를 채워라 — 「필요한 필드 추가」 같은 자리표시는 두지 마라.",
 	}
 	if pair := aPairToCopy(repoPath); pair != "" {
-		ev = append(ev, "[이 계약에 이미 있는 짝 — 이렇게 채운다]\n"+pair)
+		ev = append(ev, "[이 계약에 이미 있는 짝 — 속을 이만큼 채운다는 뜻이다]\n"+
+			"**아래는 이미 있는 것이다 — 베껴 넣지 마라.** 꼴만 보고, 이번 일에 필요한 것만 **새 이름으로** 지어라.\n"+pair)
 	}
 	return ev
 }
