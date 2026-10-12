@@ -410,7 +410,12 @@ func sameNameDifferentType(diff string) []guard.Violation {
 		if m == nil {
 			continue
 		}
-		typ, name := m[1], m[2]
+		// **꾸러미를 떼고 견준다.** `PendingStatus` 와
+		// `ceo.connect.ceoweb.PendingStatus` 는 proto 에서 **같은 타입**이다.
+		// 글자로 견주면 「서로 다르게 다룬다」 가 되어 **멀쩡한 수정을 막는다** —
+		// 실측 W-13441 이 그렇게 세 시도를 다 썼다. #181 에서 같은 일을
+		// stateFieldTypeOffHabit 에서 겪었다.
+		typ, name := baseTypeName(m[1]), m[2]
 		parts := strings.Split(name, "_")
 		tail := parts[len(parts)-1]
 		if len(tail) < 3 {
