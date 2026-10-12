@@ -61,3 +61,34 @@ func TestStateTypeIsValidatedBeforeHandoff(t *testing.T) {
 		t.Fatalf("못 정했을 때 그 사실을 안 남긴다:\n%s", body)
 	}
 }
+
+// **계약의 메시지 가운데서 먼저 묻는다.**
+//
+// 웹 저장소 목록으로 먼저 물으면 거기 말로 답한다. #196 으로 「계약에 없는
+// 이름」 은 걸러냈지만, 그 뒤에도 **계약에 있긴 한데 엉뚱한** 메시지를 골랐다 —
+// 실측 14판에서 넷 가운데 둘이 `RequestCreateInvites`·`Session` 이었다
+// (정답은 `ReceivedRequest`).
+//
+// 답이 계약 메시지여야 한다면 물음도 계약 메시지로 해야 한다.
+func TestContractMessagesAreAskedFirst(t *testing.T) {
+	src := readSource(t, "owner_of_state.go")
+	i := strings.Index(src, "func (t *taskContext) fillStateType")
+	if i < 0 {
+		t.Fatal("fillStateType 이 없다")
+	}
+	body := src[i:]
+	if j := strings.Index(body, "\n}\n"); j > 0 {
+		body = body[:j]
+	}
+	owner := strings.Index(body, "askTypeAmongOwnerMessages")
+	web := strings.Index(body, "askTypeForState(")
+	if owner < 0 {
+		t.Fatal("계약 메시지로 묻지 않는다")
+	}
+	if web < 0 {
+		t.Fatal("되돌아갈 길(웹 쪽 목록)이 없다")
+	}
+	if owner > web {
+		t.Fatalf("웹 쪽 목록으로 먼저 묻는다 — 계약 메시지가 먼저여야 한다 (owner=%d web=%d)", owner, web)
+	}
+}
