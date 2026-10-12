@@ -94,3 +94,24 @@ func gitRun(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %v %s", args, err, out)
 	}
 }
+
+// **스테이지된 것도 봐야 한다.**
+//
+// 흐름이 검토할 때 `stagedDiff` 로 `git add -A` 를 한다. 맨 `git diff` 는
+// 그 뒤로 빈 결과를 내서, 이 쪽지가 1회차에만 뜨고 2회차부터 눈이 멀었다 —
+// 실측 W-68115 에서 2회차 두 호출 모두 쪽지가 없었고, 모델이
+// `enum RequestStatus` 를 두 파일에 또 넣었다.
+func TestDeclsAddedThisTurnSeesStagedWork(t *testing.T) {
+	repo := protoRepoForTest(t, "syntax = \"proto3\";\npackage ceoweb.v1;\n\nmessage Keep {\n  int32 status = 1;\n}\n")
+	path := filepath.Join(repo, "ceoweb", "v1", "x.proto")
+	appendTo(t, path, "\nenum RequestStatus {\n  REQUEST_STATUS_UNSPECIFIED = 0;\n}\n")
+
+	if _, ok := declsAddedThisTurn(repo)["RequestStatus"]; !ok {
+		t.Fatal("스테이지 전에도 못 봤다")
+	}
+	// 검토 단계가 하는 그대로.
+	gitRun(t, repo, "add", "-A")
+	if _, ok := declsAddedThisTurn(repo)["RequestStatus"]; !ok {
+		t.Fatal("스테이지한 뒤 못 본다 — 2회차부터 눈이 먼다")
+	}
+}
