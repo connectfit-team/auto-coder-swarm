@@ -427,22 +427,34 @@ func sameNameDifferentType(diff string) []guard.Violation {
 			continue
 		}
 		// 하나라도 만든 타입(글자가 아닌 것)이 섞여 있을 때만 본다.
-		named := false
-		var list []string
+		var list, madeUp []string
 		for t := range ts {
 			list = append(list, t)
 			if !protoScalars[t] {
-				named = true
+				madeUp = append(madeUp, t)
 			}
 		}
-		if !named {
+		if len(madeUp) == 0 {
 			continue
 		}
 		sort.Strings(list)
+		sort.Strings(madeUp)
+		// **어느 쪽으로 맞추라는 말까지 한다.**
+		//
+		// 전에는 「서로 다르게 다룬다」 고만 했다. 무엇이 틀렸는지는 알아도
+		// 어떻게 고치라는 말이 없으면 다음 시도가 또 흔들린다 — 실측
+		// W-41844 가 `ConnectInviteStatus` 와 `int32` 를 섞어 쓰고 세 시도를
+		// 다 썼다. 이 세션 내내 같은 교훈이었다.
+		//
+		// 만든 타입 쪽으로 모은다. 값이 굳는 편이 낫고, enum 은 관문도 막지
+		// 않는다(#167).
 		out = append(out, guard.Violation{
 			Why: fmt.Sprintf("…_%s 를 서로 다른 타입으로 다룬다 (%s)", tail, strings.Join(list, " · ")),
 			Evidence: []string{
-				"같은 것을 한쪽은 만든 타입으로, 한쪽은 글자로 다루면 쓰는 쪽이 손으로 맞춰야 한다"},
+				"같은 것을 한쪽은 만든 타입으로, 한쪽은 글자로 다루면 쓰는 쪽이 손으로 맞춰야 한다",
+				fmt.Sprintf("**%s 쪽으로 모아라** — 그 필드들을 모두 그 타입으로 바꾼다. 값이 굳는 편이 낫다.",
+					strings.Join(madeUp, " · ")),
+			},
 		})
 	}
 	return out
