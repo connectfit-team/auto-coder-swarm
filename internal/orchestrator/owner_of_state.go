@@ -342,24 +342,7 @@ func (t *taskContext) fillStateType(files, missing []string, owner string) {
 	if t.stateType != "" {
 		return
 	}
-	// **계약의 메시지 가운데서 먼저 묻는다.**
-	//
-	// 웹 저장소에서 쓸 수 있는 이름을 보고 고르게 하면 거기 말로 답한다.
-	// #196 으로 「계약에 없는 이름」 은 걸러냈지만, 그 뒤에도 **계약에 있긴
-	// 한데 엉뚱한** 메시지를 골랐다 — 실측 14판에서 넷 가운데 둘이
-	// `RequestCreateInvites`·`Session` 이었다(정답은 `ReceivedRequest`).
-	//
-	// 답이 계약 메시지여야 한다면 **물음도 계약 메시지로** 해야 한다.
-	// 고를 것을 주는 것이 「틀렸다」 고 말하는 것보다 낫다.
-	ownerPath := t.orchestrator.wsMgr.RepoPath(owner)
-	name := ""
-	if ownerPath != "" {
-		name = t.askTypeAmongOwnerMessages(ownerPath, missing)
-	}
-	if name == "" {
-		// 임자 사본이 없거나 거기서 못 골랐으면 전처럼 웹 쪽 목록으로 묻는다.
-		name = t.askTypeForState(files, missing)
-	}
+	name := t.askTypeForState(files, missing)
 	if name == "" {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_UNKNOWN",
 			"어느 메시지에 붙이는지 못 받았다 — 자식이 새로 만들 수 있다", "", "")
@@ -376,6 +359,7 @@ func (t *taskContext) fillStateType(files, missing []string, owner string) {
 	//
 	// 없으면 포기하지 말고 **그 저장소에 실제로 있는 메시지 가운데서** 다시
 	// 고르게 한다. 고를 것을 주지 않고 「틀렸다」 고만 하면 또 지어낸다.
+	ownerPath := t.orchestrator.wsMgr.RepoPath(owner)
 	if ownerPath != "" && declaringFileAtHead(ownerPath, name) == "" {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_NOT_IN_OWNER",
 			fmt.Sprintf("%s 는 %s 의 메시지가 아니다 — 거기 있는 것 가운데서 다시 고른다", name, owner),
