@@ -36,6 +36,9 @@ type Loop struct {
 	// codex 가 검색 도구를 켰을 때 하는 것과 같다.
 	DeferAll bool
 
+	// Summarize 는 접을 차례를 줄인다. 비우면 같은 LLM 에게 맡긴다.
+	Summarize func(ctx context.Context, text string) (string, error)
+
 	Log func(kind, msg string)
 }
 
@@ -92,7 +95,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	seenOut := map[string]string{} // 결과 -> 그 결과를 낸 도구
 
 	for turn := 1; turn <= maxTurns; turn++ {
-		history = trim(history, agent.InputTokenBudget())
+		history = l.compact(ctx, history)
 
 		// **남은 예산을 알린다.** codex 는 rollout_budget 으로 같은 일을 한다 —
 		// 모델이 얼마 남았는지 모르면 끝까지 탐색만 하다 끝난다.
@@ -232,35 +235,38 @@ func modelTurn(s string) *genai.Content {
 	return &genai.Content{Role: "model", Parts: []*genai.Part{{Text: s}}}
 }
 
-// trim 은 궤적을 창 안에 눌러 넣는다.
+// fit 은 궤적을 창 안에 눌러 넣는다.
 //
-// 첫 턴(지시·도구·목표)과 **가장 최근 것들**을 남긴다. 가운데가 먼저 빠진다 —
-// 방금 본 도구 결과가 오래된 것보다 쓸모 있다.
-func trim(history []*genai.Content, budget int) []*genai.Content {
-	if len(history) <= 1 {
+// keep 개는 절대 버리지 않는다 — 맨 앞(지시·도구·목표)과 요약이 거기 든다.
+// 요약을 버리면 접은 뜻이 없어진다.
+//
+// 차례를 버려도 모자라면 **남은 글을 자른다.** 버리기만 하면 큰 차례 하나가
+// 남아 예산을 넘긴 채로 모델에 가고, 그 요청은 통째로 떨어진다.
+func fit(history []*genai.Content, budget, keep int) []*genai.Content {
+	if len(history) <= keep || tokensOf(history) <= budget {
 		return history
 	}
-	fits := func(h []*genai.Content) bool {
-		n := 0
-		for _, c := range h {
-			for _, p := range c.Parts {
-				n += agent.EstimateTokens(p.Text)
+	// 지켜야 하는 것 뒤에서, 짝을 지켜 오래된 것부터 버린다.
+	out := append([]*genai.Content{}, history...)
+	for len(out) > keep+2 && tokensOf(out) > budget {
+		out = append(out[:keep], out[keep+2:]...)
+	}
+	if tokensOf(out) <= budget {
+		return out
+	}
+	// 그래도 넘으면 차례마다 몫을 나눠 자른다.
+	share := budget / len(out)
+	if share < 64 {
+		share = 64
+	}
+	for i, c := range out {
+		for j, p := range c.Parts {
+			if agent.EstimateTokens(p.Text) <= share {
+				continue
 			}
-		}
-		return n <= budget
-	}
-	if fits(history) {
-		return history
-	}
-	// **짝을 지켜 자른다.** 모델 턴과 그 결과는 한 묶음이라, 하나만 떼면
-	// 부른 적 없는 결과나 결과 없는 호출이 남는다. codex 도 사용자 턴 경계로
-	// 자른다(thread_rollout_truncation.rs).
-	head, tail := history[:1], history[1:]
-	for len(tail) > 2 {
-		tail = tail[2:]
-		if fits(append(append([]*genai.Content{}, head...), tail...)) {
-			break
+			cut, _ := agent.ClipToTokens(p.Text, share)
+			out[i].Parts[j] = &genai.Part{Text: cut + "\n…(잘렸다)"}
 		}
 	}
-	return append(append([]*genai.Content{}, head...), tail...)
+	return out
 }

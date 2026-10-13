@@ -119,9 +119,23 @@ Ghidra 를 옮기거나 올리면 **거기도 같이 고쳐야 한다.**
 답에 `__fpending`·`dcgettext`·`mbrtoc32`·`__stack_chk_fail` 이 나왔다 —
 coreutils 의 **실제 임포트**다. 지어낸 것이 아니다.
 
-### 함정
+### 함정 — `JAVA_HOME` 이 없으면 Ghidra 가 조용히 안 돈다
 
-도구 이름은 CLI 와 다르다. `capabilities` 는 **CLI 명령이고 MCP 도구가 아니다** —
+`rea doctor` 는 **healthy 라고 한다.** doctor 는 스스로 Java 를 찾아내기 때문이다.
+그런데 MCP 서버로 띄우면 그 환경이 안 넘어가서 도구가 이렇게 답한다:
+
+    provider_unavailable — The selected analysis provider is unavailable.
+
+`~/.acs/mcp.json` 의 `env` 에 **둘 다** 넣어야 한다:
+
+    "GHIDRA_INSTALL_DIR": "/home/cnf/ghidra_12.1.4_PUBLIC",
+    "JAVA_HOME": "/usr/lib/jvm/java-21-openjdk-amd64"
+
+넣기 전 7턴·오류 3개 → 넣은 뒤 **4턴·오류 0개**.
+
+### 함정 — 도구 이름
+
+이름은 CLI 와 다르다. `capabilities` 는 **CLI 명령이고 MCP 도구가 아니다** —
 모델이 목표 문구를 보고 그 이름을 지어내 불렀다. 지금은 비슷한 이름을 함께
 일러 준다(#215).
 

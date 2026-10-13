@@ -245,7 +245,11 @@ func Overview(tools []Tool, maxGroups int) string {
 		if i >= maxGroups {
 			break
 		}
-		parts = append(parts, fmt.Sprintf("%s_*(%d)", h, n[h]))
+		parts = append(parts, fmt.Sprintf("%s(%d)", h, n[h]))
 	}
-	return "[도구 갈래 — 이 낱말로 find_tools 에 물어라]\n" + strings.Join(parts, " · ")
+	// **도구 이름처럼 보이면 안 된다.** 실측에서 모델이 갈래 표기 `binary_*` 를
+	// 도구 이름으로 알고 `binary_` 를 불렀다.
+	return "[자주 나오는 낱말 — find_tools 에 물을 때 쓴다. **도구 이름이 아니다**]\n" +
+		strings.Join(parts, " · ") +
+		"\n이 낱말을 그대로 부르지 마라. find_tools 로 찾아 나온 **정확한 이름**만 부른다."
 }
