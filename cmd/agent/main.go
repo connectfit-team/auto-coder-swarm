@@ -74,8 +74,13 @@ func main() {
 		Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
 			c, ok := owner[name]
 			if !ok {
-				// 없는 도구를 지어낸 것이다 — 그대로 일러 주면 다음 턴에 고친다.
-				return "", fmt.Errorf("%s 라는 도구는 없다", name)
+				// **없는 이름을 지어냈을 때 비슷한 것을 일러 준다.**
+				//
+				// 「없다」 고만 하면 모델은 또 지어내거나 포기한다. 실측에서
+				// 목표 문구를 보고 capabilities 를 지어냈는데, 그건 REA 의
+				// CLI 명령이지 MCP 도구가 아니었다.
+				near := mcpclient.FindTools(tools, name, 5)
+				return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s", name, near)
 			}
 			return c.Call(ctx, name, args)
 		},
