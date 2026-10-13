@@ -113,6 +113,31 @@ var cases = []struct {
 				"\nservice HoldService {\n  rpc HoldConnect(RequestHoldConnect) returns (ResponseHoldConnect);\n}\n",
 		},
 	},
+	{
+		// 필드 번호가 겹친다.
+		name: "number-collision",
+		head: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  string note = 2;\n}\n",
+		},
+		bad: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  string note = 2;\n  bool held = 2;\n}\n",
+		},
+	},
+	{
+		// enum 의 0 번을 뜻 있는 값으로 썼다 — 값이 없을 때의 기본값이라
+		// 여태 있던 것이 모두 그 값으로 읽힌다.
+		name: "enum-zero",
+		head: map[string]string{
+			"proto/connect.proto": protoHead + "\nmessage ReceivedRequest {\n  string id = 1;\n}\n",
+		},
+		bad: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nenum HoldStatus {\n  HOLD_STATUS_HELD = 0;\n  HOLD_STATUS_RELEASED = 1;\n}\n" +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  HoldStatus hold_status = 2;\n}\n",
+		},
+	},
 }
 
 const protoHead = "syntax = \"proto3\";\n\npackage ceo.connect.ceoweb;\n"
