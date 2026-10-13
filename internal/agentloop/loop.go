@@ -1,0 +1,199 @@
+// Package agentloop 은 도구를 쥔 에이전트 한 판을 돈다.
+//
+// 상용 에이전트(codex·Claude Code·aider)와 같은 모양이다 — 도구를 알리고,
+// 궤적을 쌓고, 결과를 **같은 대화로** 되돌리고, 예산으로 멈춘다.
+//
+// 다른 점은 창이 16,384 토큰이라는 것뿐이다. 그래서 도구를 추리고(mcpclient.Pick)
+// 궤적을 눌러야 한다(trim). 상용 에이전트는 200k 를 전제하므로 그대로는 못 쓴다.
+package agentloop
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"google.golang.org/adk/model"
+	"google.golang.org/genai"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/mcpclient"
+)
+
+// Dispatch 는 도구 하나를 실제로 부른다.
+type Dispatch func(ctx context.Context, name string, args map[string]any) (string, error)
+
+type Loop struct {
+	LLM   model.LLM
+	Tools []mcpclient.Tool
+	Call  Dispatch
+
+	MaxTurns     int // 0 이면 8
+	ToolChars    int // 도구를 알리는 데 쓸 글자. 0 이면 창의 1/4
+	ResultTokens int // 도구 결과 하나가 쓸 수 있는 토큰. 0 이면 1200
+
+	Log func(kind, msg string)
+}
+
+// Run 은 목표 하나를 좇는다. 모델이 도구를 그만 부르면 그때의 글이 답이다.
+func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
+	maxTurns := l.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 8
+	}
+	toolChars := l.ToolChars
+	if toolChars <= 0 {
+		toolChars = agent.InputTokenBudget() // 토큰 -> 글자는 넉넉히 2.5배
+		toolChars = toolChars * 2 / 4
+	}
+	resultTokens := l.ResultTokens
+	if resultTokens <= 0 {
+		resultTokens = 1200
+	}
+
+	picked := mcpclient.Pick(l.Tools, []string{goal}, toolChars)
+	l.log("TOOLS", fmt.Sprintf("도구 %d개 가운데 %d개를 알린다", len(l.Tools), len(picked)))
+
+	history := []*genai.Content{
+		userTurn(system + "\n\n" + advertise(picked) + "\n\n[목표]\n" + goal),
+	}
+	called := map[string]bool{}
+
+	for turn := 1; turn <= maxTurns; turn++ {
+		history = trim(history, agent.InputTokenBudget())
+
+		text, err := l.say(ctx, history)
+		if err != nil {
+			return "", err
+		}
+
+		calls := agent.ParseToolCalls(text)
+		if len(calls) == 0 {
+			// **더 찾으라고 밀지 않는다.** CIE 가 40문항으로 쟀다 — 정답률
+			// 52%→48%, 235초→420초, 도구 호출 1.9회→1.5회. 산문 턴만 하나 더
+			// 늘었다. 여기서 다시 시도하지 마라.
+			l.log("DONE", fmt.Sprintf("%d턴에서 도구를 그만 불렀다", turn))
+			return text, nil
+		}
+
+		history = append(history, modelTurn(text))
+
+		var results []string
+		for _, c := range calls {
+			key := c.Name + "|" + argKey(c.Args)
+			if called[key] {
+				results = append(results, toolResult(c.Name, "ERROR: 같은 호출을 되풀이했다 — 건너뛴다"))
+				continue
+			}
+			called[key] = true
+
+			out, err := l.Call(ctx, c.Name, c.Args)
+			if err != nil {
+				// **오류를 같은 대화로 되돌린다.** aider 의 reflected_message 와
+				// 같은 자리다. 오류를 버리면 다음 턴이 같은 실수를 되풀이한다.
+				l.log("TOOL_ERR", c.Name+": "+err.Error())
+				results = append(results, toolResult(c.Name, "ERROR: "+err.Error()))
+				continue
+			}
+			clipped, cut := agent.ClipToTokens(out, resultTokens)
+			if cut {
+				clipped += "\n…(잘렸다)"
+			}
+			l.log("TOOL", fmt.Sprintf("%s → %d자", c.Name, len(out)))
+			results = append(results, toolResult(c.Name, clipped))
+		}
+		history = append(history, userTurn(strings.Join(results, "\n")))
+	}
+	return "", fmt.Errorf("%d턴을 다 썼는데 끝나지 않았다", maxTurns)
+}
+
+func (l *Loop) say(ctx context.Context, history []*genai.Content) (string, error) {
+	it := l.LLM.GenerateContent(ctx, &model.LLMRequest{Contents: history}, false)
+	var text string
+	for resp, err := range it {
+		if err != nil {
+			return "", err
+		}
+		if resp == nil || resp.Content == nil {
+			continue
+		}
+		for _, p := range resp.Content.Parts {
+			text += p.Text
+		}
+	}
+	return text, nil
+}
+
+func (l *Loop) log(kind, msg string) {
+	if l.Log != nil {
+		l.Log(kind, msg)
+	}
+}
+
+// advertise 는 쓸 수 있는 도구를 알린다.
+//
+// 스키마를 `<tools>` 로 감싸지 **않는다.** 이 모델은 가까이 본 태그를 그대로
+// 흉내 내서, 입력 태그 `<tools>` 를 제 출력에 쓴다(실측 3/3). 다른 글자로
+// 알려 두면 `<tool_call>` 로 낼 확률이 오른다 — 그러면 vLLM 의 네이티브 파서도
+// 맞아 든다. 아직 안 쟀다. 파서는 어느 쪽이든 받는다.
+func advertise(tools []mcpclient.Tool) string {
+	if len(tools) == 0 {
+		return "[쓸 수 있는 도구가 없다 — 아는 것만으로 답해라]"
+	}
+	var b strings.Builder
+	b.WriteString("[쓸 수 있는 도구]\n")
+	for _, t := range tools {
+		fmt.Fprintf(&b, "- %s: %s\n  입력: %s\n", t.Name, t.Description, string(t.Schema))
+	}
+	b.WriteString("\n부르려면 한 줄에 하나씩 이렇게 쓴다:\n" +
+		`<tool_call>{"name":"도구이름","arguments":{...}}</tool_call>` +
+		"\n더 부를 것이 없으면 도구를 쓰지 말고 답만 써라.")
+	return b.String()
+}
+
+func toolResult(name, body string) string {
+	return fmt.Sprintf("<tool_result name=%q>\n%s\n</tool_result>", name, body)
+}
+
+func argKey(args map[string]any) string {
+	b, _ := json.Marshal(args)
+	return string(b)
+}
+
+func userTurn(s string) *genai.Content {
+	return &genai.Content{Role: "user", Parts: []*genai.Part{{Text: s}}}
+}
+
+func modelTurn(s string) *genai.Content {
+	return &genai.Content{Role: "model", Parts: []*genai.Part{{Text: s}}}
+}
+
+// trim 은 궤적을 창 안에 눌러 넣는다.
+//
+// 첫 턴(지시·도구·목표)과 **가장 최근 것들**을 남긴다. 가운데가 먼저 빠진다 —
+// 방금 본 도구 결과가 오래된 것보다 쓸모 있다.
+func trim(history []*genai.Content, budget int) []*genai.Content {
+	if len(history) <= 1 {
+		return history
+	}
+	fits := func(h []*genai.Content) bool {
+		n := 0
+		for _, c := range h {
+			for _, p := range c.Parts {
+				n += agent.EstimateTokens(p.Text)
+			}
+		}
+		return n <= budget
+	}
+	if fits(history) {
+		return history
+	}
+	head, tail := history[:1], history[1:]
+	for len(tail) > 1 {
+		tail = tail[1:]
+		if fits(append(append([]*genai.Content{}, head...), tail...)) {
+			break
+		}
+	}
+	return append(append([]*genai.Content{}, head...), tail...)
+}

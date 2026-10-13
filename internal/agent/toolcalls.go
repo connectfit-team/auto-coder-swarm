@@ -17,6 +17,9 @@ var toolTag = regexp.MustCompile(`(?s)<(tool_call|tools|function_call|tool)>(.*?
 
 var jsonFence = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*?\\})\\s*```")
 
+// 사내 형식 — llm.BuildPrompt 가 이 꼴로 쓰라고 이른다.
+var inhouseCall = regexp.MustCompile(`(?s)<\|tool_call\|>\s*call:\s*(\w+)\s*(\{.*?\})\s*<\|tool_call\|>`)
+
 // ParseToolCalls 는 모델이 낸 도구 호출을 긁어낸다.
 //
 // **네이티브 tool_calls 를 못 쓴다.** vLLM 은 `--tool-call-parser hermes` 로 떠
@@ -52,6 +55,17 @@ func ParseToolCalls(text string) []ToolCall {
 		out = append(out, ToolCall{Name: c.Name, Args: args})
 	}
 
+	// 사내 형식을 먼저 본다 — 이름과 인자가 따로라 가장 또렷하다.
+	for _, m := range inhouseCall.FindAllStringSubmatch(text, -1) {
+		var args map[string]any
+		if json.Unmarshal([]byte(m[2]), &args) != nil {
+			continue
+		}
+		out = append(out, ToolCall{Name: m[1], Args: args})
+	}
+	if len(out) > 0 {
+		return out
+	}
 	for _, m := range toolTag.FindAllStringSubmatch(text, -1) {
 		add(m[2])
 	}

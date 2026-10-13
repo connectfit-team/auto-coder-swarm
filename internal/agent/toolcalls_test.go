@@ -54,3 +54,12 @@ func TestParsesSeveralAndIgnoresProse(t *testing.T) {
 		}
 	}
 }
+
+// 사내 형식(llm.BuildPrompt 가 이르는 꼴)도 받아야 한다.
+func TestParsesInHouseFormat(t *testing.T) {
+	text := `먼저 찾아본다. <|tool_call|>call:search_code{"query":"handOver"}<|tool_call|>`
+	got := ParseToolCalls(text)
+	if len(got) != 1 || got[0].Name != "search_code" || got[0].Args["query"] != "handOver" {
+		t.Errorf("사내 형식을 못 읽었다: %+v", got)
+	}
+}
