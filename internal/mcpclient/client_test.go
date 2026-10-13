@@ -122,3 +122,33 @@ func names(ts []Tool) []string {
 	}
 	return out
 }
+
+// 고를 말이 없으면 아무것도 주지 않는다 — 앞에서부터 채우면 「골랐다」 는
+// 얼굴로 엉뚱한 것을 준다. 실측에서 한국어 목표가 그랬다.
+func TestPickGivesNothingWhenNothingMatches(t *testing.T) {
+	ts := []Tool{
+		{Name: "current_document", Description: "the selected document", Schema: json.RawMessage(`{}`)},
+		{Name: "capabilities", Description: "List provider capabilities", Schema: json.RawMessage(`{}`)},
+	}
+	if got := Pick(ts, []string{"분석 엔진이 무엇인지 알려 줘"}, 4000); len(got) != 0 {
+		t.Errorf("못 골랐는데 골라 줬다: %+v", names(got))
+	}
+}
+
+// 못 골랐을 때 모델이 스스로 찾을 길이 있어야 한다.
+func TestFindTools(t *testing.T) {
+	ts := []Tool{
+		{Name: "current_document", Description: "the selected document", Schema: json.RawMessage(`{}`)},
+		{Name: "capabilities", Description: "List provider capabilities and side effects", Schema: json.RawMessage(`{}`)},
+	}
+	got := FindTools(ts, "provider capabilities", 20)
+	if !strings.Contains(got, "capabilities") {
+		t.Errorf("찾지 못했다: %q", got)
+	}
+	if strings.Contains(got, `"type":"object"`) {
+		t.Error("스키마까지 돌려주면 창을 먹는다")
+	}
+	if got := FindTools(ts, "없는낱말", 20); !strings.Contains(got, "영어 낱말로") {
+		t.Errorf("찾을 말이 없을 때 일러 주지 않는다: %q", got)
+	}
+}

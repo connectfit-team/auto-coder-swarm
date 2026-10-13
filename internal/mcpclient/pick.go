@@ -1,6 +1,7 @@
 package mcpclient
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -20,6 +21,15 @@ func Pick(tools []Tool, want []string, maxChars int) []Tool {
 		return nil
 	}
 	terms := terms(want)
+	// **고를 말이 없으면 아무것도 주지 않는다.**
+	//
+	// 앞에서부터 채우면 「골랐다」 는 얼굴로 엉뚱한 것을 준다. 실측에서
+	// 한국어 목표로 돌렸더니 영어 카탈로그와 맞는 낱말이 하나도 없어, 170개
+	// 가운데 그냥 앞의 6개가 나갔다. 못 고른 것은 **못 고른 것**이다 —
+	// 그때는 FindTools 로 모델이 직접 찾게 한다.
+	if len(terms) == 0 {
+		return nil
+	}
 
 	type scored struct {
 		t Tool
@@ -42,8 +52,7 @@ func Pick(tools []Tool, want []string, maxChars int) []Tool {
 	used := 0
 	for _, s := range all {
 		// 안 맞는 것은 넣지 않는다 — 엉뚱한 도구를 주는 것은 안 주느니만 못하다.
-		// 다만 고를 말이 없으면(terms 가 비면) 차례대로 채운다.
-		if len(terms) > 0 && s.n == 0 {
+		if s.n == 0 {
 			break
 		}
 		c := cost(s.t)
@@ -89,4 +98,52 @@ func score(t Tool, terms []string) int {
 		}
 	}
 	return n
+}
+
+// FindTools 는 이름·설명만 짧게 돌려준다 — 스키마는 뺀다.
+//
+// 카탈로그가 170개(스키마로 치면 창의 57배)라 다 알릴 수 없다. 모델이 먼저
+// 찾아보고 쓸 것을 고르게 한다 — 상용 에이전트가 큰 카탈로그를 다루는 방식이고,
+// REA 자신도 「Route the target first」 표로 같은 일을 한다.
+func FindTools(tools []Tool, query string, max int) string {
+	if max <= 0 {
+		max = 20
+	}
+	t := terms([]string{query})
+	if len(t) == 0 {
+		return "찾을 말이 없다. 영어 낱말로 다시 물어라 (예: decompile, capabilities, android)."
+	}
+	type hit struct {
+		t Tool
+		n int
+	}
+	var hits []hit
+	for _, x := range tools {
+		if n := score(x, t); n > 0 {
+			hits = append(hits, hit{x, n})
+		}
+	}
+	sort.SliceStable(hits, func(a, b int) bool { return hits[a].n > hits[b].n })
+	if len(hits) == 0 {
+		return "맞는 도구가 없다."
+	}
+	var b strings.Builder
+	for i, h := range hits {
+		if i >= max {
+			fmt.Fprintf(&b, "…그 밖에 %d개 더 있다. 더 좁혀서 물어라.\n", len(hits)-max)
+			break
+		}
+		fmt.Fprintf(&b, "- %s: %s\n", h.t.Name, firstLine(h.t.Description))
+	}
+	return b.String()
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 110 {
+		s = s[:110] + "…"
+	}
+	return s
 }
