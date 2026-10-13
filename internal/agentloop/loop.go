@@ -86,9 +86,15 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		// 「숨긴다」 가 아니다 — 알리지 않을 뿐 find_tools 로 찾고 부를 수 있다.
 		l.log("TOOLS", fmt.Sprintf("혼자 창을 먹는 도구 %d개는 안 알린다(find_tools 로는 찾을 수 있다)", len(hidden)))
 	}
-	picked := []mcpclient.Tool{findTools}
-	if !l.DeferAll {
-		picked = append(picked, mcpclient.Pick(visible, []string{goal}, toolChars)...)
+	// **다 들어가면 다 알린다.** 고르는 것은 카탈로그가 클 때나 뜻이 있다.
+	// 지역 도구 네 개짜리에 find_tools 만 쥐여 주면, 목표가 한국어라 Pick 이
+	// 빈 값을 줄 때 **쓸 도구가 하나도 안 알려진다.**
+	picked := visible
+	if fitsAll := totalCost(visible); fitsAll > toolChars || l.DeferAll {
+		picked = []mcpclient.Tool{findTools}
+		if !l.DeferAll {
+			picked = append(picked, mcpclient.Pick(visible, []string{goal}, toolChars)...)
+		}
 	}
 	l.log("TOOLS", fmt.Sprintf("도구 %d개(보이는 것 %d개) 가운데 %d개를 알린다",
 		len(l.Tools), len(visible), len(picked)))
@@ -307,6 +313,15 @@ func advertise(tools []mcpclient.Tool) string {
 		`<tool_call>{"name":"도구이름","arguments":{...}}</tool_call>` +
 		"\n더 부를 것이 없으면 도구를 쓰지 말고 답만 써라.")
 	return b.String()
+}
+
+// totalCost 는 도구를 다 알리는 데 드는 글자다.
+func totalCost(ts []mcpclient.Tool) int {
+	n := 0
+	for _, t := range ts {
+		n += len(t.Name) + len(t.Description) + len(t.Schema)
+	}
+	return n
 }
 
 func toolResult(name, body string) string {

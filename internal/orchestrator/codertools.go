@@ -41,6 +41,13 @@ func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
 			Schema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
 		},
 		{
+			Name:        "edit_file",
+			Description: "파일을 고친다. 무엇을 어떻게 바꿀지 또렷하게 적어라.",
+			Schema: json.RawMessage(`{"type":"object","properties":{` +
+				`"path":{"type":"string"},"instructions":{"type":"string"}},` +
+				`"required":["path","instructions"]}`),
+		},
+		{
 			Name:        "search_code",
 			Description: "저장소에서 글자를 찾는다. 이름이 이미 있는지 볼 때 쓴다.",
 			Schema: json.RawMessage(`{"type":"object","properties":{` +
@@ -56,6 +63,10 @@ func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
 		case "read_file":
 			p, _ := args["path"].(string)
 			return readRepoFile(t.repoPath, p)
+		case "edit_file":
+			p, _ := args["path"].(string)
+			how, _ := args["instructions"].(string)
+			return t.editViaCoder(ctx, p, how)
 		case "search_code":
 			q, _ := args["query"].(string)
 			g, _ := args["glob"].(string)
@@ -64,6 +75,28 @@ func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
 		return "", fmt.Errorf("%s 라는 도구는 없다", name)
 	}
 	return tools, dispatch
+}
+
+// editViaCoder 는 **있던 편집 기계를 그대로 쓴다.**
+//
+// #SEARCH/REPLACE 와 자리 찾기 사다리는 오래 다듬은 것이다. 루프는 「무엇을
+// 할지」 를 정하고, 「어떻게 고칠지」 는 코더가 한다.
+func (t *taskContext) editViaCoder(ctx context.Context, rel, how string) (string, error) {
+	full, err := insideRepo(t.repoPath, rel)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(how) == "" {
+		return "", fmt.Errorf("무엇을 고칠지 적지 않았다")
+	}
+	if _, err := t.coder.ModifyFile(ctx, full, how); err != nil {
+		// 까닭이 이미 또렷하다(「원문에 없는 내용을 찾으라고 했다」 + 가장
+		// 비슷한 자리). 그대로 돌려주면 다음 턴에 고친다.
+		return "", err
+	}
+	t.noteApproxRung(rel)
+	t.noteStrippedComments(rel)
+	return "고쳤다. check 로 관문을 보라.", nil
 }
 
 // checkNow 는 지금 작업 트리에 관문을 돌린다.

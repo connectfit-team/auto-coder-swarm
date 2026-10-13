@@ -19,6 +19,10 @@ const gateFixRounds = 2
 //
 // 되돌려야 하는 위반(엉뚱한 것을 고쳤다)은 건드리지 않는다 — 그건 계획부터 다시다.
 func (t *taskContext) stepGateFix() {
+	// **먼저 도구를 쥐여 준다.** 안 되면 기계식으로 물러선다.
+	if t.agenticGateFix() {
+		return
+	}
 	plan, ok := t.ctx.Value("current_plan").(agent.Plan)
 	if !ok {
 		return
