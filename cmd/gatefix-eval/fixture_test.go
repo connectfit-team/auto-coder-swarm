@@ -29,8 +29,10 @@ func TestEveryFixtureActuallyTripsAGate(t *testing.T) {
 			}
 			// 채점기의 check 와 **같은 관문들**을 본다. 하나라도 빠지면 모형이
 			// 안 걸리는 것을 못 잡는다.
-			bad := append(orchestrator.CheckProtoChange(repo, diff),
-				orchestrator.CheckStateNeedsRPC(repo, diff)...)
+			bad := orchestrator.CheckProtoChange(repo, diff)
+			if c.addsState {
+				bad = append(bad, orchestrator.CheckStateNeedsRPC(repo, diff)...)
+			}
 			if len(bad) == 0 {
 				t.Fatalf("관문에 안 걸린다 — 이 모형으로는 아무것도 못 잰다.\ndiff:\n%s", clip(diff, 400))
 			}
@@ -50,8 +52,10 @@ func TestFixtureIsFixable(t *testing.T) {
 			}
 			defer os.RemoveAll(repo)
 			d := worktreeDiff(context.Background(), repo)
-			bad := append(orchestrator.CheckProtoChange(repo, d),
-				orchestrator.CheckStateNeedsRPC(repo, d)...)
+			bad := orchestrator.CheckProtoChange(repo, d)
+			if c.addsState {
+				bad = append(bad, orchestrator.CheckStateNeedsRPC(repo, d)...)
+			}
 			if len(bad) > 0 {
 				t.Errorf("고치기 전부터 head 가 관문에 걸린다: %s",
 					clip(orchestrator.AlignmentNote(bad), 200))

@@ -31,6 +31,11 @@ var cases = []struct {
 	name string
 	head map[string]string // HEAD 에 있던 것
 	bad  map[string]string // 자식이 만든 것 (이 상태가 관문에 걸린다)
+	// addsState 는 **운영의 t.req.AddsState 를 그대로 따라 한다.**
+	// 그 관문은 handOver 가 AddsState 일 때만 부른다. 모든 갈래에 걸었더니
+	// mixed-type 이 위반 둘짜리가 되어 2/2 에서 0/2 로 떨어졌다 — 모형이
+	// 운영을 안 따라 하면 **없는 결함을 만든다**(#248·#251 과 같은 실수).
+	addsState bool
 }{
 	{
 		// **정당한 작업 + 중복.** 중복만 있으면 그것을 지웠을 때 diff 가 통째로
@@ -141,7 +146,8 @@ var cases = []struct {
 	{
 		// 담을 자리만 만들고 바꾸는 길(rpc)을 안 냈다 — 실측에서 마지막까지
 		// 남은 실패 갈래다.
-		name: "state-no-rpc",
+		name:      "state-no-rpc",
+		addsState: true,
 		head: map[string]string{
 			"proto/connect.proto": protoHead + prefixHabit() +
 				"\nmessage ReceivedRequest {\n  string id = 1;\n}\n" +
@@ -206,7 +212,7 @@ func main() {
 			}
 			t.total++
 			start := time.Now()
-			fixed, why := run(ctx, m, c.name, c.head, c.bad, *turns)
+			fixed, why := run(ctx, m, c.name, c.head, c.bad, c.addsState, *turns)
 			mark := "✗"
 			if fixed {
 				mark = "✓"
@@ -237,7 +243,7 @@ func main() {
 }
 
 func run(ctx context.Context, m model.LLM, name string,
-	head, bad map[string]string, turns int) (bool, string) {
+	head, bad map[string]string, addsState bool, turns int) (bool, string) {
 
 	repo, err := fixture(head, bad)
 	if err != nil {
@@ -269,10 +275,12 @@ func run(ctx context.Context, m model.LLM, name string,
 		if bad := orchestrator.CheckProtoChange(repo, diff); len(bad) > 0 {
 			notes = append(notes, orchestrator.AlignmentNote(bad))
 		}
-		// handOver 가 t.req.AddsState 일 때 따로 부르는 관문이다 — 운영과 같은
-		// 것을 보려면 여기서도 불러야 한다.
-		if bad := orchestrator.CheckStateNeedsRPC(repo, diff); len(bad) > 0 {
-			notes = append(notes, orchestrator.AlignmentNote(bad))
+		// handOver 는 이 관문을 **AddsState 일 때만** 부른다. 늘 부르면 다른
+		// 갈래가 위반 둘짜리가 된다.
+		if addsState {
+			if bad := orchestrator.CheckStateNeedsRPC(repo, diff); len(bad) > 0 {
+				notes = append(notes, orchestrator.AlignmentNote(bad))
+			}
 		}
 		return orchestrator.GateReport(diff, notes)
 	}
