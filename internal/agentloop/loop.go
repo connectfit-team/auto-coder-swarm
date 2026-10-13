@@ -64,6 +64,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		userTurn(system + "\n\n" + advertise(picked) + "\n\n[목표]\n" + goal),
 	}
 	called := map[string]bool{}
+	seenOut := map[string]string{} // 결과 -> 그 결과를 낸 도구
 
 	for turn := 1; turn <= maxTurns; turn++ {
 		history = trim(history, agent.InputTokenBudget())
@@ -101,6 +102,16 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 				results = append(results, toolResult(c.Name, "ERROR: "+err.Error()))
 				continue
 			}
+			// **같은 결과를 두 번 싣지 않는다.** 창이 16k 라 되풀이는 비싸고,
+			// 모델은 같은 것을 또 받으면 또 같은 것을 부른다. 실측에서
+			// find_tools 가 같은 2,788자를 두 턴 이어 냈다.
+			if prev, dup := seenOut[out]; dup {
+				results = append(results, toolResult(c.Name,
+					"ERROR: "+prev+" 에서 이미 받은 것과 같은 결과다 — 다른 도구를 불러라"))
+				continue
+			}
+			seenOut[out] = c.Name
+
 			clipped, cut := agent.ClipToTokens(out, resultTokens)
 			if cut {
 				clipped += "\n…(잘렸다)"

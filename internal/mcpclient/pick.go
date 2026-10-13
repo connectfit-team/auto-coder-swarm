@@ -135,6 +135,9 @@ func FindTools(tools []Tool, query string, max int) string {
 		}
 		fmt.Fprintf(&b, "- %s: %s\n", h.t.Name, firstLine(h.t.Description))
 	}
+	// **찾은 다음에 무엇을 할지 함께 적는다.** 실측에서 모델이 find_tools 만
+	// 네 번 돌며 제자리를 돌았다 — 목록만 주면 다음 걸음을 모른다.
+	b.WriteString("\n이 가운데 하나를 **바로 불러라.** find_tools 를 다시 부르지 마라.")
 	return b.String()
 }
 
