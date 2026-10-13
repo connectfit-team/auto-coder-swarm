@@ -101,3 +101,46 @@ func TestSameTypeNamesTheFieldsToFix(t *testing.T) {
 		t.Errorf("남길 쪽까지 고치라고 한다:\n%s", note)
 	}
 }
+
+// 「필드 note = 2」 만으로는 **무엇으로 되살릴지** 모른다 — 타입이 빠져 있다.
+func TestChangedExistingGivesTheOriginalLine(t *testing.T) {
+	diff := "--- a/x.proto\n+++ b/x.proto\n@@\n" +
+		"-  string note = 2;\n" +
+		"+  bool note = 2;\n" +
+		"+  bool held = 3;\n"
+
+	bad := changedExisting(diff)
+	if len(bad) == 0 {
+		t.Fatal("있던 것을 고친 것을 못 잡았다")
+	}
+	note := AlignmentNote(bad)
+	for _, want := range []string{"원래 줄: `string note = 2;`", "원래 줄을 그대로 되살려라", "새 번호로"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("%q 가 없다:\n%s", want, note)
+		}
+	}
+}
+
+// 「있는 service 안에 더해라」 만으로는 **무엇을 옮길지** 모른다.
+func TestNewServiceSaysWhichRPCsToMove(t *testing.T) {
+	repo := gitRepoWith(t, map[string]string{
+		"proto/service.proto": "syntax = \"proto3\";\npackage p;\n\n" +
+			"message RequestGet {}\n\nmessage ResponseGet {}\n\n" +
+			"service ConnectService {\n  rpc Get(RequestGet) returns (ResponseGet);\n}\n",
+	})
+	diff := "--- a/proto/service.proto\n+++ b/proto/service.proto\n@@\n" +
+		"+service HoldService {\n" +
+		"+  rpc HoldConnect(RequestHold) returns (ResponseHold);\n" +
+		"+}\n"
+
+	bad := newServiceBesideOne(repo, []string{"proto/service.proto"}, diff)
+	if len(bad) == 0 {
+		t.Fatal("새 service 를 못 잡았다")
+	}
+	note := AlignmentNote(bad)
+	for _, want := range []string{"service ConnectService 안으로 옮겨라", "rpc HoldConnect", "통째로 지워라"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("%q 가 없다:\n%s", want, note)
+		}
+	}
+}

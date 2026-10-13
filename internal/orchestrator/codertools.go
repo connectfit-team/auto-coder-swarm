@@ -29,6 +29,17 @@ const searchMaxLines = 40
 // 판정은 handOver 와 **같은 gateChecks** 를 쓴다. 두 곳에서 따로 판정하면
 // 도구가 통과라 한 것을 관문이 막아 모델은 고칠 길이 없다(#205).
 func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
+	return RepoTools(t.repoPath, t.editViaCoder, t.checkNow)
+}
+
+// RepoTools 는 taskContext 없이도 쓴다 — 관문 되먹임을 빨리 재 보려면
+// 한 판에 10~20분 걸리는 ACS 를 안 거치고 이 도구만 돌려 봐야 한다
+// (cmd/gatefix-eval).
+func RepoTools(
+	repoPath string,
+	edit func(ctx context.Context, rel, how string) (string, error),
+	check func() string,
+) ([]mcpclient.Tool, agentloop.Dispatch) {
 	tools := []mcpclient.Tool{
 		{
 			Name:        "check",
@@ -59,18 +70,20 @@ func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
 	dispatch := func(ctx context.Context, name string, args map[string]any) (string, error) {
 		switch name {
 		case "check":
-			return t.checkNow(), nil
+			return check(), nil
 		case "read_file":
 			p, _ := args["path"].(string)
-			return readRepoFile(t.repoPath, p)
+			out, err := readRepoFile(repoPath, p)
+			return out, withNearbyFiles(repoPath, p, err)
 		case "edit_file":
 			p, _ := args["path"].(string)
 			how, _ := args["instructions"].(string)
-			return t.editViaCoder(ctx, p, how)
+			out, err := edit(ctx, p, how)
+			return out, withNearbyFiles(repoPath, p, err)
 		case "search_code":
 			q, _ := args["query"].(string)
 			g, _ := args["glob"].(string)
-			return searchRepo(ctx, t.repoPath, q, g)
+			return searchRepo(ctx, repoPath, q, g)
 		}
 		return "", fmt.Errorf("%s 라는 도구는 없다", name)
 	}
@@ -106,15 +119,50 @@ func (t *taskContext) checkNow() string {
 		return "아직 고친 것이 없다. 먼저 고치고 다시 불러라."
 	}
 	bad := t.gateChecks(diff)
-	if len(bad) == 0 {
+	var notes []string
+	for _, g := range bad {
+		notes = append(notes, "## "+g.label+"\n"+g.feedback)
+	}
+	return GateReport(diff, notes)
+}
+
+// GateReport 는 관문 결과를 **모델이 바로 고칠 수 있는 글**로 만든다.
+// 운영과 채점기가 같은 글을 쓴다 — 다르면 채점기에서 좋아진 것이 운영에서
+// 안 좋아진다.
+func GateReport(diff string, notes []string) string {
+	if len(notes) == 0 {
 		return "관문을 지난다."
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "관문에 걸린다 (%d가지). 아래 자리만 고쳐라 — 처음부터 다시 쓰지 마라.\n\n", len(bad))
-	for _, g := range bad {
-		fmt.Fprintf(&b, "## %s\n%s\n\n", g.label, g.feedback)
+	fmt.Fprintf(&b, "관문에 걸린다 (%d가지). 아래 자리만 고쳐라 — 처음부터 다시 쓰지 마라.\n", len(notes))
+	// **어느 파일을 고쳤는지 적어 준다.** 안 적으면 모델이 경로를 지어낸다 —
+	// 실측에서 `path/to/your/file.proto` 를 불러 판마다 첫 턴을 버렸다.
+	if fs := touchedFiles(diff); len(fs) > 0 {
+		fmt.Fprintf(&b, "\n[이번에 고친 파일 — 경로를 지어내지 말고 이 가운데서 골라라]\n%s\n",
+			strings.Join(fs, " · "))
+	}
+	b.WriteString("\n")
+	for _, n := range notes {
+		b.WriteString(n + "\n\n")
 	}
 	out, _ := agent.ClipToTokens(b.String(), coderToolTokens)
+	return out
+}
+
+// touchedFiles 는 diff 가 건드린 파일 경로다.
+func touchedFiles(diff string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+++ b/") {
+			continue
+		}
+		p := strings.TrimPrefix(line, "+++ b/")
+		if p != "/dev/null" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
 	return out
 }
 
@@ -176,4 +224,27 @@ func insideRepo(repoPath, rel string) (string, error) {
 		return "", fmt.Errorf("저장소 바깥은 못 읽는다: %s", rel)
 	}
 	return full, nil
+}
+
+// withNearbyFiles 는 **없는 경로를 지어냈을 때 있는 것을 일러 준다.**
+//
+// 실측에서 모델이 `path/to/your/file.proto` 를 불렀다. 「없다」 고만 하면
+// 찾느라 턴을 버린다 — 도구 이름에서 겪은 것과 같다(#215).
+func withNearbyFiles(repoPath, asked string, err error) error {
+	if err == nil || repoPath == "" {
+		return err
+	}
+	if _, statErr := os.Stat(filepath.Join(repoPath, asked)); statErr == nil {
+		return err // 파일은 있다 — 다른 까닭이다
+	}
+	var have []string
+	forEachProto(repoPath, func(rel, _ string) {
+		if len(have) < 12 {
+			have = append(have, rel)
+		}
+	})
+	if len(have) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w\n이 저장소에 있는 계약 파일: %s", err, strings.Join(have, " · "))
 }

@@ -86,7 +86,8 @@ func emptyNewMessage(repoPath, diff string) []guard.Violation {
 func evidenceForEmpty(repoPath string) []string {
 	ev := []string{
 		"무엇을 담아 보내고 무엇을 돌려받는지가 없으면 그 RPC 는 부를 수 없다.",
-		"이 계약에 이미 있는 짝을 본떠 필드를 채워라 — 「필요한 필드 추가」 같은 자리표시는 두지 마라.",
+		"**그 메시지 안에만** 필드를 채워라. 새 메시지를 더 만들지 마라 — 그러면 그것도 비어 또 걸린다.",
+		"「필요한 필드 추가」 같은 자리표시는 두지 마라. 아래 본보기처럼 실제 필드를 적는다.",
 	}
 	if pair := aPairToCopy(repoPath); pair != "" {
 		ev = append(ev, "[이 계약에 이미 있는 짝 — 속을 이만큼 채운다는 뜻이다]\n"+

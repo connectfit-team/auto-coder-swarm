@@ -336,3 +336,134 @@ func TestSmallToolsetIsAdvertisedWhole(t *testing.T) {
 		}
 	}
 }
+
+// 모델이 「다 했다」 고 해도 **기계가 한 번 본다.** 안 됐으면 그 사실을 돌려준다.
+// 실측: 중복 선언을 한 번 고치고 check 도 없이 2초 만에 끝냈다.
+func TestVerifyPushesBackOnceWhenNotDone(t *testing.T) {
+	llm := &fakeLLM{says: []string{
+		"다 고쳤다.",
+		`<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`,
+		"이제 진짜 다 했다.",
+	}}
+	n := 0
+	l := &Loop{
+		LLM: llm, Tools: tools(),
+		Call: func(context.Context, string, map[string]any) (string, error) { return "x", nil },
+		Verify: func() (bool, string) {
+			n++
+			return n > 1, "아직 ReceivedRequest 가 두 번 선언돼 있다"
+		},
+	}
+	out, err := l.Run(context.Background(), "s", "g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("기계 검사를 %d번 했다 — 한 번이어야 한다(되풀이해 밀지 않는다)", n)
+	}
+	if out != "이제 진짜 다 했다." {
+		t.Errorf("답: %q", out)
+	}
+	second := flatten(llm.saw[1])
+	if !strings.Contains(second, "아직 ReceivedRequest 가 두 번") {
+		t.Errorf("안 됐다는 사실을 안 돌려줬다:\n%s", second)
+	}
+}
+
+// 됐으면 그대로 끝낸다 — 군더더기 턴을 쓰지 않는다.
+func TestVerifyDoesNothingWhenDone(t *testing.T) {
+	llm := &fakeLLM{says: []string{"다 고쳤다."}}
+	l := &Loop{LLM: llm, Tools: tools(),
+		Call:   func(context.Context, string, map[string]any) (string, error) { return "", nil },
+		Verify: func() (bool, string) { return true, "" }}
+	out, _ := l.Run(context.Background(), "s", "g")
+	if out != "다 고쳤다." || len(llm.saw) != 1 {
+		t.Errorf("됐는데 더 돌렸다: %q, 턴 %d", out, len(llm.saw))
+	}
+}
+
+// **새 결과가 나왔으면 상태가 움직인 것이다.** check 처럼 인자가 없는 상태
+// 조회는 키가 늘 같아서, 고친 뒤 다시 봐도 되풀이로 막혔다 — 실측에서 한 판이
+// check 를 네 번 부르고 네 번 다 막혀 8턴을 다 썼다.
+func TestStateQueryIsNotBlockedAfterThingsChange(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	edit := `<tools>{"name":"edit_file","arguments":{"path":"a.proto"}}</tools>`
+	llm := &fakeLLM{says: []string{check, edit, check, "끝."}}
+
+	var calls []string
+	n := 0
+	l := &Loop{
+		LLM: llm,
+		Tools: []mcpclient.Tool{
+			{Name: "check", Description: "관문", Schema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "edit_file", Description: "고친다", Schema: json.RawMessage(`{"type":"object"}`)},
+		},
+		Call: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			calls = append(calls, name)
+			n++
+			return fmt.Sprintf("%s 결과 %d", name, n), nil
+		},
+	}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	// check 가 두 번 **실제로** 불려야 한다 — 사이에 고쳤으니 결과가 다르다.
+	got := 0
+	for _, c := range calls {
+		if c == "check" {
+			got++
+		}
+	}
+	if got != 2 {
+		t.Errorf("check 를 %d번 불렀다 — 두 번이어야 한다: %v", got, calls)
+	}
+}
+
+// 상태 조회는 **돌려 봐야 상태를 안다.** 같은 답이 또 나오면 창에 두 번 싣지
+// 않고 「같은 결과다」 라고만 한다 — 그래야 제자리를 돌지 않는다.
+func TestRepeatStillBlockedWhenNothingChanged(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	llm := &fakeLLM{says: []string{check, check, "끝."}}
+	n := 0
+	l := &Loop{
+		LLM:   llm,
+		Tools: []mcpclient.Tool{{Name: "check", Description: "관문", Schema: json.RawMessage(`{}`)}},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return "늘 같은 결과", nil
+		},
+	}
+	l.Run(context.Background(), "s", "g")
+	if n != 2 {
+		t.Errorf("상태 조회를 %d번 했다 — 돌려 봐야 안다", n)
+	}
+	second := flatten(llm.saw[len(llm.saw)-1])
+	if strings.Count(second, "늘 같은 결과") > 1 {
+		t.Errorf("같은 답을 두 번 실었다:\n%s", second)
+	}
+	if !strings.Contains(second, "같은 결과다") {
+		t.Errorf("같은 답이라고 안 일러 준다:\n%s", second)
+	}
+}
+
+// 인자가 없는 호출은 **상태를 묻는 것**이다 — 인자 기준으로 막으면 고친 뒤에도
+// 못 묻는다. 같은 답이 또 나오는 것은 결과 기준으로 막는다.
+func TestNoArgCallsAreNotBlockedByArgs(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	llm := &fakeLLM{says: []string{check, check, check, "끝."}}
+	n := 0
+	l := &Loop{
+		LLM:   llm,
+		Tools: []mcpclient.Tool{{Name: "check", Description: "관문", Schema: json.RawMessage(`{}`)}},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return fmt.Sprintf("관문 상태 %d", n), nil // 매번 달라진다
+		},
+	}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("상태 조회를 %d번만 했다 — 세 번이어야 한다", n)
+	}
+}

@@ -48,6 +48,14 @@ type Loop struct {
 	// codex 가 검색 도구를 켰을 때 하는 것과 같다.
 	DeferAll bool
 
+	// Verify 는 **일이 실제로 됐는지 기계가 본다.** 모델이 그만 부르고 답했을 때
+	// 한 번 돌려, 아직 안 됐으면 그 사실을 대화로 되돌린다.
+	//
+	// 「더 찾아라」 고 미는 것과 다르다 — 그건 재 보고 나빴다(CIE 52%→48%).
+	// 이것은 **객관적인 결과를 알려 주는 것**이고, 안 알려 주면 모델은 고쳤다고
+	// 믿고 끝낸다(실측: 중복 선언을 한 번 고치고 check 없이 2초 만에 끝냈다).
+	Verify func() (ok bool, note string)
+
 	// Summarize 는 접을 차례를 줄인다. 비우면 같은 LLM 에게 맡긴다.
 	Summarize func(ctx context.Context, text string) (string, error)
 
@@ -126,6 +134,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		userTurn(system + "\n\n" + advertise(picked) + overview + "\n\n[목표]\n" + goal),
 	}
 	called := map[string]bool{}
+	verified := false
 	seenOut := map[string]string{} // 결과 -> 그 결과를 낸 도구
 
 	for turn := 1; turn <= maxTurns; turn++ {
@@ -144,6 +153,16 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		}
 
 		calls := agent.ParseToolCalls(text)
+		if len(calls) == 0 && l.Verify != nil && !verified {
+			verified = true // 한 번만 한다 — 되풀이해 밀지 않는다
+			if ok, note := l.Verify(); !ok {
+				l.log("NOT_DONE", "모델은 끝났다고 했지만 아직 안 됐다")
+				history = append(history, modelTurn(text))
+				history = append(history, userTurn(
+					"아직 안 됐다. 아래를 보고 마저 고쳐라.\n\n"+note))
+				continue
+			}
+		}
 		if len(calls) == 0 {
 			// **더 찾으라고 밀지 않는다.** CIE 가 40문항으로 쟀다 — 정답률
 			// 52%→48%, 235초→420초, 도구 호출 1.9회→1.5회. 산문 턴만 하나 더
@@ -157,11 +176,24 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		var results []string
 		for _, c := range calls {
 			key := c.Name + "|" + argKey(c.Args)
-			if called[key] {
-				results = append(results, toolResult(c.Name, "ERROR: 같은 호출을 되풀이했다 — 건너뛴다"))
+			// **인자가 없는 호출은 상태를 묻는 것이다.** check 처럼 「지금 어떤가」
+			// 를 묻는 도구는 키가 늘 같아서 인자 기준으로 막으면 고친 뒤에도
+			// 못 묻는다. 실측에서 한 판이 check 를 네 번 부르고 네 번 다 막혀
+			// 턴을 다 썼다. 같은 답이 또 나오는 것은 **결과 기준**으로 막는다.
+			stateQuery := len(c.Args) == 0
+			if !stateQuery && called[key] {
+				// **되풀이도 보이게 남긴다.** 안 남기면 턴이 조용히 사라져,
+				// 「8턴에 도구 3번」 같은 것을 못 읽는다.
+				l.log("TOOL_REPEAT", c.Name+": 같은 호출 — 건너뛴다")
+				results = append(results, toolResult(c.Name,
+					"ERROR: 조금 전과 **똑같은 호출**이다. 결과도 똑같다.\n"+
+						"다시 부르지 말고 **다른 것을 해라** — 지금 상태는 check 로 보고, "+
+						"파일 내용이 궁금하면 read_file 로 봐라."))
 				continue
 			}
-			called[key] = true
+			if !stateQuery {
+				called[key] = true
+			}
 
 			out, err := l.dispatch(ctx, c.Name, c.Args)
 			if err != nil {
@@ -192,6 +224,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 				continue
 			}
 			seenOut[out] = c.Name
+			// **새 결과가 나왔으면 상태가 움직인 것이다.** 그 전에 「되풀이」 로
+			// 막았던 호출이 이제는 뜻이 있다.
+			//
+			// check 처럼 **인자가 없는 상태 조회**는 키가 늘 같아서, 고친 뒤
+			// 다시 봐도 되풀이로 막혔다. 실측에서 한 판이 check 를 네 번 부르고
+			// 네 번 다 막혀 8턴을 다 썼다.
+			called = map[string]bool{key: true}
 
 			clipped, cut := agent.ClipToTokens(out, resultTokens)
 			if cut {

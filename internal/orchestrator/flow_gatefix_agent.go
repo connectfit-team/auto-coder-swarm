@@ -39,6 +39,12 @@ func (t *taskContext) agenticGateFix() bool {
 		Tools:    tools,
 		Call:     dispatch,
 		MaxTurns: gateFixTurns,
+		// 모델이 「다 고쳤다」 고 해도 관문을 한 번 돌려 본다. 안 지나면 그
+		// 사실을 돌려준다 — 실측에서 한 번 고치고 확인 없이 끝냈다.
+		Verify: func() (bool, string) {
+			out := t.checkNow()
+			return strings.Contains(out, "지난다"), out
+		},
 		Log: func(kind, msg string) {
 			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "GATE_FIX_"+kind, msg, "", "")
 		},

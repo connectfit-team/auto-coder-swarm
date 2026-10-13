@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -89,4 +90,46 @@ func TestHintPointsAtTheFileBeingChanged(t *testing.T) {
 	if strings.Contains(ev, "ceo.service.proto") {
 		t.Fatalf("엉뚱한 파일을 가리킨다:\n%s", ev)
 	}
+}
+
+// 「rpc 를 더해라」 만으로는 **어떤 모양인지** 모른다 — 이름을 지어내고 이 계약의
+// 버릇과 어긋난다. 실측에서 이 관문이 마지막 남은 실패였다.
+func TestNeedRPCShowsTheShape(t *testing.T) {
+	repo := gitRepoWith(t, map[string]string{
+		"proto/connect.proto": protoPrefixHabit(),
+	})
+	got := rpcSkeleton(repo, "pending_status")
+	for _, want := range []string{
+		"RequestUpdatePendingStatus", "ResponseUpdatePendingStatus",
+		"rpc UpdatePendingStatus(RequestUpdatePendingStatus) returns (ResponseUpdatePendingStatus);",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	if rpcSkeleton(repo, "") != "" {
+		t.Error("필드가 없는데 모양을 지어낸다")
+	}
+}
+
+// 접미형을 쓰는 계약이면 접미형으로 지어 준다.
+func TestNeedRPCFollowsSuffixHabit(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("syntax = \"proto3\";\npackage p;\n")
+	for i := 1; i <= 13; i++ {
+		fmt.Fprintf(&b, "\nmessage Op%dRequest {}\n\nmessage Op%dResponse {}\n", i, i)
+	}
+	repo := gitRepoWith(t, map[string]string{"proto/a.proto": b.String()})
+	if got := rpcSkeleton(repo, "hold_status"); !strings.Contains(got, "UpdateHoldStatusRequest") {
+		t.Errorf("접미형 계약인데 접두형으로 지었다:\n%s", got)
+	}
+}
+
+func protoPrefixHabit() string {
+	var b strings.Builder
+	b.WriteString("syntax = \"proto3\";\npackage p;\n")
+	for i := 1; i <= 13; i++ {
+		fmt.Fprintf(&b, "\nmessage RequestOp%d {}\n\nmessage ResponseOp%d {}\n", i, i)
+	}
+	return b.String()
 }
