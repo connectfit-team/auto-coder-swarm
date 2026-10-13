@@ -67,3 +67,22 @@ func TestUntouchedMessageIgnored(t *testing.T) {
 		t.Fatalf("건드리지 않은 것을 물었다: %v", got)
 	}
 }
+
+// **빈 메시지를 채우랬더니 메시지를 더 만든다.** 실측에서 모델이
+// UpdateStatusRequest·UpdateStatusResponse 를 새로 만들고 그중 하나가 또 비어
+// 다시 걸렸다. 「이미 있는 짝을 본떠」 가 **짝을 새로 만들라**는 말로 읽혔다.
+func TestEmptyMessageSaysDoNotCreateMore(t *testing.T) {
+	diff := "--- a/x.proto\n+++ b/x.proto\n@@\n" +
+		"+message HoldStatusPayload {\n+  // 필요한 필드 추가\n+}\n"
+
+	bad := emptyNewMessage(t.TempDir(), diff)
+	if len(bad) == 0 {
+		t.Fatal("빈 메시지를 못 잡았다")
+	}
+	note := AlignmentNote(bad)
+	for _, want := range []string{"그 메시지 안에만", "새 메시지를 더 만들지 마라"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("%q 가 없다:\n%s", want, note)
+		}
+	}
+}
