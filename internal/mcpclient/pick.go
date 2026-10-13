@@ -271,3 +271,32 @@ func InputHint(tools []Tool, name string) string {
 	}
 	return ""
 }
+
+// InputsMentionedIn 은 글 안에 이름이 나온 도구들의 입력을 모아 준다.
+//
+// 절차(prompt)는 「open_binary 로 열고 search_procedures 로 찾아라」 처럼
+// **이름만** 일러 준다. 스키마를 못 본 모델은 인자를 지어낸다.
+func InputsMentionedIn(tools []Tool, text string) string {
+	if text == "" {
+		return ""
+	}
+	var lines []string
+	seen := map[string]bool{}
+	for _, t := range tools {
+		if seen[t.Name] || !strings.Contains(text, t.Name) {
+			continue
+		}
+		seen[t.Name] = true
+		if in := inputLine(t.Schema); in != "" {
+			lines = append(lines, "- "+t.Name+" 의 "+in)
+		}
+		if len(lines) >= 12 {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	sort.Strings(lines)
+	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
+}

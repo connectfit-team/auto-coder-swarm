@@ -91,7 +91,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 빈 값을 줄 때 **쓸 도구가 하나도 안 알려진다.**
 	picked := visible
 	if fitsAll := totalCost(visible); fitsAll > toolChars || l.DeferAll {
-		picked = []mcpclient.Tool{findTools}
+		picked = []mcpclient.Tool{findTools, toolHelp}
 		if !l.DeferAll {
 			picked = append(picked, mcpclient.Pick(visible, []string{goal}, toolChars)...)
 		}
@@ -215,6 +215,13 @@ var getWorkflow = mcpclient.Tool{
 		`"required":["name"]}`),
 }
 
+// toolHelp 는 도구 하나의 입력을 묻는 내장 도구다.
+var toolHelp = mcpclient.Tool{
+	Name:        "tool_help",
+	Description: "도구 하나가 받는 입력 이름을 묻는다. 인자를 모르면 지어내지 말고 이것을 불러라.",
+	Schema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+}
+
 // workflowBlock 은 쓸 수 있는 절차를 짧게 알린다. 이름과 설명만이라 싸다.
 func workflowBlock(ps []mcpclient.Prompt) string {
 	if len(ps) == 0 {
@@ -266,7 +273,23 @@ func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (
 		}
 		n, _ := args["name"].(string)
 		inner, _ := args["arguments"].(map[string]any)
-		return l.GetPrompt(ctx, n, inner)
+		body, err := l.GetPrompt(ctx, n, inner)
+		if err != nil {
+			return "", err
+		}
+		// **절차가 이름만 일러 주면 모델은 인자를 지어낸다.**
+		//
+		// 실측: 절차를 받아 open_binary·search_procedures 를 알았지만 스키마는
+		// 못 봐서 target_path·query 로 불렀고, 고칠 때마다 턴을 하나씩 버려
+		// 예산이 떨어졌다. 절차에 나온 도구의 입력을 **함께** 준다.
+		return body + mcpclient.InputsMentionedIn(l.Tools, body), nil
+	}
+	if name == toolHelp.Name {
+		n, _ := args["name"].(string)
+		if h := mcpclient.InputHint(l.Tools, n); h != "" {
+			return h, nil
+		}
+		return "", fmt.Errorf("%s 라는 도구는 없다", n)
 	}
 	if name == findTools.Name {
 		q, _ := args["query"].(string)
