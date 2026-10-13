@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"strings"
@@ -222,5 +223,45 @@ func TestLoopWarnsWhenBudgetRunsLow(t *testing.T) {
 	}
 	if !strings.Contains(last, "남은 턴") {
 		t.Errorf("남은 예산을 안 알렸다:\n%s", last)
+	}
+}
+
+// 서버가 알려 준 쓰는 법과 작업 절차를 버리지 않는다.
+func TestLoopUsesServerInstructionsAndWorkflows(t *testing.T) {
+	llm := &fakeLLM{says: []string{
+		`<tools>{"name":"get_workflow","arguments":{"name":"trace_crash"}}</tools>`,
+		"절차대로 했다.",
+	}}
+	var asked string
+	l := &Loop{
+		LLM: llm, Tools: tools(), DeferAll: true,
+		Instructions: "REA 는 지역 산출물을 뜯는 도구다.",
+		Prompts: []mcpclient.Prompt{
+			{Name: "trace_crash", Description: "크래시를 증거와 잇는다"},
+		},
+		GetPrompt: func(_ context.Context, n string, _ map[string]any) (string, error) {
+			asked = n
+			return "1. 심볼을 찾아라\n2. 호출을 따라가라", nil
+		},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			return "", errors.New("MCP 도구를 부르면 안 된다")
+		},
+	}
+	if _, err := l.Run(context.Background(), "너는 조사자다", "크래시를 조사해라"); err != nil {
+		t.Fatal(err)
+	}
+	first := llm.saw[0][0].Parts[0].Text
+	if !strings.Contains(first, "REA 는 지역 산출물을 뜯는 도구다.") {
+		t.Error("서버가 알려 준 쓰는 법을 안 실었다")
+	}
+	if !strings.Contains(first, "trace_crash") || !strings.Contains(first, "get_workflow") {
+		t.Error("작업 절차를 안 알렸다")
+	}
+	if asked != "trace_crash" {
+		t.Errorf("절차를 안 받아 왔다: %q", asked)
+	}
+	second := flatten(llm.saw[1])
+	if !strings.Contains(second, "심볼을 찾아라") {
+		t.Error("받아 온 절차가 대화에 안 들어갔다")
 	}
 }
