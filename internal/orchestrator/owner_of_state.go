@@ -360,7 +360,7 @@ func (t *taskContext) fillStateType(files, missing []string, owner string) {
 	// 없으면 포기하지 말고 **그 저장소에 실제로 있는 메시지 가운데서** 다시
 	// 고르게 한다. 고를 것을 주지 않고 「틀렸다」 고만 하면 또 지어낸다.
 	ownerPath := t.orchestrator.wsMgr.RepoPath(owner)
-	if ownerPath != "" && declaringFileAtHead(ownerPath, name) == "" {
+	if ownerPath != "" && declaredAtHead(ownerPath, name) == "" {
 		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_TYPE_NOT_IN_OWNER",
 			fmt.Sprintf("%s 는 %s 의 메시지가 아니다 — 거기 있는 것 가운데서 다시 고른다", name, owner),
 			"", "")
@@ -416,7 +416,7 @@ func (t *taskContext) askTypeAmongOwnerMessages(ownerPath string, missing []stri
 		if i := strings.LastIndex(n, "."); i > 0 {
 			n = n[i+1:]
 		}
-		if n != "" && declaringFileAtHead(ownerPath, n) != "" {
+		if n != "" && declaredAtHead(ownerPath, n) != "" {
 			answers = append(answers, n)
 		}
 	}

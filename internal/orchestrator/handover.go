@@ -2,8 +2,6 @@ package orchestrator
 
 import (
 	"os/exec"
-
-	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
 )
 
 // 사람에게 넘기는 길은 하나여야 한다.
@@ -34,87 +32,13 @@ func (t *taskContext) handOver(diff, why string) (RunResult, bool) {
 		return RunResult{}, false
 	}
 
-	// 계획이 짚은 자리를 하나도 안 고쳤으면 한 일이 없는 것이다.
-	if plan, ok := t.ctx.Value("current_plan").(agent.Plan); ok {
-		if bad := CheckDidTheWork(plan, diff); len(bad) > 0 {
-			note := AlignmentNote(bad)
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOT_THE_WORK",
-				"시킨 일을 한 흔적이 없다 — 넘기지 않는다", why, note)
-			t.lastFeedback = "ALIGNMENT: " + note +
-				"\n계획이 짚은 파일을 고쳐라. 상관없는 정리만 남기지 마라."
+	// 관문은 gateChecks 한 곳에 있다 — 모델이 부르는 check 도구와 같은 것을 본다.
+	for _, g := range t.gateChecks(diff) {
+		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, g.label, g.reason, why, g.note)
+		t.lastFeedback = g.feedback
+		if g.revert {
 			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
-			return RunResult{}, false
 		}
-	}
-
-	// 새로 만드는 일인데 새로 생긴 이름이 하나도 없으면 만든 것이 아니다.
-	//
-	// **요청문으로 판단한다.** 전에는 t.newFeature 만 봤는데, 그것은 눈이
-	// "못 찾았다" 고 했을 때만 켜진다. 눈이 무언가를 찾았다고 하면 꺼진
-	// 채로 지나가, 「기능을 추가할거야」 라는 요청에 시험 파일 문자열 한 줄이
-	// 승인 대기까지 갔다(W-74462).
-	if t.newFeature || IsNewFeatureRequest(t.req.UserRequest) {
-		if bad := CheckNewFeatureAddedSomething(diff); len(bad) > 0 {
-			note := AlignmentNote(bad)
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "NOTHING_NEW",
-				"새로 만들라고 했는데 새로 생긴 이름이 없다 — 넘기지 않는다", why, note)
-			t.lastFeedback = "ALIGNMENT: " + note +
-				"\n있던 코드를 감싸지 말고, 요청한 기능의 이름(함수·타입·열거 값)을 실제로 더해라."
-			exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
-			return RunResult{}, false
-		}
-	}
-
-	// 계약을 고쳤으면 계약을 읽어 본다. 빌드는 계약을 못 본다 —
-	// 생성물을 다시 만들지 않으므로 이미 있는 메시지를 다시 정의해도
-	// go build 는 통과한다.
-	// 담을 자리를 만드는 일인데 바꾸는 길이 없으면 반쪽이다.
-	if t.req.AddsState {
-		if bad := stateChangeNeedsAnRPC(t.repoPath, diff); len(bad) > 0 {
-			note := AlignmentNote(bad)
-			t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_HAS_NO_WAY_TO_CHANGE",
-				"담을 자리만 만들고 바꾸는 길을 안 냈다", why, note)
-			t.lastFeedback = "PROTO: " + note +
-				"\n\n고친 것은 그대로 두었다. **rpc 만 더해라** — 처음부터 다시 쓰지 마라."
-			return RunResult{}, false
-		}
-	}
-
-	if bad := fieldWentIntoNewMessage(diff, t.req.StateType); len(bad) > 0 {
-		note := AlignmentNote(bad)
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "STATE_HAS_NO_HOME",
-			"담을 자리를 새 메시지에 만들었다 — 아무도 안 쓴다", why, note)
-		t.lastFeedback = "PROTO: " + note +
-			targetMessageBody(t.repoPath, t.req.StateType) +
-			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
-		return RunResult{}, false
-	}
-
-	if bad := CheckProtoChange(t.repoPath, diff); len(bad) > 0 {
-		note := AlignmentNote(bad)
-		// **고친 것을 버리지 않는다.**
-		//
-		// 계약 수정은 대개 대부분 맞고 한두 가지가 틀리다 — 필드는 바르게
-		// 더해 놓고 rpc 를 새 service 에 넣는 식이다. 통째로 되돌리면 맞게
-		// 한 것까지 사라져 다음 시도가 처음부터 간다. aider 는 맞은 블록을
-		// 써 두고 「나머지는 다시 보내지 마라」 고 일러 준다.
-		//
-		// 되돌리지 않으면 작업 트리가 지저분해 restoreBest 가 건너뛰므로,
-		// 다음 시도는 저절로 이 위에서 이어진다.
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "PROTO_BROKEN",
-			"계약이 깨진다 — 고친 것은 두고 그 자리만 다시 시킨다", why, note)
-		t.lastFeedback = "PROTO: " + note +
-			"\n\n고친 것은 그대로 두었다. **위에 적힌 자리만 고쳐라** — 처음부터 다시 쓰지 마라."
-		return RunResult{}, false
-	}
-
-	if bad := CheckToolLeak(diff); len(bad) > 0 {
-		note := AlignmentNote(bad)
-		t.orchestrator.logDeepTechnical(t.ctx, t.taskID, "ALIGNMENT_BLOCKED",
-			"이 기계의 환경이 제품 코드에 새어 들어갔다 — 넘기지 않는다", why, note)
-		t.lastFeedback = "ALIGNMENT: " + note +
-			"\n이 기계의 주소·포트는 제품 코드에 넣지 마라. 요청한 것만 고쳐라."
-		exec.CommandContext(t.ctx, "git", "-C", t.repoPath, "checkout", ".").Run()
 		return RunResult{}, false
 	}
 	if diff != "" {

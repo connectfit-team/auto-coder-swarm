@@ -136,6 +136,9 @@ func (t *taskContext) execute() (res RunResult, err error) {
 		observability.RecordStepDuration("execution", t.targetRepo, time.Since(startExec).Seconds())
 		observability.IncrementAgentOp("Coder", "success")
 
+		// 관문을 여기서 미리 돌린다 — 끝에서 울면 시도 하나를 통째로 쓴다.
+		t.stepGateFix()
+
 		startVerif := time.Now()
 		success, err := t.stepVerification()
 		if err != nil {
