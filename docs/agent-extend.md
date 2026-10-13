@@ -23,7 +23,12 @@
 2. `Loop.dispatch` 에 그 이름을 가로채는 갈래를 더한다.
 3. `Run` 에서 `picked` 앞에 넣는다.
 
-**손의 관문을 도구로 다는 자리가 여기다.** `t.gateChecks(diff)` 를 부르는
+**손의 관문은 이미 달렸다**(#226) — `coderTools()` 가 `check`·`read_file`·
+`search_code`·`edit_file` 을 주고, `agenticGateFix` 가 관문에 걸렸을 때 그 도구로
+고치게 한다. 안 되면 기계식(`stepGateFix`)으로 물러선다. 끄려면
+`SWARM_GATEFIX_AGENT=0`.
+
+새 도구를 더하는 본보기로 그 파일을 보면 된다. `t.gateChecks(diff)` 를 부르는
 `check` 도구를 만들면, 모델이 한 턴 안에서 위반을 보고 고친다 — 지금처럼 시도
 하나를 통째로 버리지 않는다. 관문은 이미 `internal/orchestrator/gates.go` 한 곳에
 모여 있다(#205). **판정을 두 곳에서 하지 마라** — 도구가 통과라 한 것을 관문이
