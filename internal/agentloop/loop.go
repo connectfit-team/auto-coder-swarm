@@ -217,6 +217,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 				continue
 			}
 			seenOut[out] = c.Name
+			// **새 결과가 나왔으면 상태가 움직인 것이다.** 그 전에 「되풀이」 로
+			// 막았던 호출이 이제는 뜻이 있다.
+			//
+			// check 처럼 **인자가 없는 상태 조회**는 키가 늘 같아서, 고친 뒤
+			// 다시 봐도 되풀이로 막혔다. 실측에서 한 판이 check 를 네 번 부르고
+			// 네 번 다 막혀 8턴을 다 썼다.
+			called = map[string]bool{key: true}
 
 			clipped, cut := agent.ClipToTokens(out, resultTokens)
 			if cut {

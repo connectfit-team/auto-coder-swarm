@@ -381,3 +381,59 @@ func TestVerifyDoesNothingWhenDone(t *testing.T) {
 		t.Errorf("됐는데 더 돌렸다: %q, 턴 %d", out, len(llm.saw))
 	}
 }
+
+// **새 결과가 나왔으면 상태가 움직인 것이다.** check 처럼 인자가 없는 상태
+// 조회는 키가 늘 같아서, 고친 뒤 다시 봐도 되풀이로 막혔다 — 실측에서 한 판이
+// check 를 네 번 부르고 네 번 다 막혀 8턴을 다 썼다.
+func TestStateQueryIsNotBlockedAfterThingsChange(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	edit := `<tools>{"name":"edit_file","arguments":{"path":"a.proto"}}</tools>`
+	llm := &fakeLLM{says: []string{check, edit, check, "끝."}}
+
+	var calls []string
+	n := 0
+	l := &Loop{
+		LLM: llm,
+		Tools: []mcpclient.Tool{
+			{Name: "check", Description: "관문", Schema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "edit_file", Description: "고친다", Schema: json.RawMessage(`{"type":"object"}`)},
+		},
+		Call: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			calls = append(calls, name)
+			n++
+			return fmt.Sprintf("%s 결과 %d", name, n), nil
+		},
+	}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	// check 가 두 번 **실제로** 불려야 한다 — 사이에 고쳤으니 결과가 다르다.
+	got := 0
+	for _, c := range calls {
+		if c == "check" {
+			got++
+		}
+	}
+	if got != 2 {
+		t.Errorf("check 를 %d번 불렀다 — 두 번이어야 한다: %v", got, calls)
+	}
+}
+
+// 아무것도 안 바뀌었으면 여전히 막는다 — 제자리를 돌면 안 된다.
+func TestRepeatStillBlockedWhenNothingChanged(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	llm := &fakeLLM{says: []string{check, check, "끝."}}
+	n := 0
+	l := &Loop{
+		LLM:   llm,
+		Tools: []mcpclient.Tool{{Name: "check", Description: "관문", Schema: json.RawMessage(`{}`)}},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return "늘 같은 결과", nil
+		},
+	}
+	l.Run(context.Background(), "s", "g")
+	if n != 1 {
+		t.Errorf("같은 결과인데 %d번 불렀다", n)
+	}
+}
