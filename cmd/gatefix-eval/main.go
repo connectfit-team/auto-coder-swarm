@@ -33,12 +33,17 @@ var cases = []struct {
 	bad  map[string]string // 자식이 만든 것 (이 상태가 관문에 걸린다)
 }{
 	{
-		name: "duplicate", // 중복 선언
+		// **정당한 작업 + 중복.** 중복만 있으면 그것을 지웠을 때 diff 가 통째로
+		// 비어, 「고친 것이 없다」 가 된다 — 실제 모양이 아니다. 자식은 필드를
+		// 더하는 일을 하면서 메시지를 또 선언하는 실수를 한다.
+		name: "duplicate",
 		head: map[string]string{
 			"proto/connect.proto": protoHead + "\nmessage ReceivedRequest {\n  string id = 1;\n}\n",
 			"proto/service.proto": protoHead,
 		},
 		bad: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  bool held = 2;\n}\n",
 			"proto/service.proto": protoHead + "\nmessage ReceivedRequest {\n  bool held = 1;\n}\n",
 		},
 	},
