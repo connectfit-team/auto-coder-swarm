@@ -29,6 +29,17 @@ const searchMaxLines = 40
 // 판정은 handOver 와 **같은 gateChecks** 를 쓴다. 두 곳에서 따로 판정하면
 // 도구가 통과라 한 것을 관문이 막아 모델은 고칠 길이 없다(#205).
 func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
+	return RepoTools(t.repoPath, t.editViaCoder, t.checkNow)
+}
+
+// RepoTools 는 taskContext 없이도 쓴다 — 관문 되먹임을 빨리 재 보려면
+// 한 판에 10~20분 걸리는 ACS 를 안 거치고 이 도구만 돌려 봐야 한다
+// (cmd/gatefix-eval).
+func RepoTools(
+	repoPath string,
+	edit func(ctx context.Context, rel, how string) (string, error),
+	check func() string,
+) ([]mcpclient.Tool, agentloop.Dispatch) {
 	tools := []mcpclient.Tool{
 		{
 			Name:        "check",
@@ -59,18 +70,18 @@ func (t *taskContext) coderTools() ([]mcpclient.Tool, agentloop.Dispatch) {
 	dispatch := func(ctx context.Context, name string, args map[string]any) (string, error) {
 		switch name {
 		case "check":
-			return t.checkNow(), nil
+			return check(), nil
 		case "read_file":
 			p, _ := args["path"].(string)
-			return readRepoFile(t.repoPath, p)
+			return readRepoFile(repoPath, p)
 		case "edit_file":
 			p, _ := args["path"].(string)
 			how, _ := args["instructions"].(string)
-			return t.editViaCoder(ctx, p, how)
+			return edit(ctx, p, how)
 		case "search_code":
 			q, _ := args["query"].(string)
 			g, _ := args["glob"].(string)
-			return searchRepo(ctx, t.repoPath, q, g)
+			return searchRepo(ctx, repoPath, q, g)
 		}
 		return "", fmt.Errorf("%s 라는 도구는 없다", name)
 	}
