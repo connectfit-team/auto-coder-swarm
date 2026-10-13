@@ -310,53 +310,65 @@ func InputsMentionedIn(tools []Tool, text string) string {
 	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
 }
 
-// vocabularyHint 는 카탈로그가 자주 쓰는 낱말을 보여 준다.
+// vocabularyHint 는 **도구 이름에 쓰이는 낱말**을 보여 준다.
 //
-// 못 찾는 까닭은 대개 **낱말이 다른 것**이다 — 모델은 목표의 말로 찾고,
-// 카탈로그는 제 말로 적혀 있다. 무슨 말을 쓰는지 보여 주면 다시 물을 수 있다.
+// 못 찾는 까닭은 대개 낱말이 다른 것이다 — 모델은 목표의 말로 찾고, 카탈로그는
+// 제 말로 적혀 있다. 실측: `imports` 로 찾으니 2개뿐이었고 맞는 도구는 없었다.
+//
+// **설명이 아니라 이름을 센다.** 이름이 맞으면 점수가 세 배라 바로 찾히고,
+// 설명에서 가장 흔한 낱말(evidence·address·inspect…)은 가장 안 갈라 준다.
+// 실제로 설명으로 세어 보니 쓸모 있는 낱말이 18개 안에 하나도 안 들었다.
 func vocabularyHint(tools []Tool) string {
-	n := map[string]int{}
+	verb, obj := map[string]int{}, map[string]int{}
 	for _, t := range tools {
-		seen := map[string]bool{}
-		for _, w := range terms([]string{t.Name + " " + firstLine(t.Description)}) {
-			if len(w) < 4 || seen[w] || commonWord[w] {
-				continue
+		parts := strings.Split(strings.ToLower(t.Name), "_")
+		if len(parts) == 0 {
+			continue
+		}
+		verb[parts[0]]++
+		for _, p := range parts[1:] {
+			if len(p) > 2 {
+				obj[p]++
 			}
-			seen[w] = true
-			n[w]++
 		}
 	}
-	var words []string
-	for w, c := range n {
-		if c >= 3 {
-			words = append(words, w)
-		}
-	}
-	if len(words) == 0 {
+	v := topWords(verb, 10, 2)
+	o := topWords(obj, 14, 3)
+	if v == "" && o == "" {
 		return ""
 	}
-	sort.Slice(words, func(a, b int) bool {
-		if n[words[a]] != n[words[b]] {
-			return n[words[a]] > n[words[b]]
-		}
-		return words[a] < words[b]
-	})
-	if len(words) > 18 {
-		words = words[:18]
+	out := "도구 이름에 쓰이는 낱말이다 — 못 찾았으면 **이 말로 다시 물어라**:\n"
+	if v != "" {
+		out += "  하는 일: " + v + "\n"
 	}
-	var parts []string
-	for _, w := range words {
-		parts = append(parts, fmt.Sprintf("%s(%d)", w, n[w]))
+	if o != "" {
+		out += "  무엇을: " + o + "\n"
 	}
-	return "이 카탈로그가 자주 쓰는 낱말이다 — 못 찾았으면 **이 말로 다시 물어라**:\n" +
-		strings.Join(parts, " · ") + "\n"
+	return out
 }
 
-// 어느 카탈로그에나 있어 갈라 주지 못하는 말.
-var commonWord = map[string]bool{
-	"return": true, "returns": true, "with": true, "from": true, "that": true,
-	"this": true, "when": true, "each": true, "only": true, "every": true,
-	"their": true, "them": true, "they": true, "into": true, "over": true,
-	"explicit": true, "exact": true, "given": true, "using": true, "used": true,
-	"within": true, "without": true, "requested": true, "provided": true,
+func topWords(n map[string]int, max, least int) string {
+	var ws []string
+	for w, c := range n {
+		if c >= least {
+			ws = append(ws, w)
+		}
+	}
+	if len(ws) == 0 {
+		return ""
+	}
+	sort.Slice(ws, func(a, b int) bool {
+		if n[ws[a]] != n[ws[b]] {
+			return n[ws[a]] > n[ws[b]]
+		}
+		return ws[a] < ws[b]
+	})
+	if len(ws) > max {
+		ws = ws[:max]
+	}
+	var parts []string
+	for _, w := range ws {
+		parts = append(parts, fmt.Sprintf("%s(%d)", w, n[w]))
+	}
+	return strings.Join(parts, " · ")
 }
