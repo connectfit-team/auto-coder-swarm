@@ -337,6 +337,7 @@ func TestSmallToolsetIsAdvertisedWhole(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 // 모델이 「다 했다」 고 해도 **기계가 한 번 본다.** 안 됐으면 그 사실을 돌려준다.
 // 실측: 중복 선언을 한 번 고치고 check 도 없이 2초 만에 끝냈다.
 func TestVerifyPushesBackOnceWhenNotDone(t *testing.T) {
@@ -495,5 +496,52 @@ func TestToolResultCarriesTheNextStep(t *testing.T) {
 	}
 	if strings.Contains(second, "unrelated 의 입력") {
 		t.Error("설명에 없는 도구까지 실었다")
+=======
+// **말이 안 되는 호출은 시도가 아니다.** 인자 이름이 틀리면 서버는 아무 일도
+// 안 하는데 그 턴이 예산에서 빠진다 — 실측에서 한 판이 세 번 틀리고 성공한
+// 호출 없이 끝났다.
+func TestMalformedCallsDoNotBurnTheBudget(t *testing.T) {
+	// 서로 **다른** 틀린 호출이어야 한다 — 똑같으면 되풀이 막기가 먼저 잡는다.
+	bad1 := `<tools>{"name":"binary_overview","arguments":{"path":"/bin/true"}}</tools>`
+	bad2 := `<tools>{"name":"binary_overview","arguments":{"target_path":"/bin/true"}}</tools>`
+	good := `<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`
+	llm := &fakeLLM{says: []string{bad1, bad2, good, "끝."}}
+
+	n := 0
+	l := &Loop{LLM: llm, Tools: tools(), MaxTurns: 3,
+		Call: func(_ context.Context, name string, args map[string]any) (string, error) {
+			n++
+			if name == "binary_overview" {
+				return "", errors.New(`Input validation error: Unrecognized key: "path"`)
+			}
+			return "package main", nil
+		}}
+
+	out, err := l.Run(context.Background(), "s", "g")
+	if err != nil {
+		t.Fatalf("세 턴짜리 예산인데 인자 틀리기로 다 썼다: %v", err)
+	}
+	if out != "끝." {
+		t.Errorf("답: %q", out)
+	}
+	if n != 3 {
+		t.Errorf("도구를 %d번 불렀다 — 세 번이어야 한다", n)
+	}
+}
+
+// 되돌려주는 횟수는 묶는다 — 안 묶으면 못 고치는 판이 끝나지 않는다.
+func TestFreeTurnsAreCapped(t *testing.T) {
+	bad := `<tools>{"name":"binary_overview","arguments":{"path":"x"}}</tools>`
+	llm := &fakeLLM{says: []string{bad, bad, bad, bad, bad, bad, bad, bad}}
+	l := &Loop{LLM: llm, Tools: tools(), MaxTurns: 2,
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			return "", errors.New("Input validation error")
+		}}
+	if _, err := l.Run(context.Background(), "s", "g"); err == nil {
+		t.Error("끝없이 돌았다 — 예산이 묶이지 않는다")
+	}
+	if len(llm.saw) > 2+maxFreeTurns+1 {
+		t.Errorf("턴을 %d번 썼다 — 묶이지 않는다", len(llm.saw))
+>>>>>>> origin/free-retry
 	}
 }
