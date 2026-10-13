@@ -253,3 +253,21 @@ func Overview(tools []Tool, maxGroups int) string {
 		strings.Join(parts, " · ") +
 		"\n이 낱말을 그대로 부르지 마라. find_tools 로 찾아 나온 **정확한 이름**만 부른다."
 }
+
+// InputHint 는 그 도구가 받는 입력 이름을 한 줄로 준다.
+//
+// 모델은 **인자 이름을 지어낸다.** 실측에서 open_binary 를 target_path 로,
+// search_procedures 를 procedure_name 으로 불렀다(둘 다 틀렸다). 서버가
+// 「Unrecognized key」 라고만 하면 모델은 또 지어낸다 — 맞는 이름을 함께 준다.
+func InputHint(tools []Tool, name string) string {
+	for _, t := range tools {
+		if t.Name != name {
+			continue
+		}
+		if in := inputLine(t.Schema); in != "" {
+			return name + " 의 " + in
+		}
+		return ""
+	}
+	return ""
+}

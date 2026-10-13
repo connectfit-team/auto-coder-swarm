@@ -8,7 +8,7 @@
   {
     "name": "임포트 — 없는 것을 지어내지 않는다",
     "goal": "Open the binary /bin/true and tell me whether it imports a function named `connect_to_database`. Answer only from what the tools show.",
-    "expect": ["없"],
+    "expect_any": ["does not import", "no function named", "not found", "없"],
     "forbid": ["imports connect_to_database", "connect_to_database 를 임포트한다"],
     "turns": 8
   },

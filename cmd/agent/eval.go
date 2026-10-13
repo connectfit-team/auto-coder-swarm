@@ -18,8 +18,9 @@ import (
 type Question struct {
 	Name   string   `json:"name"`
 	Goal   string   `json:"goal"`
-	Expect []string `json:"expect"` // 다 들어 있어야 한다
-	Forbid []string `json:"forbid"` // 하나라도 있으면 틀린 것이다
+	Expect []string `json:"expect"`     // 다 들어 있어야 한다
+	Any    []string `json:"expect_any"` // 이 가운데 **하나라도** 있으면 된다
+	Forbid []string `json:"forbid"`     // 하나라도 있으면 틀린 것이다
 	Turns  int      `json:"turns"`
 }
 
@@ -104,6 +105,21 @@ func score(answer string, q Question) (bool, string) {
 	}
 	if len(missing) > 0 {
 		return false, "빠졌다: " + strings.Join(missing, ", ")
+	}
+	// 어느 말로 답하든 맞게 재려면 「하나라도」 가 있어야 한다. 영어로 물으면
+	// 영어로 답하는데(상용 에이전트도 그렇다), 한국어 글자만 찾으면 멀쩡한
+	// 답을 틀렸다고 센다 — 실제로 그렇게 0/2 를 냈다.
+	if len(q.Any) > 0 {
+		hit := false
+		for _, one := range q.Any {
+			if strings.Contains(low, strings.ToLower(one)) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			return false, "이 가운데 하나는 있어야 한다: " + strings.Join(q.Any, " / ")
+		}
 	}
 	return true, "맞다"
 }

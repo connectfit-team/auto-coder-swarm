@@ -92,15 +92,8 @@ func main() {
 				}
 				return c.GetPrompt(ctx, name, args)
 			},
-			Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
-				c, ok := owner[name]
-				if !ok {
-					near := mcpclient.FindTools(tools, name, 5)
-					return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s", name, near)
-				}
-				return c.Call(ctx, name, args)
-			},
-			Log: func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
+			Call: callTool(tools, owner),
+			Log:  func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
 		}
 	}
 
@@ -122,20 +115,8 @@ func main() {
 			}
 			return c.GetPrompt(ctx, name, args)
 		},
-		Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
-			c, ok := owner[name]
-			if !ok {
-				// **없는 이름을 지어냈을 때 비슷한 것을 일러 준다.**
-				//
-				// 「없다」 고만 하면 모델은 또 지어내거나 포기한다. 실측에서
-				// 목표 문구를 보고 capabilities 를 지어냈는데, 그건 REA 의
-				// CLI 명령이지 MCP 도구가 아니었다.
-				near := mcpclient.FindTools(tools, name, 5)
-				return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s", name, near)
-			}
-			return c.Call(ctx, name, args)
-		},
-		Log: func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
+		Call: callTool(tools, owner),
+		Log:  func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
 	}
 
 	out, err := loop.Run(ctx, *system, *goal)
@@ -143,6 +124,28 @@ func main() {
 		log.Fatalf("끝내지 못했다: %v", err)
 	}
 	fmt.Println(out)
+}
+
+// callTool 은 도구를 부르고, 틀렸을 때 **고칠 단서를 함께** 돌려준다.
+func callTool(tools []mcpclient.Tool, owner map[string]*mcpclient.Client) agentloop.Dispatch {
+	return func(ctx context.Context, name string, args map[string]any) (string, error) {
+		c, ok := owner[name]
+		if !ok {
+			// 「없다」 고만 하면 모델은 또 지어내거나 포기한다. 실측에서 목표
+			// 문구를 보고 capabilities 를 지어냈는데, 그건 CLI 명령이었다.
+			return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s",
+				name, mcpclient.FindTools(tools, name, 5))
+		}
+		out, err := c.Call(ctx, name, args)
+		if err != nil {
+			// **인자 이름을 지어냈을 때 맞는 이름을 준다.** 서버는 「Unrecognized
+			// key」 라고만 하고, 그것만으로는 또 지어낸다.
+			if hint := mcpclient.InputHint(tools, name); hint != "" {
+				return out, fmt.Errorf("%w\n%s", err, hint)
+			}
+		}
+		return out, err
+	}
 }
 
 func firstLine(s string) string {
