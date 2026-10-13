@@ -313,3 +313,26 @@ func TestLoopStopsRepeatingTheSameFailure(t *testing.T) {
 		t.Error("같은 오류를 두 번 실었다")
 	}
 }
+
+// 도구가 몇 개뿐이면 다 알린다 — 고르는 것은 카탈로그가 클 때나 뜻이 있다.
+// 지역 도구 네 개짜리에 find_tools 만 쥐여 주면 쓸 도구가 하나도 안 알려진다.
+func TestSmallToolsetIsAdvertisedWhole(t *testing.T) {
+	small := []mcpclient.Tool{
+		{Name: "check", Description: "관문을 본다", Schema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "edit_file", Description: "파일을 고친다", Schema: json.RawMessage(`{"type":"object"}`)},
+	}
+	llm := &fakeLLM{says: []string{"끝."}}
+	l := &Loop{LLM: llm, Tools: small,
+		Call: func(context.Context, string, map[string]any) (string, error) { return "", nil }}
+
+	// 목표가 한국어라 Pick 은 아무것도 못 고른다 — 그래도 다 알려야 한다.
+	if _, err := l.Run(context.Background(), "s", "관문에 걸렸다. 고쳐라."); err != nil {
+		t.Fatal(err)
+	}
+	first := llm.saw[0][0].Parts[0].Text
+	for _, want := range []string{"check", "edit_file"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("%q 를 안 알렸다:\n%s", want, first)
+		}
+	}
+}
