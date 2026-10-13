@@ -172,6 +172,7 @@ func prefixHabit() string {
 
 func main() {
 	only := flag.String("case", "", "하나만 돌린다")
+	repeat := flag.Int("repeat", 1, "같은 갈래를 몇 판 돌릴지 (흔들림을 보려면 3 이상)")
 	turns := flag.Int("turns", 6, "턴 예산")
 	modelName := flag.String("model", envOr("LLM_MODEL_NAME", "gemma4:31b"), "모델")
 	flag.Parse()
@@ -179,22 +180,57 @@ func main() {
 	ctx := context.Background()
 	m := llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL"))
 
+	if *repeat < 1 {
+		*repeat = 1
+	}
+	// **한 판으로는 잡음과 고침을 못 가른다.** 실제로 empty-message 가 판마다
+	// ✓ 와 ✗ 를 오갔다. 갈래마다 몇 판 맞았는지 센다.
+	type tally struct{ ok, total int }
+	per := map[string]*tally{}
+	var order []string
 	ok, n := 0, 0
-	for _, c := range cases {
-		if *only != "" && c.name != *only {
-			continue
+	for round := 1; round <= *repeat; round++ {
+		if *repeat > 1 {
+			fmt.Printf("\n######## %d/%d 판 ########\n", round, *repeat)
 		}
-		n++
-		start := time.Now()
-		fixed, why := run(ctx, m, c.name, c.head, c.bad, *turns)
-		mark := "✗"
-		if fixed {
-			mark = "✓"
-			ok++
+		for _, c := range cases {
+			if *only != "" && c.name != *only {
+				continue
+			}
+			n++
+			t, seen := per[c.name]
+			if !seen {
+				t = &tally{}
+				per[c.name] = t
+				order = append(order, c.name)
+			}
+			t.total++
+			start := time.Now()
+			fixed, why := run(ctx, m, c.name, c.head, c.bad, *turns)
+			mark := "✗"
+			if fixed {
+				mark = "✓"
+				ok++
+				t.ok++
+			}
+			fmt.Printf("%s %-18s %s (%.0f초)\n", mark, c.name, why, time.Since(start).Seconds())
 		}
-		fmt.Printf("%s %-12s %s (%.0f초)\n", mark, c.name, why, time.Since(start).Seconds())
 	}
 	fmt.Printf("\n%d/%d\n", ok, n)
+	if *repeat > 1 {
+		fmt.Println("\n갈래마다 (맞은 판/전체)")
+		for _, name := range order {
+			t := per[name]
+			mark := "~ " // 흔들린다
+			switch {
+			case t.ok == t.total:
+				mark = "✓ "
+			case t.ok == 0:
+				mark = "✗ "
+			}
+			fmt.Printf("  %s%-18s %d/%d\n", mark, name, t.ok, t.total)
+		}
+	}
 	if ok < n {
 		os.Exit(1)
 	}
