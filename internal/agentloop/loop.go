@@ -176,7 +176,12 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		var results []string
 		for _, c := range calls {
 			key := c.Name + "|" + argKey(c.Args)
-			if called[key] {
+			// **인자가 없는 호출은 상태를 묻는 것이다.** check 처럼 「지금 어떤가」
+			// 를 묻는 도구는 키가 늘 같아서 인자 기준으로 막으면 고친 뒤에도
+			// 못 묻는다. 실측에서 한 판이 check 를 네 번 부르고 네 번 다 막혀
+			// 턴을 다 썼다. 같은 답이 또 나오는 것은 **결과 기준**으로 막는다.
+			stateQuery := len(c.Args) == 0
+			if !stateQuery && called[key] {
 				// **되풀이도 보이게 남긴다.** 안 남기면 턴이 조용히 사라져,
 				// 「8턴에 도구 3번」 같은 것을 못 읽는다.
 				l.log("TOOL_REPEAT", c.Name+": 같은 호출 — 건너뛴다")
@@ -186,7 +191,9 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 						"파일 내용이 궁금하면 read_file 로 봐라."))
 				continue
 			}
-			called[key] = true
+			if !stateQuery {
+				called[key] = true
+			}
 
 			out, err := l.dispatch(ctx, c.Name, c.Args)
 			if err != nil {

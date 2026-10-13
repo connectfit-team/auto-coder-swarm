@@ -437,3 +437,25 @@ func TestRepeatStillBlockedWhenNothingChanged(t *testing.T) {
 		t.Errorf("같은 결과인데 %d번 불렀다", n)
 	}
 }
+
+// 인자가 없는 호출은 **상태를 묻는 것**이다 — 인자 기준으로 막으면 고친 뒤에도
+// 못 묻는다. 같은 답이 또 나오는 것은 결과 기준으로 막는다.
+func TestNoArgCallsAreNotBlockedByArgs(t *testing.T) {
+	check := `<tools>{"name":"check","arguments":{}}</tools>`
+	llm := &fakeLLM{says: []string{check, check, check, "끝."}}
+	n := 0
+	l := &Loop{
+		LLM:   llm,
+		Tools: []mcpclient.Tool{{Name: "check", Description: "관문", Schema: json.RawMessage(`{}`)}},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return fmt.Sprintf("관문 상태 %d", n), nil // 매번 달라진다
+		},
+	}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("상태 조회를 %d번만 했다 — 세 번이어야 한다", n)
+	}
+}
