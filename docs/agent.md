@@ -44,6 +44,22 @@ vLLM 은 `--tool-call-parser hermes` 로 떠 있어 모델이 `<tool_call>` 을 
 | `-turns` | 턴 예산 |
 | `-list-tools` | 붙은 도구만 보여 주고 끝낸다 (LLM 안 씀) |
 
+## REA 가 내놓는 것을 다 받나 (2026-10-13 재 봤다)
+
+    capabilities: {"tools":{"listChanged":true},"completions":{},"prompts":{"listChanged":true}}
+
+| REA 가 내놓는 것 | 우리 |
+|---|---|
+| `tools` 170개 | **다 받는다.** 안 알리는 36개도 `find_tools` 로 찾고 부를 수 있다 |
+| `instructions` 304자 | **받는다**(#220) — 지시문에 싣는다 |
+| `prompts` 6개 (작업 절차) | **받는다**(#220) — 이름만 알리고 `get_workflow` 로 본문을 받는다 |
+| `resources` | REA 가 **안 내놓는다**(Method not found) |
+| `tools.listChanged` 알림 | **안 받는다** — 한 판 도는 동안 도구가 바뀌지 않는다 |
+
+`prompts` 는 도구 하나가 아니라 **일 전체의 차례**다:
+`investigate_feature` · `compare_application_versions` · `verify_reconstruction` ·
+`trace_crash` · `audit_residual_unknowns` · `prepare_bounded_process_capture`.
+
 ## 어디에 무엇이 있나
 
 | 파일 | 하는 일 |

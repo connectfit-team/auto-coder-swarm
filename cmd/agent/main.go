@@ -54,8 +54,10 @@ func main() {
 	}()
 
 	tools, owner := mcpclient.AllTools(clients)
+	prompts, promptOwner := mcpclient.AllPrompts(clients)
 	for _, c := range clients {
-		log.Printf("[MCP] %s: 도구 %d개", c.Name(), len(c.Tools()))
+		log.Printf("[MCP] %s: 도구 %d개 · 절차 %d개 · 쓰는 법 %d자",
+			c.Name(), len(c.Tools()), len(c.Prompts()), len(c.Instructions()))
 	}
 
 	if *listOnly {
@@ -67,10 +69,19 @@ func main() {
 	}
 
 	loop := &agentloop.Loop{
-		LLM:      llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
-		Tools:    tools,
-		MaxTurns: *turns,
-		DeferAll: *deferAll,
+		LLM:          llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
+		Tools:        tools,
+		MaxTurns:     *turns,
+		DeferAll:     *deferAll,
+		Instructions: mcpclient.AllInstructions(clients),
+		Prompts:      prompts,
+		GetPrompt: func(ctx context.Context, name string, args map[string]any) (string, error) {
+			c, ok := promptOwner[name]
+			if !ok {
+				return "", fmt.Errorf("%s 라는 절차는 없다", name)
+			}
+			return c.GetPrompt(ctx, name, args)
+		},
 		Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
 			c, ok := owner[name]
 			if !ok {

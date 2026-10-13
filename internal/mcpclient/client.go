@@ -23,12 +23,24 @@ type Tool struct {
 	Schema      json.RawMessage `json:"inputSchema"`
 }
 
+// Prompt 는 서버가 알린 작업 절차 하나다.
+type Prompt struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Arguments   []struct {
+		Name     string `json:"name"`
+		Required bool   `json:"required"`
+	} `json:"arguments"`
+}
+
 type Client struct {
-	name  string
-	cmd   *exec.Cmd
-	in    io.WriteCloser
-	out   *bufio.Reader
-	tools []Tool
+	name         string
+	cmd          *exec.Cmd
+	in           io.WriteCloser
+	out          *bufio.Reader
+	tools        []Tool
+	prompts      []Prompt
+	instructions string
 
 	mu  sync.Mutex
 	seq int
@@ -88,12 +100,19 @@ func newPiped(name string, in io.WriteCloser, out io.Reader) *Client {
 
 // handshake 는 손을 맞추고 도구 목록까지 받아 둔다.
 func (c *Client) handshake(ctx context.Context) error {
-	if _, err := c.call(ctx, "initialize", map[string]any{
+	init, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
 		"clientInfo":      map[string]any{"name": "auto-coder-swarm", "version": "1"},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
+	}
+	var hello struct {
+		Instructions string `json:"instructions"`
+	}
+	if json.Unmarshal(init, &hello) == nil {
+		c.instructions = strings.TrimSpace(hello.Instructions)
 	}
 	// 알림에는 id 가 없고 답도 없다.
 	if err := c.write(rpcReq{JSONRPC: "2.0", Method: "notifications/initialized", Params: map[string]any{}}); err != nil {
@@ -110,11 +129,57 @@ func (c *Client) handshake(ctx context.Context) error {
 		return fmt.Errorf("%s: 도구 목록을 못 읽었다: %w", c.name, err)
 	}
 	c.tools = listed.Tools
+
+	// 절차는 없을 수도 있다 — 없다고 손을 못 맞춘 것은 아니다.
+	if raw, err := c.call(ctx, "prompts/list", map[string]any{}); err == nil {
+		var ps struct {
+			Prompts []Prompt `json:"prompts"`
+		}
+		if json.Unmarshal(raw, &ps) == nil {
+			c.prompts = ps.Prompts
+		}
+	}
 	return nil
 }
 
 func (c *Client) Name() string  { return c.name }
 func (c *Client) Tools() []Tool { return c.tools }
+
+// Instructions 는 서버가 스스로 알려 주는 쓰는 법이다.
+// 이것을 버리면 서버가 아는 것을 모델이 모른 채 더듬는다.
+func (c *Client) Prompts() []Prompt    { return c.prompts }
+func (c *Client) Instructions() string { return c.instructions }
+
+// GetPrompt 는 작업 절차 하나를 글로 받는다.
+func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]any) (string, error) {
+	raw, err := c.call(ctx, "prompts/get", map[string]any{"name": name, "arguments": args})
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Description string `json:"description"`
+		Messages    []struct {
+			Role    string `json:"role"`
+			Content struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return "", fmt.Errorf("%s/%s: 절차를 못 읽었다: %w", c.name, name, err)
+	}
+	var b strings.Builder
+	if res.Description != "" {
+		b.WriteString(res.Description + "\n\n")
+	}
+	for _, m := range res.Messages {
+		if m.Content.Type == "text" {
+			b.WriteString(m.Content.Text + "\n")
+		}
+	}
+	return b.String(), nil
+}
 
 // Call 은 도구 하나를 부르고 글로 된 결과를 돌려준다.
 func (c *Client) Call(ctx context.Context, tool string, args map[string]any) (string, error) {

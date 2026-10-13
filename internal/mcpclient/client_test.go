@@ -37,7 +37,14 @@ func fakeServer(t *testing.T) *Client {
 
 			switch req.Method {
 			case "initialize":
-				fmt.Fprintf(cout, `{"jsonrpc":"2.0","id":%d,"result":{"serverInfo":{"name":"fake"}}}`+"\n", req.ID)
+				fmt.Fprintf(cout, `{"jsonrpc":"2.0","id":%d,"result":{"serverInfo":{"name":"fake"},`+
+					`"instructions":"이 서버는 이렇게 쓴다."}}`+"\n", req.ID)
+			case "prompts/list":
+				fmt.Fprintf(cout, `{"jsonrpc":"2.0","id":%d,"result":{"prompts":[`+
+					`{"name":"trace_crash","description":"크래시를 증거와 잇는다"}]}}`+"\n", req.ID)
+			case "prompts/get":
+				fmt.Fprintf(cout, `{"jsonrpc":"2.0","id":%d,"result":{"description":"절차",`+
+					`"messages":[{"role":"user","content":{"type":"text","text":"1. 심볼을 찾아라"}}]}}`+"\n", req.ID)
 			case "tools/list":
 				fmt.Fprintf(cout, `{"jsonrpc":"2.0","id":%d,"result":{"tools":[`+
 					`{"name":"read_code_file","description":"Read a source file","inputSchema":{"type":"object"}},`+
@@ -234,5 +241,24 @@ func TestCallErrorCarriesTheReason(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "터졌다") {
 		t.Errorf("까닭이 없다: %v", err)
+	}
+}
+
+// 서버가 주는 것을 버리지 않는다 — 쓰는 법과 작업 절차.
+func TestHandshakeKeepsInstructionsAndPrompts(t *testing.T) {
+	c := fakeServer(t)
+
+	if c.Instructions() != "이 서버는 이렇게 쓴다." {
+		t.Errorf("쓰는 법을 버렸다: %q", c.Instructions())
+	}
+	if len(c.Prompts()) != 1 || c.Prompts()[0].Name != "trace_crash" {
+		t.Fatalf("작업 절차를 못 받았다: %+v", c.Prompts())
+	}
+	got, err := c.GetPrompt(context.Background(), "trace_crash", nil)
+	if err != nil {
+		t.Fatalf("절차를 못 받아 왔다: %v", err)
+	}
+	if !strings.Contains(got, "심볼을 찾아라") {
+		t.Errorf("절차 내용이 없다: %q", got)
 	}
 }

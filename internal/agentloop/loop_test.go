@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"strings"
@@ -222,5 +223,73 @@ func TestLoopWarnsWhenBudgetRunsLow(t *testing.T) {
 	}
 	if !strings.Contains(last, "남은 턴") {
 		t.Errorf("남은 예산을 안 알렸다:\n%s", last)
+	}
+}
+
+// 서버가 알려 준 쓰는 법과 작업 절차를 버리지 않는다.
+func TestLoopUsesServerInstructionsAndWorkflows(t *testing.T) {
+	llm := &fakeLLM{says: []string{
+		`<tools>{"name":"get_workflow","arguments":{"name":"trace_crash"}}</tools>`,
+		"절차대로 했다.",
+	}}
+	var asked string
+	l := &Loop{
+		LLM: llm, Tools: tools(), DeferAll: true,
+		Instructions: "REA 는 지역 산출물을 뜯는 도구다.",
+		Prompts: []mcpclient.Prompt{
+			{Name: "trace_crash", Description: "크래시를 증거와 잇는다"},
+		},
+		GetPrompt: func(_ context.Context, n string, _ map[string]any) (string, error) {
+			asked = n
+			return "1. 심볼을 찾아라\n2. 호출을 따라가라", nil
+		},
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			return "", errors.New("MCP 도구를 부르면 안 된다")
+		},
+	}
+	if _, err := l.Run(context.Background(), "너는 조사자다", "크래시를 조사해라"); err != nil {
+		t.Fatal(err)
+	}
+	first := llm.saw[0][0].Parts[0].Text
+	if !strings.Contains(first, "REA 는 지역 산출물을 뜯는 도구다.") {
+		t.Error("서버가 알려 준 쓰는 법을 안 실었다")
+	}
+	if !strings.Contains(first, "trace_crash") || !strings.Contains(first, "get_workflow") {
+		t.Error("작업 절차를 안 알렸다")
+	}
+	if asked != "trace_crash" {
+		t.Errorf("절차를 안 받아 왔다: %q", asked)
+	}
+	second := flatten(llm.saw[1])
+	if !strings.Contains(second, "심볼을 찾아라") {
+		t.Error("받아 온 절차가 대화에 안 들어갔다")
+	}
+}
+
+// 같은 오류가 또 나면 그 길은 막힌 것이다 — 세 번 두드리게 두지 않는다.
+// 실측에서 trace_native_values 가 같은 오류로 세 번 연속 불렸다(인자가 조금씩
+// 달라 호출 되풀이 막기에 안 걸렸다).
+func TestLoopStopsRepeatingTheSameFailure(t *testing.T) {
+	calls := []string{
+		`<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`,
+		`<tools>{"name":"read_code_file","arguments":{"path":"b.go"}}</tools>`,
+		"끝.",
+	}
+	llm := &fakeLLM{says: calls}
+	n := 0
+	l := &Loop{LLM: llm, Tools: tools(),
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return "", errors.New("씨앗 함수를 못 찾았다")
+		}}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	third := flatten(llm.saw[2])
+	if !strings.Contains(third, "이 길은 막혔다") {
+		t.Errorf("같은 오류를 막힌 길이라고 안 했다:\n%s", third)
+	}
+	if strings.Count(third, "씨앗 함수를 못 찾았다") > 1 {
+		t.Error("같은 오류를 두 번 실었다")
 	}
 }

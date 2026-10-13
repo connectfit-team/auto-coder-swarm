@@ -28,6 +28,15 @@ type Loop struct {
 	Tools []mcpclient.Tool
 	Call  Dispatch
 
+	// Instructions 는 도구 서버가 스스로 알려 준 쓰는 법이다. 버리면 모델이
+	// 서버가 아는 것을 모른 채 더듬는다.
+	Instructions string
+
+	// Prompts 는 서버가 알린 **작업 절차**다. 도구 하나가 아니라 일 전체의
+	// 차례라 값이 크다 — REA 는 investigate_feature·trace_crash 같은 것을 6개 준다.
+	Prompts   []mcpclient.Prompt
+	GetPrompt func(ctx context.Context, name string, args map[string]any) (string, error)
+
 	MaxTurns     int // 0 이면 8
 	ToolChars    int // 도구를 알리는 데 쓸 글자. 0 이면 창의 1/4
 	ResultTokens int // 도구 결과 하나가 쓸 수 있는 토큰. 0 이면 1200
@@ -74,7 +83,8 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 턴을 버렸다. 골라 주는 것은 **맞을 때만** 이득이고, 틀리면 손해다.
 	visible, hidden := mcpclient.Visible(l.Tools)
 	if len(hidden) > 0 {
-		l.log("TOOLS", fmt.Sprintf("혼자 창을 먹는 도구 %d개는 숨긴다", len(hidden)))
+		// 「숨긴다」 가 아니다 — 알리지 않을 뿐 find_tools 로 찾고 부를 수 있다.
+		l.log("TOOLS", fmt.Sprintf("혼자 창을 먹는 도구 %d개는 안 알린다(find_tools 로는 찾을 수 있다)", len(hidden)))
 	}
 	picked := []mcpclient.Tool{findTools}
 	if !l.DeferAll {
@@ -87,6 +97,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	overview := ""
 	if l.DeferAll {
 		overview = "\n\n" + mcpclient.Overview(visible, 14)
+	}
+	if l.Instructions != "" {
+		system += "\n\n[도구 서버가 알려 준 쓰는 법]\n" + l.Instructions
+	}
+	if w := workflowBlock(l.Prompts); w != "" {
+		picked = append([]mcpclient.Tool{getWorkflow}, picked...)
+		system += "\n\n" + w
 	}
 	history := []*genai.Content{
 		userTurn(system + "\n\n" + advertise(picked) + overview + "\n\n[목표]\n" + goal),
@@ -133,8 +150,20 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 			if err != nil {
 				// **오류를 같은 대화로 되돌린다.** aider 의 reflected_message 와
 				// 같은 자리다. 오류를 버리면 다음 턴이 같은 실수를 되풀이한다.
+				//
+				// 다만 **같은 오류가 또 나면 그 길은 막힌 것**이다. 실측에서
+				// trace_native_values 가 같은 오류로 세 번 연속 불렸다 — 인자가
+				// 조금씩 달라 호출 되풀이 막기에 안 걸렸다. 결과로 가른다.
+				msg := "ERROR: " + err.Error()
+				if prev, dup := seenOut[msg]; dup {
+					l.log("TOOL_ERR", c.Name+": 같은 오류 되풀이 — 막힌 길이다")
+					results = append(results, toolResult(c.Name,
+						"ERROR: "+prev+" 에서 난 것과 **같은 오류**다. 이 길은 막혔다 — 다른 도구를 찾아라."))
+					continue
+				}
+				seenOut[msg] = c.Name
 				l.log("TOOL_ERR", c.Name+": "+err.Error())
-				results = append(results, toolResult(c.Name, "ERROR: "+err.Error()))
+				results = append(results, toolResult(c.Name, msg))
 				continue
 			}
 			// **같은 결과를 두 번 싣지 않는다.** 창이 16k 라 되풀이는 비싸고,
@@ -166,7 +195,44 @@ var findTools = mcpclient.Tool{
 	Schema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
 }
 
+// getWorkflow 는 서버가 알린 작업 절차를 받아 오는 내장 도구다.
+var getWorkflow = mcpclient.Tool{
+	Name:        "get_workflow",
+	Description: "일 전체의 차례(workflow)를 받아 온다. 어떻게 할지 막히면 먼저 이것을 불러라.",
+	Schema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+}
+
+// workflowBlock 은 쓸 수 있는 절차를 짧게 알린다. 이름과 설명만이라 싸다.
+func workflowBlock(ps []mcpclient.Prompt) string {
+	if len(ps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[쓸 수 있는 작업 절차 — get_workflow 로 받아 온다]\n")
+	for _, p := range ps {
+		fmt.Fprintf(&b, "- %s: %s\n", p.Name, firstLineOf(p.Description))
+	}
+	return b.String()
+}
+
+func firstLineOf(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 110 {
+		s = s[:110] + "…"
+	}
+	return s
+}
+
 func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (string, error) {
+	if name == getWorkflow.Name {
+		if l.GetPrompt == nil {
+			return "", fmt.Errorf("작업 절차를 받아 올 길이 없다")
+		}
+		n, _ := args["name"].(string)
+		return l.GetPrompt(ctx, n, nil)
+	}
 	if name == findTools.Name {
 		q, _ := args["query"].(string)
 		return mcpclient.FindTools(l.Tools, q, 20), nil

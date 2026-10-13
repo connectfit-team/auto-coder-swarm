@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 )
 
 // Config 는 codex·Claude Code 가 쓰는 그 형식이다 — 설정을 그대로 옮겨 올 수 있게.
@@ -94,4 +95,31 @@ func AllTools(clients []*Client) ([]Tool, map[string]*Client) {
 		}
 	}
 	return all, owner
+}
+
+// AllPrompts 는 붙은 서버의 작업 절차를 한 묶음으로 준다.
+func AllPrompts(clients []*Client) ([]Prompt, map[string]*Client) {
+	var all []Prompt
+	owner := map[string]*Client{}
+	for _, c := range clients {
+		for _, p := range c.Prompts() {
+			if _, dup := owner[p.Name]; dup {
+				p.Name = c.Name() + "__" + p.Name
+			}
+			all = append(all, p)
+			owner[p.Name] = c
+		}
+	}
+	return all, owner
+}
+
+// AllInstructions 는 서버들이 스스로 알려 준 쓰는 법을 모은다.
+func AllInstructions(clients []*Client) string {
+	var parts []string
+	for _, c := range clients {
+		if s := c.Instructions(); s != "" {
+			parts = append(parts, "["+c.Name()+"] "+s)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
