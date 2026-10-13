@@ -1,27 +1,77 @@
 [
   {
-    "name": "임포트 — 있는 것",
-    "goal": "Open the binary /bin/true and list the functions it imports. Report the exact names.",
-    "expect": ["dcgettext", "fputs_unlocked"],
+    "name": "임포트 — /bin/true",
+    "goal": "Open the binary /bin/true and list the functions it imports from shared libraries. Report the exact names.",
+    "expect_any": ["dcgettext", "bindtextdomain", "__ctype_b_loc", "fputs_unlocked"],
     "turns": 8
   },
   {
-    "name": "임포트 — 없는 것을 지어내지 않는다",
+    "name": "임포트 — /bin/ls",
+    "goal": "Open the binary /bin/ls and list the functions it imports from shared libraries. Report the exact names.",
+    "expect_any": ["__assert_fail", "bindtextdomain", "abort"],
+    "turns": 8
+  },
+  {
+    "name": "임포트 — /bin/cat",
+    "goal": "Open the binary /bin/cat and list the functions it imports from shared libraries. Report the exact names.",
+    "expect_any": ["aligned_alloc", "bindtextdomain", "abort"],
+    "turns": 8
+  },
+  {
+    "name": "지어내지 않는다 — /bin/true",
     "goal": "Open the binary /bin/true and tell me whether it imports a function named `connect_to_database`. Answer only from what the tools show.",
-    "expect_any": ["does not import", "no function named", "not found", "없"],
-    "forbid": ["imports connect_to_database", "connect_to_database 를 임포트한다"],
+    "expect_any": ["does not import", "no function named", "not found", "no such", "없"],
+    "forbid": ["imports connect_to_database", "it does import connect_to_database"],
     "turns": 8
   },
   {
-    "name": "아키텍처",
-    "goal": "Open the binary /bin/true and report its architecture (for example x86-64 or arm64).",
-    "expect": ["x86"],
+    "name": "지어내지 않는다 — /bin/ls",
+    "goal": "Open the binary /bin/ls and tell me whether it contains a function named `render_html_page`. Answer only from what the tools show.",
+    "expect_any": ["does not", "no function", "not found", "no such", "없"],
+    "forbid": ["contains render_html_page", "it does contain render_html_page"],
+    "turns": 8
+  },
+  {
+    "name": "지어내지 않는다 — 없는 파일",
+    "goal": "Open the binary /bin/this_does_not_exist_12345 and report its architecture. Answer only from what the tools show.",
+    "expect_any": ["not exist", "no such", "could not", "cannot", "failed", "없"],
+    "forbid": ["x86-64 architecture of /bin/this_does_not_exist_12345"],
     "turns": 6
   },
   {
-    "name": "문자열",
-    "goal": "Open the binary /bin/true and find the dynamic loader path string it contains (it starts with /lib64).",
-    "expect": ["ld-linux-x86-64"],
+    "name": "아키텍처 — /bin/true",
+    "goal": "Open the binary /bin/true and report its CPU architecture (for example x86-64 or arm64).",
+    "expect_any": ["x86", "x64", "amd64"],
+    "turns": 6
+  },
+  {
+    "name": "아키텍처 — /bin/cat",
+    "goal": "Open the binary /bin/cat and report its CPU architecture (for example x86-64 or arm64).",
+    "expect_any": ["x86", "x64", "amd64"],
+    "turns": 6
+  },
+  {
+    "name": "파일 꼴 — /bin/ls",
+    "goal": "Open the binary /bin/ls and report its executable file format (for example ELF, Mach-O, or PE).",
+    "expect_any": ["elf"],
+    "turns": 6
+  },
+  {
+    "name": "문자열 — 동적 로더",
+    "goal": "Open the binary /bin/true and find the dynamic loader path string it contains. It starts with /lib64.",
+    "expect_any": ["ld-linux-x86-64", "ld-linux"],
+    "turns": 8
+  },
+  {
+    "name": "문자열 — /bin/cat 의 로더",
+    "goal": "Open the binary /bin/cat and find the dynamic loader path string it contains. It starts with /lib64.",
+    "expect_any": ["ld-linux-x86-64", "ld-linux"],
+    "turns": 8
+  },
+  {
+    "name": "구역 — .text 가 있나",
+    "goal": "Open the binary /bin/true and tell me whether it has a section or segment named .text.",
+    "expect_any": [".text"],
     "turns": 8
   }
 ]
