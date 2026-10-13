@@ -58,3 +58,21 @@ func TestPickSectionsFallsBackWithoutTools(t *testing.T) {
 		t.Errorf("도구가 없을 때 빈 글을 냈다: %q", got)
 	}
 }
+
+// **가장 쓸모 있는 절은 커도 버리지 않는다.** 건너뛰었더니 REA 의 「무엇부터
+// 열어라」 표가 통째로 빠지고 점수가 3/4 에서 0/4 로 떨어졌다.
+func TestBiggestUsefulSectionIsClippedNotDropped(t *testing.T) {
+	routing := "## Route the target first\n" +
+		"- native binary: open_binary 를 먼저 부른다\n" +
+		strings.Repeat("표가 길다. open_binary 를 쓴다. ", 200)
+	body := "# 머리\n\n" + routing + "\n\n## 작은 절\nlist_names 하나\n"
+
+	got := pickSections(body, toolsNamed("open_binary", "list_names"), 300)
+
+	if !strings.Contains(got, "open_binary 를 먼저 부른다") {
+		t.Errorf("가장 쓸모 있는 절을 통째로 버렸다:\n%s", got)
+	}
+	if !strings.Contains(got, "줄였다") {
+		t.Error("줄였다고 안 알린다")
+	}
+}

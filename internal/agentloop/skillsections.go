@@ -64,13 +64,23 @@ func pickSections(body string, tools []mcpclient.Tool, budget int) string {
 	sort.SliceStable(rest, func(a, b int) bool { return rest[a].hits > rest[b].hits })
 
 	keep := map[int]string{0: head}
-	for _, s := range rest {
+	for i, s := range rest {
 		if s.hits == 0 {
 			continue // 도구를 하나도 안 부르는 절은 넣지 않는다
 		}
 		n := agent.EstimateTokens(s.text)
 		if used+n > budget {
-			continue // 큰 절 하나 때문에 뒤의 작은 절을 버리지 않는다
+			// **가장 쓸모 있는 절은 커도 버리지 않는다. 잘라서 넣는다.**
+			//
+			// 전에는 건너뛰었다. 그랬더니 REA 의 「무엇부터 열어라」 표(약
+			// 2,000토큰)가 예산 1,800 을 넘어 통째로 빠지고, 덜 중요한 작은
+			// 절만 들어갔다. 점수가 3/4 에서 0/4 로 떨어졌다.
+			if i == 0 && budget > used {
+				cut, _ := agent.ClipToTokens(s.text, budget-used)
+				keep[s.at] = cut + "\n…(이 절을 줄였다)"
+				used = budget
+			}
+			continue
 		}
 		keep[s.at] = s.text
 		used += n

@@ -12,7 +12,7 @@ import (
 )
 
 // 지침 본문이 쓸 수 있는 토큰. 창이 16,384 라 통째로는 못 싣는다.
-const guideTokens = 1800
+const guideTokens = 2600
 
 // Skill 은 도구를 **어떻게 쓰는지** 적어 둔 글이다.
 //
