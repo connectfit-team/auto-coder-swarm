@@ -104,10 +104,21 @@ func duplicateDecls(repoPath string, changed []string) []guard.Violation {
 			if !hit {
 				continue // 이번 수정과 무관한 중복은 이 일의 몫이 아니다
 			}
+			// **어느 쪽이 원래 있던 것인지 짚어 준다.**
+			//
+			// 「두 번 선언한다 — a.proto · b.proto」 만으로는 무엇을 지울지
+			// 모른다. HEAD 에 있던 쪽이 원래 것이고, 이번에 더한 쪽을 지워야
+			// 한다. 실측에서 중복 선언이 세 시도를 다 쓰고도 안 고쳐졌다.
+			ev := []string{strings.Join(files, " · ")}
+			if home := declaredAtHead(repoPath, name); home != "" {
+				ev = append(ev, fmt.Sprintf("원래 있던 것은 %s 다 — **이번에 더한 쪽을 지워라.**", home))
+			} else {
+				ev = append(ev, "둘 다 이번에 더한 것이다 — 하나만 남겨라.")
+			}
+			ev = append(ev, "이미 있는 것을 고치고, 새로 만들지 마라")
 			out = append(out, guard.Violation{
-				Why: fmt.Sprintf("%s 를 두 번 선언한다 — 계약 꾸러미 %s 안에서 이름은 하나여야 한다", name, pkg),
-				Evidence: []string{strings.Join(files, " · "),
-					"이미 있는 것을 고치고, 새로 만들지 마라"},
+				Why:      fmt.Sprintf("%s 를 두 번 선언한다 — 계약 꾸러미 %s 안에서 이름은 하나여야 한다", name, pkg),
+				Evidence: ev,
 			})
 		}
 	}

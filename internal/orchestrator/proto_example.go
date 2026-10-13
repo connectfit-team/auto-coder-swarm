@@ -267,12 +267,27 @@ func protoBlocks(src string) map[string]string {
 // HEAD 를 못 읽으면 트리에서 읽는다. 예시가 아예 없는 것보다는 낫다.
 func protoAtHead(repoPath, rel string) string {
 	out, err := exec.Command("git", "-C", repoPath, "show", "HEAD:"+rel).Output()
-	if err == nil && len(out) > 0 {
+	if err == nil {
 		return string(out)
+	}
+	// **HEAD 에 없으면 없는 것이다.**
+	//
+	// 전에는 여기서 작업 트리를 읽었다. 그러면 **이번 시도가 새로 만든 파일**이
+	// 「원래 있던 것」 으로 둔갑한다 — #202 에서 못 박은 것과 정반대다. 그
+	// 탓에 접미형 이름 관문이 새 파일에서는 조용히 안 돌고, 임자 저장소에 없는
+	// 타입이 있는 것으로 통과했다.
+	//
+	// git 저장소가 아닐 때만 디스크로 물러선다.
+	if isGitRepo(repoPath) {
+		return ""
 	}
 	b, err := os.ReadFile(filepath.Join(repoPath, rel))
 	if err != nil {
 		return ""
 	}
 	return string(b)
+}
+
+func isGitRepo(repoPath string) bool {
+	return exec.Command("git", "-C", repoPath, "rev-parse", "--git-dir").Run() == nil
 }
