@@ -71,7 +71,7 @@ func suffixNameOffHabit(repoPath, diff string) []guard.Violation {
 		//
 		// 그 말을 들으면 **있는 메시지의 이름을 바꾸려 든다** — 쓰는 쪽이 다
 		// 깨진다. 진짜 문제(중복 선언)는 duplicateDecls 가 바르게 말한다.
-		if declaringFileAtHead(repoPath, name) != "" {
+		if declaredAtHead(repoPath, name) != "" {
 			continue
 		}
 		if strings.HasSuffix(name, "Request") || strings.HasSuffix(name, "Response") {

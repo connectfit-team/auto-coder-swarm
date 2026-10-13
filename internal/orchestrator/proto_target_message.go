@@ -42,6 +42,31 @@ func targetMessageBody(repoPath, message string) string {
 		message, rel, block, next)
 }
 
+// declaredAtHead 는 그 이름이 HEAD 에 **무엇으로든** 선언돼 있는 파일이다.
+//
+// declaringFileAtHead 는 `message` 만 찾는다. 자리를 보여 줄 때는 그것이 맞지만,
+// 「있나 없나」 를 물을 때 쓰면 enum 을 못 찾고 **없다고 답한다** — 상태 타입은
+// 보통 enum 이라, 맞게 고른 답이 「임자 저장소에 없다」 며 버려졌다.
+//
+// 못 찾은 것은 「없다」 가 아니라 「모른다」 다. 찾는 꼴을 넓혀서 모르는 범위를
+// 줄인다.
+func declaredAtHead(repoPath, name string) string {
+	if repoPath == "" || name == "" {
+		return ""
+	}
+	want := regexp.MustCompile(`(?m)^\s*(?:message|enum)\s+` + regexp.QuoteMeta(name) + `\s*\{`)
+	found := ""
+	forEachProto(repoPath, func(rel, _ string) {
+		if found != "" {
+			return
+		}
+		if want.MatchString(protoAtHead(repoPath, rel)) {
+			found = rel
+		}
+	})
+	return found
+}
+
 // targetMessageIn 은 그 메시지를 선언한 파일을 고칠 때만 몸통을 보여 준다.
 func targetMessageIn(repoPath, message, rel string) string {
 	if rel == "" || declaringFileAtHead(repoPath, message) != rel {
