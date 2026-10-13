@@ -70,6 +70,49 @@ var cases = []struct {
 				"\nmessage UpdatePendingRequest {\n  string id = 1;\n}\n",
 		},
 	},
+	{
+		// 있던 필드를 고치거나 지웠다 — 계약은 더하기만 한다.
+		name: "edited-existing",
+		head: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  string note = 2;\n}\n",
+		},
+		bad: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  bool note = 2;\n  bool held = 3;\n}\n",
+		},
+	},
+	{
+		// 속이 빈 메시지를 만들었다.
+		name: "empty-message",
+		head: map[string]string{
+			"proto/connect.proto": protoHead + "\nmessage ReceivedRequest {\n  string id = 1;\n}\n",
+		},
+		bad: map[string]string{
+			"proto/connect.proto": protoHead +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  bool held = 2;\n}\n" +
+				"\nmessage HoldStatusPayload {\n}\n",
+		},
+	},
+	{
+		// 이 파일에 이미 service 가 있는데 또 만들었다.
+		name: "new-service",
+		head: map[string]string{
+			"proto/service.proto": protoHead +
+				"\nmessage RequestGetConnect {\n  string id = 1;\n}\n" +
+				"\nmessage ResponseGetConnect {\n  string id = 1;\n}\n" +
+				"\nservice ConnectService {\n  rpc GetConnect(RequestGetConnect) returns (ResponseGetConnect);\n}\n",
+		},
+		bad: map[string]string{
+			"proto/service.proto": protoHead +
+				"\nmessage RequestGetConnect {\n  string id = 1;\n}\n" +
+				"\nmessage ResponseGetConnect {\n  string id = 1;\n}\n" +
+				"\nmessage RequestHoldConnect {\n  string id = 1;\n}\n" +
+				"\nmessage ResponseHoldConnect {\n  bool ok = 1;\n}\n" +
+				"\nservice ConnectService {\n  rpc GetConnect(RequestGetConnect) returns (ResponseGetConnect);\n}\n" +
+				"\nservice HoldService {\n  rpc HoldConnect(RequestHoldConnect) returns (ResponseHoldConnect);\n}\n",
+		},
+	},
 }
 
 const protoHead = "syntax = \"proto3\";\n\npackage ceo.connect.ceoweb;\n"
