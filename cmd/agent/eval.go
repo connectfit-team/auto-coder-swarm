@@ -37,7 +37,7 @@ type result struct {
 //
 // **정확도를 못 재면 올릴 수도 없다.** 상용 에이전트와 견주려면 같은 물음에
 // 같은 잣대를 써야 한다.
-func runEval(ctx context.Context, path string, mk func(goal string, turns int) *agentloop.Loop, system string) int {
+func runEval(ctx context.Context, path string, repeat int, mk func(goal string, turns int) *agentloop.Loop, system string) int {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "물음을 못 읽었다:", err)
@@ -49,6 +49,23 @@ func runEval(ctx context.Context, path string, mk func(goal string, turns int) *
 		return 2
 	}
 
+	if repeat < 1 {
+		repeat = 1
+	}
+	// **한 판으로는 잡음과 고침을 못 가른다.** 같은 물음을 여러 판 풀게 해서
+	// 문항마다 몇 번 맞았는지 센다. 9/12 와 7/12 가 다른 것인지 흔들린 것인지는
+	// 그렇게만 알 수 있다.
+	var rs []result
+	for round := 1; round <= repeat; round++ {
+		if repeat > 1 {
+			fmt.Printf("\n######## %d/%d 판 ########\n", round, repeat)
+		}
+		rs = append(rs, runOnce(ctx, qs, mk, system)...)
+	}
+	return report(rs, repeat)
+}
+
+func runOnce(ctx context.Context, qs []Question, mk func(goal string, turns int) *agentloop.Loop, system string) []result {
 	var rs []result
 	for i, q := range qs {
 		fmt.Printf("\n[%d/%d] %s\n", i+1, len(qs), q.Name)
@@ -86,8 +103,7 @@ func runEval(ctx context.Context, path string, mk func(goal string, turns int) *
 		fmt.Printf("  %s %s  (%.0f초, 도구 %d번)\n", mark, r.why, r.seconds, r.tools)
 		rs = append(rs, r)
 	}
-
-	return report(rs)
+	return rs
 }
 
 // score 는 답에 있어야 할 것이 있고 없어야 할 것이 없는지 본다.
@@ -125,7 +141,7 @@ func score(answer string, q Question) (bool, string) {
 	return true, "맞다"
 }
 
-func report(rs []result) int {
+func report(rs []result, repeat int) int {
 	ok, totalSec, totalTools := 0, 0.0, 0
 	for _, r := range rs {
 		if r.ok {
@@ -137,6 +153,40 @@ func report(rs []result) int {
 	n := len(rs)
 	fmt.Printf("\n==== 점수 ====\n%d/%d (%d%%) · 평균 %.0f초 · 평균 도구 %.1f번\n",
 		ok, n, 100*ok/max1(n), totalSec/float64(max1(n)), float64(totalTools)/float64(max1(n)))
+
+	// 여러 판을 돌았으면 **문항마다 몇 번 맞았는지** 보여 준다. 늘 맞는 것과
+	// 늘 틀리는 것은 고칠 거리이고, 왔다 갔다 하는 것은 잡음이다.
+	if repeat > 1 {
+		type tally struct{ ok, total int }
+		per := map[string]*tally{}
+		var order []string
+		for _, r := range rs {
+			t, seen := per[r.q.Name]
+			if !seen {
+				t = &tally{}
+				per[r.q.Name] = t
+				order = append(order, r.q.Name)
+			}
+			t.total++
+			if r.ok {
+				t.ok++
+			}
+		}
+		fmt.Println("\n문항마다 (맞은 판/전체)")
+		for _, name := range order {
+			t := per[name]
+			mark := "  "
+			switch {
+			case t.ok == t.total:
+				mark = "✓ "
+			case t.ok == 0:
+				mark = "✗ "
+			default:
+				mark = "~ " // 흔들린다
+			}
+			fmt.Printf("  %s%-32s %d/%d\n", mark, name, t.ok, t.total)
+		}
+	}
 	if ok < n {
 		// **틀렸으면 답을 보여 준다.** 무엇이라 답했는지 모르면 못 고친다.
 		fmt.Println("\n틀린 것")
