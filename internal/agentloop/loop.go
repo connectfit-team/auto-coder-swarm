@@ -128,6 +128,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	called := map[string]bool{}
 	seenOut := map[string]string{} // 결과 -> 그 결과를 낸 도구
 
+	freeTurns := 0
 	for turn := 1; turn <= maxTurns; turn++ {
 		history = l.compact(ctx, history)
 
@@ -201,6 +202,22 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 			results = append(results, toolResult(c.Name, clipped))
 		}
 		history = append(history, userTurn(strings.Join(results, "\n")))
+
+		// **말이 안 되는 호출은 시도가 아니다.**
+		//
+		// 인자 이름이 틀리면 서버는 아무 일도 안 한다. 그런데 그 턴이 예산에서
+		// 빠지니, 몇 번 틀리면 일할 턴이 남지 않는다 — 실측에서 한 판이
+		// `binary_overview` 에 path 를 넘기고 `inspect_binary_layout` 을 두 번
+		// 틀려 **성공한 호출 없이** 끝났다.
+		//
+		// 그 턴만 예산에서 빼 준다. 되돌려주는 횟수는 묶는다 — 안 묶으면
+		// 못 고치는 판이 끝나지 않는다.
+		if freeTurns < maxFreeTurns && allInvalidArgs(results) {
+			freeTurns++
+			turn--
+			l.log("FREE_TURN", fmt.Sprintf("인자가 틀린 호출뿐이다 — 이 턴은 안 센다 (%d/%d)",
+				freeTurns, maxFreeTurns))
+		}
 	}
 	return "", fmt.Errorf("%d턴을 다 썼는데 끝나지 않았다", maxTurns)
 }
@@ -433,4 +450,35 @@ func fit(history []*genai.Content, budget, keep int) []*genai.Content {
 		}
 	}
 	return out
+}
+
+// 인자가 틀린 턴을 몇 번까지 예산에서 빼 줄지.
+const maxFreeTurns = 2
+
+// allInvalidArgs 는 이번 턴 결과가 **전부** 인자 잘못인지 본다.
+//
+// 하나라도 일이 됐으면 그 턴은 센다 — 공짜 턴으로 제자리를 돌면 안 된다.
+func allInvalidArgs(results []string) bool {
+	if len(results) == 0 {
+		return false
+	}
+	for _, r := range results {
+		if !strings.Contains(r, "ERROR:") || !isArgComplaint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isArgComplaint(s string) bool {
+	for _, mark := range []string{
+		"Input validation error", "Unrecognized key",
+		"expected string, received undefined", "Invalid arguments",
+		"라는 도구는 없다", "무엇을 고칠지 적지 않았다",
+	} {
+		if strings.Contains(s, mark) {
+			return true
+		}
+	}
+	return false
 }
