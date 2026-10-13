@@ -199,7 +199,10 @@ var findTools = mcpclient.Tool{
 var getWorkflow = mcpclient.Tool{
 	Name:        "get_workflow",
 	Description: "일 전체의 차례(workflow)를 받아 온다. 어떻게 할지 막히면 먼저 이것을 불러라.",
-	Schema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+	Schema: json.RawMessage(`{"type":"object","properties":{` +
+		`"name":{"type":"string"},` +
+		`"arguments":{"type":"object","description":"그 절차가 요구하는 인자"}},` +
+		`"required":["name"]}`),
 }
 
 // workflowBlock 은 쓸 수 있는 절차를 짧게 알린다. 이름과 설명만이라 싸다.
@@ -211,6 +214,27 @@ func workflowBlock(ps []mcpclient.Prompt) string {
 	b.WriteString("[쓸 수 있는 작업 절차 — get_workflow 로 받아 온다]\n")
 	for _, p := range ps {
 		fmt.Fprintf(&b, "- %s: %s\n", p.Name, firstLineOf(p.Description))
+		// **인자를 알려 주지 않으면 못 부른다.** 도구에서 겪은 것과 같다(#214).
+		// 실측에서 절차 6개가 전부 「expected string, received undefined」 로
+		// 떨어졌다.
+		var req, opt []string
+		for _, a := range p.Arguments {
+			if a.Required {
+				req = append(req, a.Name)
+			} else {
+				opt = append(opt, a.Name)
+			}
+		}
+		if len(req) > 0 || len(opt) > 0 {
+			line := "  인자:"
+			if len(req) > 0 {
+				line += " 필수 " + strings.Join(req, ", ")
+			}
+			if len(opt) > 0 {
+				line += " / 그 밖에 " + strings.Join(opt, ", ")
+			}
+			b.WriteString(line + "\n")
+		}
 	}
 	return b.String()
 }
@@ -231,7 +255,8 @@ func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (
 			return "", fmt.Errorf("작업 절차를 받아 올 길이 없다")
 		}
 		n, _ := args["name"].(string)
-		return l.GetPrompt(ctx, n, nil)
+		inner, _ := args["arguments"].(map[string]any)
+		return l.GetPrompt(ctx, n, inner)
 	}
 	if name == findTools.Name {
 		q, _ := args["query"].(string)

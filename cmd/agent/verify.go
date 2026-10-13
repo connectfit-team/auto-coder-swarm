@@ -76,7 +76,14 @@ func verify(ctx context.Context, clients []*mcpclient.Client) int {
 			failed = append(failed, p.Name+"(임자 없음)")
 			continue
 		}
-		body, err := c.GetPrompt(ctx, p.Name, nil)
+		// 절차에는 필수 인자가 있다 — 비우면 받아 올 수 있는지 못 본다.
+		args := map[string]any{}
+		for _, a := range p.Arguments {
+			if a.Required {
+				args[a.Name] = "verify"
+			}
+		}
+		body, err := c.GetPrompt(ctx, p.Name, args)
 		if err != nil || strings.TrimSpace(body) == "" {
 			failed = append(failed, p.Name)
 		}
