@@ -29,10 +29,11 @@ func main() {
 	modelName := flag.String("model", envOr("LLM_MODEL_NAME", "gemma4:31b"), "모델 이름")
 	listOnly := flag.Bool("list-tools", false, "붙은 도구만 보여 주고 끝낸다")
 	verifyOnly := flag.Bool("verify", false, "서버가 내놓는 것을 다 받고 있는지 전수로 본다 (LLM 안 씀)")
+	evalPath := flag.String("eval", "", "답을 아는 물음들을 풀게 하고 점수를 낸다")
 	deferAll := flag.Bool("defer-tools", true, "도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다 (codex 와 같다)")
 	flag.Parse()
 
-	if *goal == "" && !*listOnly && !*verifyOnly {
+	if *goal == "" && !*listOnly && !*verifyOnly && *evalPath == "" {
 		log.Fatal("-goal 이 없다")
 	}
 
@@ -74,6 +75,37 @@ func main() {
 		}
 		fmt.Printf("\n모두 %d개\n", len(tools))
 		return
+	}
+
+	newLoop := func(goal string, turns int) *agentloop.Loop {
+		return &agentloop.Loop{
+			LLM:          llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
+			Tools:        tools,
+			MaxTurns:     turns,
+			DeferAll:     *deferAll,
+			Instructions: mcpclient.AllInstructions(clients),
+			Prompts:      prompts,
+			GetPrompt: func(ctx context.Context, name string, args map[string]any) (string, error) {
+				c, ok := promptOwner[name]
+				if !ok {
+					return "", fmt.Errorf("%s 라는 절차는 없다", name)
+				}
+				return c.GetPrompt(ctx, name, args)
+			},
+			Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
+				c, ok := owner[name]
+				if !ok {
+					near := mcpclient.FindTools(tools, name, 5)
+					return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s", name, near)
+				}
+				return c.Call(ctx, name, args)
+			},
+			Log: func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
+		}
+	}
+
+	if *evalPath != "" {
+		os.Exit(runEval(ctx, *evalPath, newLoop, *system))
 	}
 
 	loop := &agentloop.Loop{

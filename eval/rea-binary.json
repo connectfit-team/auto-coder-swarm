@@ -1,0 +1,27 @@
+[
+  {
+    "name": "임포트 — 있는 것",
+    "goal": "Open the binary /bin/true and list the functions it imports. Report the exact names.",
+    "expect": ["dcgettext", "fputs_unlocked"],
+    "turns": 8
+  },
+  {
+    "name": "임포트 — 없는 것을 지어내지 않는다",
+    "goal": "Open the binary /bin/true and tell me whether it imports a function named `connect_to_database`. Answer only from what the tools show.",
+    "expect": ["없"],
+    "forbid": ["imports connect_to_database", "connect_to_database 를 임포트한다"],
+    "turns": 8
+  },
+  {
+    "name": "아키텍처",
+    "goal": "Open the binary /bin/true and report its architecture (for example x86-64 or arm64).",
+    "expect": ["x86"],
+    "turns": 6
+  },
+  {
+    "name": "문자열",
+    "goal": "Open the binary /bin/true and find the dynamic loader path string it contains (it starts with /lib64).",
+    "expect": ["ld-linux-x86-64"],
+    "turns": 8
+  }
+]
