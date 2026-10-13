@@ -122,3 +122,101 @@ func names(ts []Tool) []string {
 	}
 	return out
 }
+
+// 고를 말이 없으면 아무것도 주지 않는다 — 앞에서부터 채우면 「골랐다」 는
+// 얼굴로 엉뚱한 것을 준다. 실측에서 한국어 목표가 그랬다.
+func TestPickGivesNothingWhenNothingMatches(t *testing.T) {
+	ts := []Tool{
+		{Name: "current_document", Description: "the selected document", Schema: json.RawMessage(`{}`)},
+		{Name: "capabilities", Description: "List provider capabilities", Schema: json.RawMessage(`{}`)},
+	}
+	if got := Pick(ts, []string{"분석 엔진이 무엇인지 알려 줘"}, 4000); len(got) != 0 {
+		t.Errorf("못 골랐는데 골라 줬다: %+v", names(got))
+	}
+}
+
+// 못 골랐을 때 모델이 스스로 찾을 길이 있어야 한다.
+func TestFindTools(t *testing.T) {
+	ts := []Tool{
+		{Name: "current_document", Description: "the selected document", Schema: json.RawMessage(`{}`)},
+		{Name: "capabilities", Description: "List provider capabilities and side effects", Schema: json.RawMessage(`{}`)},
+	}
+	got := FindTools(ts, "provider capabilities", 20)
+	if !strings.Contains(got, "capabilities") {
+		t.Errorf("찾지 못했다: %q", got)
+	}
+	if strings.Contains(got, `"type":"object"`) {
+		t.Error("스키마까지 돌려주면 창을 먹는다")
+	}
+	if got := FindTools(ts, "없는낱말", 20); !strings.Contains(got, "영어 낱말로") {
+		t.Errorf("찾을 말이 없을 때 일러 주지 않는다: %q", got)
+	}
+}
+
+// 혼자서 창을 먹는 도구는 고르기 전에 숨긴다.
+// REA 의 compare_web_captures 는 75,501자 — 우리 창의 두 배다.
+func TestVisibleHidesOversizedTools(t *testing.T) {
+	huge := Tool{Name: "compare_web_captures", Description: "compare",
+		Schema: json.RawMessage(`{"` + strings.Repeat("x", MaxToolChars+100) + `":1}`)}
+	small := Tool{Name: "capabilities", Description: "List provider capabilities",
+		Schema: json.RawMessage(`{"type":"object"}`)}
+
+	ok, hidden := Visible([]Tool{huge, small})
+	if len(ok) != 1 || ok[0].Name != "capabilities" {
+		t.Errorf("남은 것: %+v", names(ok))
+	}
+	if len(hidden) != 1 || hidden[0] != "compare_web_captures" {
+		t.Errorf("숨긴 것: %v", hidden)
+	}
+}
+
+// 찾은 도구를 **부를 수 있어야** 한다 — 이름만 주면 인자를 몰라 못 부른다.
+// codex 도 검색 결과에 입력 속성 이름을 싣는다(mcp.rs build_mcp_search_text).
+func TestFindToolsCarriesInputNames(t *testing.T) {
+	ts := []Tool{{
+		Name:        "decompile",
+		Description: "Read one part of an app as code",
+		Schema: json.RawMessage(`{"type":"object",
+			"properties":{"procedure":{"type":"string"},"address":{"type":"string"}},
+			"required":["procedure"]}`),
+	}}
+	got := FindTools(ts, "decompile", 20)
+	for _, want := range []string{"입력: address, procedure", "필수: procedure"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	// 전체 스키마까지 실으면 창을 먹는다 — codex 도 떼어 낸다.
+	if strings.Contains(got, `"type":"object"`) {
+		t.Errorf("스키마를 통째로 실었다:\n%s", got)
+	}
+}
+
+// 미루기로 돌리면 모델은 카탈로그의 낱말을 모른다 — 갈래만 짧게 준다.
+func TestOverviewIsSmallAndUseful(t *testing.T) {
+	var ts []Tool
+	for _, n := range []string{
+		"open_binary", "open_jeb_project",
+		"list_names", "list_procedures", "list_strings",
+		"compare_web_captures",
+	} {
+		ts = append(ts, Tool{Name: n, Schema: json.RawMessage(`{}`)})
+	}
+	got := Overview(ts, 14)
+	for _, want := range []string{"list_*(3)", "open_*(2)", "compare_*(1)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다: %s", want, got)
+		}
+	}
+	// 많은 쪽이 앞에 와야 쓸모 있다.
+	if strings.Index(got, "list_*") > strings.Index(got, "open_*") {
+		t.Errorf("많은 갈래가 뒤에 있다: %s", got)
+	}
+	// 짧아야 한다 — 길면 창을 먹어 쓰는 뜻이 없다.
+	if len(got) > 600 {
+		t.Errorf("너무 길다: %d자", len(got))
+	}
+	if Overview(nil, 14) != "" {
+		t.Error("도구가 없으면 빈 글이어야 한다")
+	}
+}

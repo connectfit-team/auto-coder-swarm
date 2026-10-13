@@ -1,9 +1,34 @@
 package mcpclient
 
 import (
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 )
+
+// 도구 하나가 쓸 수 있는 글자. 넘으면 숨긴다.
+//
+// codex 가 같은 자리에 쓰는 값은 도구 하나 8,000바이트·전부 64,000바이트인데,
+// 그건 200k 창을 전제한 것이다. 우리 창은 16,384 라 그 비례로 줄인다.
+// REA 의 compare_web_captures 는 혼자 75,501자 — 창의 두 배다. 이런 것은
+// 고르기 전에 **숨긴다**(codex 의 ToolExposure::Hidden).
+const (
+	MaxToolChars  = 2500
+	MaxTotalChars = 5000
+)
+
+// Visible 은 혼자서 창을 먹는 도구를 걸러 낸다.
+func Visible(tools []Tool) (ok []Tool, hidden []string) {
+	for _, t := range tools {
+		if cost(t) > MaxToolChars {
+			hidden = append(hidden, t.Name)
+			continue
+		}
+		ok = append(ok, t)
+	}
+	return ok, hidden
+}
 
 // Pick 은 창에 들어갈 만큼만 고른다.
 //
@@ -20,6 +45,15 @@ func Pick(tools []Tool, want []string, maxChars int) []Tool {
 		return nil
 	}
 	terms := terms(want)
+	// **고를 말이 없으면 아무것도 주지 않는다.**
+	//
+	// 앞에서부터 채우면 「골랐다」 는 얼굴로 엉뚱한 것을 준다. 실측에서
+	// 한국어 목표로 돌렸더니 영어 카탈로그와 맞는 낱말이 하나도 없어, 170개
+	// 가운데 그냥 앞의 6개가 나갔다. 못 고른 것은 **못 고른 것**이다 —
+	// 그때는 FindTools 로 모델이 직접 찾게 한다.
+	if len(terms) == 0 {
+		return nil
+	}
 
 	type scored struct {
 		t Tool
@@ -42,8 +76,7 @@ func Pick(tools []Tool, want []string, maxChars int) []Tool {
 	used := 0
 	for _, s := range all {
 		// 안 맞는 것은 넣지 않는다 — 엉뚱한 도구를 주는 것은 안 주느니만 못하다.
-		// 다만 고를 말이 없으면(terms 가 비면) 차례대로 채운다.
-		if len(terms) > 0 && s.n == 0 {
+		if s.n == 0 {
 			break
 		}
 		c := cost(s.t)
@@ -89,4 +122,130 @@ func score(t Tool, terms []string) int {
 		}
 	}
 	return n
+}
+
+// FindTools 는 이름·설명만 짧게 돌려준다 — 스키마는 뺀다.
+//
+// 카탈로그가 170개(스키마로 치면 창의 57배)라 다 알릴 수 없다. 모델이 먼저
+// 찾아보고 쓸 것을 고르게 한다 — 상용 에이전트가 큰 카탈로그를 다루는 방식이고,
+// REA 자신도 「Route the target first」 표로 같은 일을 한다.
+func FindTools(tools []Tool, query string, max int) string {
+	if max <= 0 {
+		max = 20
+	}
+	t := terms([]string{query})
+	if len(t) == 0 {
+		return "찾을 말이 없다. 영어 낱말로 다시 물어라 (예: decompile, capabilities, android)."
+	}
+	type hit struct {
+		t Tool
+		n int
+	}
+	var hits []hit
+	for _, x := range tools {
+		if n := score(x, t); n > 0 {
+			hits = append(hits, hit{x, n})
+		}
+	}
+	sort.SliceStable(hits, func(a, b int) bool { return hits[a].n > hits[b].n })
+	if len(hits) == 0 {
+		return "맞는 도구가 없다."
+	}
+	var b strings.Builder
+	for i, h := range hits {
+		if i >= max {
+			fmt.Fprintf(&b, "…그 밖에 %d개 더 있다. 더 좁혀서 물어라.\n", len(hits)-max)
+			break
+		}
+		fmt.Fprintf(&b, "- %s: %s\n", h.t.Name, firstLine(h.t.Description))
+		if in := inputLine(h.t.Schema); in != "" {
+			b.WriteString("  " + in + "\n")
+		}
+	}
+	// **찾은 다음에 무엇을 할지 함께 적는다.** 실측에서 모델이 find_tools 만
+	// 네 번 돌며 제자리를 돌았다 — 목록만 주면 다음 걸음을 모른다.
+	b.WriteString("\n이 가운데 하나를 **바로 불러라.** find_tools 를 다시 부르지 마라.")
+	return b.String()
+}
+
+// inputLine 은 입력 속성 **이름만** 적는다.
+//
+// codex 가 같은 일을 한다(`mcp.rs:520 build_mcp_search_text`) — 검색 결과에서
+// 전체 스키마는 떼어 내고(`input_schema = None`) 속성 이름을 정렬해 싣는다.
+//
+// 이름만 알려 주면 모델은 인자를 몰라 못 부른다. 실측에서 찾아만 놓고 인자가
+// 없는 도구를 부르거나, 목록을 그대로 답으로 냈다.
+func inputLine(schema json.RawMessage) string {
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if len(schema) == 0 || json.Unmarshal(schema, &s) != nil || len(s.Properties) == 0 {
+		return ""
+	}
+	var names []string
+	for k := range s.Properties {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := "입력: " + strings.Join(names, ", ")
+	if len(s.Required) > 0 {
+		sort.Strings(s.Required)
+		out += " (필수: " + strings.Join(s.Required, ", ") + ")"
+	}
+	return out
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 110 {
+		s = s[:110] + "…"
+	}
+	return s
+}
+
+// Overview 는 도구 이름의 갈래만 짧게 보여 준다.
+//
+// 미루기(Deferred)로 돌리면 모델은 카탈로그의 **낱말을 모른다.** 실측에서
+// 6턴 가운데 3턴을 find_tools 로 더듬는 데 썼고, 첫 질의는 96자만 건졌다.
+//
+// 스키마는 931,000 토큰이라 못 보여 주지만, **앞머리만 세어 보여 주는 것은
+// 몇백 자면 된다.** REA 자신도 「Route the target first」 표를 지침에 담아
+// 같은 일을 한다.
+func Overview(tools []Tool, maxGroups int) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	if maxGroups <= 0 {
+		maxGroups = 14
+	}
+	n := map[string]int{}
+	for _, t := range tools {
+		head := t.Name
+		if i := strings.IndexByte(head, '_'); i > 0 {
+			head = head[:i]
+		}
+		n[head]++
+	}
+	var heads []string
+	for h := range n {
+		heads = append(heads, h)
+	}
+	sort.Slice(heads, func(a, b int) bool {
+		if n[heads[a]] != n[heads[b]] {
+			return n[heads[a]] > n[heads[b]]
+		}
+		return heads[a] < heads[b]
+	})
+
+	var parts []string
+	for i, h := range heads {
+		if i >= maxGroups {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s_*(%d)", h, n[h]))
+	}
+	return "[도구 갈래 — 이 낱말로 find_tools 에 물어라]\n" + strings.Join(parts, " · ")
 }
