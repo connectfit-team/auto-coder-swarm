@@ -152,3 +152,20 @@ func TestFindTools(t *testing.T) {
 		t.Errorf("찾을 말이 없을 때 일러 주지 않는다: %q", got)
 	}
 }
+
+// 혼자서 창을 먹는 도구는 고르기 전에 숨긴다.
+// REA 의 compare_web_captures 는 75,501자 — 우리 창의 두 배다.
+func TestVisibleHidesOversizedTools(t *testing.T) {
+	huge := Tool{Name: "compare_web_captures", Description: "compare",
+		Schema: json.RawMessage(`{"` + strings.Repeat("x", MaxToolChars+100) + `":1}`)}
+	small := Tool{Name: "capabilities", Description: "List provider capabilities",
+		Schema: json.RawMessage(`{"type":"object"}`)}
+
+	ok, hidden := Visible([]Tool{huge, small})
+	if len(ok) != 1 || ok[0].Name != "capabilities" {
+		t.Errorf("남은 것: %+v", names(ok))
+	}
+	if len(hidden) != 1 || hidden[0] != "compare_web_captures" {
+		t.Errorf("숨긴 것: %v", hidden)
+	}
+}

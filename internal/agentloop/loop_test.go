@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"iter"
 	"strings"
 	"testing"
@@ -180,5 +181,46 @@ func TestLoopDoesNotRepeatIdenticalResults(t *testing.T) {
 	}
 	if !strings.Contains(third, "이미 받은 것과 같은 결과다") {
 		t.Error("같은 결과라고 일러 주지 않는다")
+	}
+}
+
+// codex 처럼 — 검색 도구가 있으면 스키마를 미리 알리지 않는다.
+// 골라 주는 것은 맞을 때만 이득이고, 틀리면 턴을 버린다.
+func TestDeferAllAdvertisesOnlyFindTools(t *testing.T) {
+	llm := &fakeLLM{says: []string{"끝."}}
+	l := &Loop{LLM: llm, Tools: tools(), DeferAll: true,
+		Call: func(context.Context, string, map[string]any) (string, error) { return "", nil }}
+	if _, err := l.Run(context.Background(), "s", "read the code file"); err != nil {
+		t.Fatal(err)
+	}
+	first := llm.saw[0][0].Parts[0].Text
+	if !strings.Contains(first, "find_tools") {
+		t.Error("find_tools 를 안 알렸다")
+	}
+	if strings.Contains(first, "read_code_file") {
+		t.Error("미루기로 했는데 도구 스키마를 알렸다")
+	}
+}
+
+// 예산이 다 되어 가면 모델에게 알린다 — 모르면 끝까지 찾기만 한다.
+func TestLoopWarnsWhenBudgetRunsLow(t *testing.T) {
+	call := `<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`
+	llm := &fakeLLM{says: []string{call, call, call}}
+	n := 0
+	l := &Loop{LLM: llm, Tools: tools(), MaxTurns: 3,
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return fmt.Sprint("결과", n), nil
+		}}
+	l.Run(context.Background(), "s", "g")
+
+	last := ""
+	for _, c := range llm.saw[len(llm.saw)-1] {
+		for _, p := range c.Parts {
+			last += p.Text
+		}
+	}
+	if !strings.Contains(last, "남은 턴") {
+		t.Errorf("남은 예산을 안 알렸다:\n%s", last)
 	}
 }
