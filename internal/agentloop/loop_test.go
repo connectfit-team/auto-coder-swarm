@@ -151,3 +151,34 @@ func TestLoopStopsAtBudget(t *testing.T) {
 		t.Error("예산을 다 쓰고도 오류를 안 냈다")
 	}
 }
+
+// 같은 결과를 두 번 싣지 않는다 — 창이 16k 라 되풀이는 비싸고, 같은 것을 또
+// 받으면 모델은 또 같은 것을 부른다.
+func TestLoopDoesNotRepeatIdenticalResults(t *testing.T) {
+	llm := &fakeLLM{says: []string{
+		`<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`,
+		`<tools>{"name":"read_code_file","arguments":{"path":"b.go"}}</tools>`,
+		"끝.",
+	}}
+	l := &Loop{
+		LLM: llm, Tools: tools(),
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			return "똑같은 내용", nil
+		},
+	}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	third := ""
+	for _, c := range llm.saw[2] {
+		for _, p := range c.Parts {
+			third += p.Text
+		}
+	}
+	if strings.Count(third, "똑같은 내용") != 1 {
+		t.Errorf("같은 결과가 두 번 실렸다:\n%s", third)
+	}
+	if !strings.Contains(third, "이미 받은 것과 같은 결과다") {
+		t.Error("같은 결과라고 일러 주지 않는다")
+	}
+}
