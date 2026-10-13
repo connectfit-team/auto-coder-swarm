@@ -73,11 +73,13 @@ func RepoTools(
 			return check(), nil
 		case "read_file":
 			p, _ := args["path"].(string)
-			return readRepoFile(repoPath, p)
+			out, err := readRepoFile(repoPath, p)
+			return out, withNearbyFiles(repoPath, p, err)
 		case "edit_file":
 			p, _ := args["path"].(string)
 			how, _ := args["instructions"].(string)
-			return edit(ctx, p, how)
+			out, err := edit(ctx, p, how)
+			return out, withNearbyFiles(repoPath, p, err)
 		case "search_code":
 			q, _ := args["query"].(string)
 			g, _ := args["glob"].(string)
@@ -187,4 +189,27 @@ func insideRepo(repoPath, rel string) (string, error) {
 		return "", fmt.Errorf("저장소 바깥은 못 읽는다: %s", rel)
 	}
 	return full, nil
+}
+
+// withNearbyFiles 는 **없는 경로를 지어냈을 때 있는 것을 일러 준다.**
+//
+// 실측에서 모델이 `path/to/your/file.proto` 를 불렀다. 「없다」 고만 하면
+// 찾느라 턴을 버린다 — 도구 이름에서 겪은 것과 같다(#215).
+func withNearbyFiles(repoPath, asked string, err error) error {
+	if err == nil || repoPath == "" {
+		return err
+	}
+	if _, statErr := os.Stat(filepath.Join(repoPath, asked)); statErr == nil {
+		return err // 파일은 있다 — 다른 까닭이다
+	}
+	var have []string
+	forEachProto(repoPath, func(rel, _ string) {
+		if len(have) < 12 {
+			have = append(have, rel)
+		}
+	})
+	if len(have) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w\n이 저장소에 있는 계약 파일: %s", err, strings.Join(have, " · "))
 }

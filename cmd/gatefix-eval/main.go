@@ -162,6 +162,10 @@ func run(ctx context.Context, m model.LLM, name string,
 
 	loop := &agentloop.Loop{
 		LLM: m, Tools: tools, Call: dispatch, MaxTurns: turns,
+		Verify: func() (bool, string) {
+			out := check()
+			return strings.Contains(out, "지난다"), out
+		},
 		Log: func(kind, msg string) {
 			if kind == "TOOL" || kind == "TOOL_ERR" {
 				log.Printf("   %s %s", kind, msg)

@@ -336,3 +336,48 @@ func TestSmallToolsetIsAdvertisedWhole(t *testing.T) {
 		}
 	}
 }
+
+// 모델이 「다 했다」 고 해도 **기계가 한 번 본다.** 안 됐으면 그 사실을 돌려준다.
+// 실측: 중복 선언을 한 번 고치고 check 도 없이 2초 만에 끝냈다.
+func TestVerifyPushesBackOnceWhenNotDone(t *testing.T) {
+	llm := &fakeLLM{says: []string{
+		"다 고쳤다.",
+		`<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`,
+		"이제 진짜 다 했다.",
+	}}
+	n := 0
+	l := &Loop{
+		LLM: llm, Tools: tools(),
+		Call: func(context.Context, string, map[string]any) (string, error) { return "x", nil },
+		Verify: func() (bool, string) {
+			n++
+			return n > 1, "아직 ReceivedRequest 가 두 번 선언돼 있다"
+		},
+	}
+	out, err := l.Run(context.Background(), "s", "g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("기계 검사를 %d번 했다 — 한 번이어야 한다(되풀이해 밀지 않는다)", n)
+	}
+	if out != "이제 진짜 다 했다." {
+		t.Errorf("답: %q", out)
+	}
+	second := flatten(llm.saw[1])
+	if !strings.Contains(second, "아직 ReceivedRequest 가 두 번") {
+		t.Errorf("안 됐다는 사실을 안 돌려줬다:\n%s", second)
+	}
+}
+
+// 됐으면 그대로 끝낸다 — 군더더기 턴을 쓰지 않는다.
+func TestVerifyDoesNothingWhenDone(t *testing.T) {
+	llm := &fakeLLM{says: []string{"다 고쳤다."}}
+	l := &Loop{LLM: llm, Tools: tools(),
+		Call:   func(context.Context, string, map[string]any) (string, error) { return "", nil },
+		Verify: func() (bool, string) { return true, "" }}
+	out, _ := l.Run(context.Background(), "s", "g")
+	if out != "다 고쳤다." || len(llm.saw) != 1 {
+		t.Errorf("됐는데 더 돌렸다: %q, 턴 %d", out, len(llm.saw))
+	}
+}
