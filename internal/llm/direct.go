@@ -38,10 +38,8 @@ func (m *DirectModel) Name() string { return m.name }
 func (m *DirectModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
 		body, err := json.Marshal(map[string]any{
-			"model": m.name,
-			"messages": []map[string]string{
-				{"role": "user", "content": BuildPrompt(req)},
-			},
+			"model":       m.name,
+			"messages":    BuildMessages(req),
 			"temperature": judgeTemperature(),
 			"max_tokens":  directMaxTokens(),
 		})
