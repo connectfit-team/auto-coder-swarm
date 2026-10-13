@@ -215,7 +215,7 @@ func run(ctx context.Context, m model.LLM, name string,
 			return strings.Contains(out, "지난다"), out
 		},
 		Log: func(kind, msg string) {
-			if kind == "TOOL" || kind == "TOOL_ERR" || kind == "NOT_DONE" {
+			if strings.HasPrefix(kind, "TOOL") || kind == "NOT_DONE" {
 				log.Printf("   %s %s", kind, msg)
 			}
 		},

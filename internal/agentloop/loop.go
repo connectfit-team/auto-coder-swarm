@@ -177,7 +177,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		for _, c := range calls {
 			key := c.Name + "|" + argKey(c.Args)
 			if called[key] {
-				results = append(results, toolResult(c.Name, "ERROR: 같은 호출을 되풀이했다 — 건너뛴다"))
+				// **되풀이도 보이게 남긴다.** 안 남기면 턴이 조용히 사라져,
+				// 「8턴에 도구 3번」 같은 것을 못 읽는다.
+				l.log("TOOL_REPEAT", c.Name+": 같은 호출 — 건너뛴다")
+				results = append(results, toolResult(c.Name,
+					"ERROR: 조금 전과 **똑같은 호출**이다. 결과도 똑같다.\n"+
+						"다시 부르지 말고 **다른 것을 해라** — 지금 상태는 check 로 보고, "+
+						"파일 내용이 궁금하면 read_file 로 봐라."))
 				continue
 			}
 			called[key] = true
