@@ -419,7 +419,8 @@ func TestStateQueryIsNotBlockedAfterThingsChange(t *testing.T) {
 	}
 }
 
-// 아무것도 안 바뀌었으면 여전히 막는다 — 제자리를 돌면 안 된다.
+// 상태 조회는 **돌려 봐야 상태를 안다.** 같은 답이 또 나오면 창에 두 번 싣지
+// 않고 「같은 결과다」 라고만 한다 — 그래야 제자리를 돌지 않는다.
 func TestRepeatStillBlockedWhenNothingChanged(t *testing.T) {
 	check := `<tools>{"name":"check","arguments":{}}</tools>`
 	llm := &fakeLLM{says: []string{check, check, "끝."}}
@@ -433,8 +434,15 @@ func TestRepeatStillBlockedWhenNothingChanged(t *testing.T) {
 		},
 	}
 	l.Run(context.Background(), "s", "g")
-	if n != 1 {
-		t.Errorf("같은 결과인데 %d번 불렀다", n)
+	if n != 2 {
+		t.Errorf("상태 조회를 %d번 했다 — 돌려 봐야 안다", n)
+	}
+	second := flatten(llm.saw[len(llm.saw)-1])
+	if strings.Count(second, "늘 같은 결과") > 1 {
+		t.Errorf("같은 답을 두 번 실었다:\n%s", second)
+	}
+	if !strings.Contains(second, "같은 결과다") {
+		t.Errorf("같은 답이라고 안 일러 준다:\n%s", second)
 	}
 }
 
