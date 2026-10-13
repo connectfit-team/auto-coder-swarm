@@ -105,10 +105,12 @@ func TestGuideCarriesInputsOfToolsItNames(t *testing.T) {
 	}
 
 	got := guideBlock(ss, ts)
-	for _, want := range []string{"open_binary 의 입력", "필수: path", "binary_overview 의 입력"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("%q 가 없다:\n%s", want, got)
-		}
+	// 필수 인자만 싣는다 — 나머지는 창을 먹는다.
+	if !strings.Contains(got, "필수: path") {
+		t.Errorf("필수 인자를 안 실었다:\n%s", got)
+	}
+	if strings.Contains(got, "format") {
+		t.Errorf("필수가 아닌 인자까지 실었다:\n%s", got)
 	}
 	if strings.Contains(got, "unrelated_tool") {
 		t.Error("지침에 안 나온 도구까지 실었다")

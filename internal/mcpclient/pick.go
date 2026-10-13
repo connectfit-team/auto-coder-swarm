@@ -277,6 +277,16 @@ func InputHint(tools []Tool, name string) string {
 // 절차(prompt)는 「open_binary 로 열고 search_procedures 로 찾아라」 처럼
 // **이름만** 일러 준다. 스키마를 못 본 모델은 인자를 지어낸다.
 func InputsMentionedIn(tools []Tool, text string) string {
+	return InputsMentionedWithin(tools, text, 12, false)
+}
+
+// InputsMentionedWithin 은 몇 개까지, 필수 인자만 실을지 정한다.
+//
+// 창이 16,384 라 **거드는 글이 창을 먹으면 손해**다. 지침의 라우팅 표는 도구를
+// 열다섯쯤 이름 대는데, 그 입력을 다 실었더니 22/24 에서 18/24 로 떨어졌다 —
+// 임포트 갈래는 뚫렸지만 문자열·지어내지 않기가 무너졌고 평균 시간이 24초에서
+// 16초로 줄었다(모델이 일을 덜 했다).
+func InputsMentionedWithin(tools []Tool, text string, max int, requiredOnly bool) string {
 	if text == "" {
 		return ""
 	}
@@ -287,10 +297,14 @@ func InputsMentionedIn(tools []Tool, text string) string {
 			continue
 		}
 		seen[t.Name] = true
-		if in := inputLine(t.Schema); in != "" {
+		in := inputLine(t.Schema)
+		if requiredOnly {
+			in = requiredPart(in)
+		}
+		if in != "" {
 			lines = append(lines, "- "+t.Name+" 의 "+in)
 		}
-		if len(lines) >= 12 {
+		if len(lines) >= max {
 			break
 		}
 	}
@@ -299,4 +313,13 @@ func InputsMentionedIn(tools []Tool, text string) string {
 	}
 	sort.Strings(lines)
 	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
+}
+
+// requiredPart 는 필수 인자만 남긴다 — 나머지는 창을 먹는다.
+func requiredPart(in string) string {
+	i := strings.Index(in, "(필수: ")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSuffix(in[i:], ")") + ")"
 }

@@ -75,7 +75,9 @@ func guideBlock(ss []Skill, tools []mcpclient.Tool) string {
 	var b strings.Builder
 	for _, s := range ss {
 		fmt.Fprintf(&b, "\n\n[도구 쓰는 차례 — %s]\n%s\n", s.Name, s.Body)
-		b.WriteString(mcpclient.InputsMentionedIn(tools, s.Body))
+		// **싸게 싣는다.** 라우팅 표가 도구를 열다섯쯤 이름 대므로 다 실으면
+		// 창을 먹는다 — 그렇게 했다가 22/24 에서 18/24 로 떨어졌다.
+		b.WriteString(mcpclient.InputsMentionedWithin(tools, s.Body, 6, true))
 		if len(s.Refs) > 0 {
 			var names []string
 			for n := range s.Refs {
