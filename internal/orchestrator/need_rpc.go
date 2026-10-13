@@ -56,6 +56,11 @@ func stateChangeNeedsAnRPC(repoPath, diff string) []guard.Violation {
 		"넘긴 쪽지는 「상태를 담을 필드와 **그것을 바꾸는 길(RPC)**을 함께 더한다」 였다.",
 		"필드만 있으면 쓰는 쪽은 읽을 수는 있어도 바꿀 수가 없다 — 반쪽이다.",
 	}
+	// **어떤 rpc 를 어떤 모양으로 더할지까지 보여 준다.** 「더해라」 만으로는
+	// 이름을 지어내고, 이 계약의 이름 버릇과 어긋난다.
+	if sk := rpcSkeleton(repoPath, addedField); sk != "" {
+		ev = append(ev, sk)
+	}
 	if s := serviceHint(repoPath, protoFilesInDiff(diff)); s != "" {
 		ev = append(ev, s)
 	}
@@ -63,6 +68,41 @@ func stateChangeNeedsAnRPC(repoPath, diff string) []guard.Violation {
 		Why:      fmt.Sprintf("%s 를 넣었는데 그것을 바꾸는 rpc 가 없다", addedField),
 		Evidence: ev,
 	}}
+}
+
+// rpcSkeleton 은 더할 rpc 의 **모양**을 이 계약의 이름 버릇대로 지어 보여 준다.
+//
+// 필드 `pending_status` 면 `UpdatePendingStatus` 다. 접두형 계약이면
+// `RequestUpdatePendingStatus`·`ResponseUpdatePendingStatus` 로 짝을 짓는다.
+func rpcSkeleton(repoPath, field string) string {
+	camel := ""
+	for _, part := range strings.Split(field, "_") {
+		if part == "" {
+			continue
+		}
+		camel += strings.ToUpper(part[:1]) + part[1:]
+	}
+	if camel == "" {
+		return ""
+	}
+	op := "Update" + camel
+	req, res := "Request"+op, "Response"+op
+	if pre, suf := nameHabit(repoPath); suf > pre {
+		req, res = op+"Request", op+"Response"
+	}
+	return fmt.Sprintf("**이 모양으로 더한다** — 먼저 메시지 둘:\n"+
+		"```proto\nmessage %s {\n  // 무엇을 바꿀지 가리키는 필드와 새 값\n}\n\nmessage %s {\n}\n```\n"+
+		"그리고 service 안에:\n```proto\n  rpc %s(%s) returns (%s);\n```",
+		req, res, op, req, res)
+}
+
+// CheckStateNeedsRPC 는 채점기가 부를 수 있게 연 것이다.
+//
+// 이 관문은 CheckProtoChange **바깥**에 있다(handOver 가 t.req.AddsState 일 때만
+// 부른다). 채점기가 운영과 같은 것을 보려면 따로 불러야 한다 — 안 그러면
+// 모형이 관문에 안 걸리고, 그것을 모르고 「고쳤다」 고 센다.
+func CheckStateNeedsRPC(repoPath, diff string) []guard.Violation {
+	return stateChangeNeedsAnRPC(repoPath, diff)
 }
 
 // serviceHint 는 rpc 를 어디에 더하면 되는지 **보여 준다.**

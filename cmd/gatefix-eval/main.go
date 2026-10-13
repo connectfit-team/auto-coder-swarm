@@ -138,6 +138,22 @@ var cases = []struct {
 				"\nmessage ReceivedRequest {\n  string id = 1;\n  HoldStatus hold_status = 2;\n}\n",
 		},
 	},
+	{
+		// 담을 자리만 만들고 바꾸는 길(rpc)을 안 냈다 — 실측에서 마지막까지
+		// 남은 실패 갈래다.
+		name: "state-no-rpc",
+		head: map[string]string{
+			"proto/connect.proto": protoHead + prefixHabit() +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n}\n" +
+				"\nservice ConnectService {\n  rpc RequestOp1Call(RequestOp1) returns (ResponseOp1);\n}\n",
+		},
+		bad: map[string]string{
+			"proto/connect.proto": protoHead + prefixHabit() +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n  PendingStatus pending_status = 2;\n}\n" +
+				"\nenum PendingStatus {\n  PENDING_STATUS_UNSPECIFIED = 0;\n  PENDING_STATUS_HELD = 1;\n}\n" +
+				"\nservice ConnectService {\n  rpc RequestOp1Call(RequestOp1) returns (ResponseOp1);\n}\n",
+		},
+	},
 }
 
 const protoHead = "syntax = \"proto3\";\n\npackage ceo.connect.ceoweb;\n"
@@ -213,9 +229,13 @@ func run(ctx context.Context, m model.LLM, name string,
 		if strings.TrimSpace(diff) == "" {
 			return "아직 고친 것이 없다."
 		}
-		bad := orchestrator.CheckProtoChange(repo, diff)
 		var notes []string
-		if len(bad) > 0 {
+		if bad := orchestrator.CheckProtoChange(repo, diff); len(bad) > 0 {
+			notes = append(notes, orchestrator.AlignmentNote(bad))
+		}
+		// handOver 가 t.req.AddsState 일 때 따로 부르는 관문이다 — 운영과 같은
+		// 것을 보려면 여기서도 불러야 한다.
+		if bad := orchestrator.CheckStateNeedsRPC(repo, diff); len(bad) > 0 {
 			notes = append(notes, orchestrator.AlignmentNote(bad))
 		}
 		return orchestrator.GateReport(diff, notes)
