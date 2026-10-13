@@ -265,3 +265,31 @@ func TestLoopUsesServerInstructionsAndWorkflows(t *testing.T) {
 		t.Error("받아 온 절차가 대화에 안 들어갔다")
 	}
 }
+
+// 같은 오류가 또 나면 그 길은 막힌 것이다 — 세 번 두드리게 두지 않는다.
+// 실측에서 trace_native_values 가 같은 오류로 세 번 연속 불렸다(인자가 조금씩
+// 달라 호출 되풀이 막기에 안 걸렸다).
+func TestLoopStopsRepeatingTheSameFailure(t *testing.T) {
+	calls := []string{
+		`<tools>{"name":"read_code_file","arguments":{"path":"a.go"}}</tools>`,
+		`<tools>{"name":"read_code_file","arguments":{"path":"b.go"}}</tools>`,
+		"끝.",
+	}
+	llm := &fakeLLM{says: calls}
+	n := 0
+	l := &Loop{LLM: llm, Tools: tools(),
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			n++
+			return "", errors.New("씨앗 함수를 못 찾았다")
+		}}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	third := flatten(llm.saw[2])
+	if !strings.Contains(third, "이 길은 막혔다") {
+		t.Errorf("같은 오류를 막힌 길이라고 안 했다:\n%s", third)
+	}
+	if strings.Count(third, "씨앗 함수를 못 찾았다") > 1 {
+		t.Error("같은 오류를 두 번 실었다")
+	}
+}

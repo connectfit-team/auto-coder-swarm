@@ -150,8 +150,20 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 			if err != nil {
 				// **오류를 같은 대화로 되돌린다.** aider 의 reflected_message 와
 				// 같은 자리다. 오류를 버리면 다음 턴이 같은 실수를 되풀이한다.
+				//
+				// 다만 **같은 오류가 또 나면 그 길은 막힌 것**이다. 실측에서
+				// trace_native_values 가 같은 오류로 세 번 연속 불렸다 — 인자가
+				// 조금씩 달라 호출 되풀이 막기에 안 걸렸다. 결과로 가른다.
+				msg := "ERROR: " + err.Error()
+				if prev, dup := seenOut[msg]; dup {
+					l.log("TOOL_ERR", c.Name+": 같은 오류 되풀이 — 막힌 길이다")
+					results = append(results, toolResult(c.Name,
+						"ERROR: "+prev+" 에서 난 것과 **같은 오류**다. 이 길은 막혔다 — 다른 도구를 찾아라."))
+					continue
+				}
+				seenOut[msg] = c.Name
 				l.log("TOOL_ERR", c.Name+": "+err.Error())
-				results = append(results, toolResult(c.Name, "ERROR: "+err.Error()))
+				results = append(results, toolResult(c.Name, msg))
 				continue
 			}
 			// **같은 결과를 두 번 싣지 않는다.** 창이 16k 라 되풀이는 비싸고,
