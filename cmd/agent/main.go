@@ -31,6 +31,7 @@ func main() {
 	listOnly := flag.Bool("list-tools", false, "붙은 도구만 보여 주고 끝낸다")
 	verifyOnly := flag.Bool("verify", false, "서버가 내놓는 것을 다 받고 있는지 전수로 본다 (LLM 안 씀)")
 	evalPath := flag.String("eval", "", "답을 아는 물음들을 풀게 하고 점수를 낸다")
+	evalRepeat := flag.Int("repeat", 1, "같은 물음을 몇 판 풀게 할지 (흔들림을 보려면 3 이상)")
 	skillDir := flag.String("skills", defaultSkillDir(), "도구 쓰는 차례가 깔린 곳 (SKILL.md)")
 	deferAll := flag.Bool("defer-tools", true, "도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다 (codex 와 같다)")
 	flag.Parse()
@@ -106,7 +107,7 @@ func main() {
 	}
 
 	if *evalPath != "" {
-		os.Exit(runEval(ctx, *evalPath, newLoop, *system))
+		os.Exit(runEval(ctx, *evalPath, *evalRepeat, newLoop, *system))
 	}
 
 	loop := &agentloop.Loop{
