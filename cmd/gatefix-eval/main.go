@@ -43,35 +43,43 @@ var cases = []struct {
 		},
 	},
 	{
-		name: "mixed-type", // 같은 것을 두 타입으로
+		// 두 필드가 **같은 수정 안에** 있어야 관문이 본다 — 관문은 diff 를 읽는다.
+		name: "mixed-type",
 		head: map[string]string{
-			"proto/connect.proto": protoHead + "\nenum PendingStatus {\n  PENDING_STATUS_UNSPECIFIED = 0;\n}\n" +
-				"\nmessage ReceivedRequest {\n  PendingStatus pending_status = 1;\n}\n",
+			"proto/connect.proto": protoHead + enumBlock + "\nmessage ReceivedRequest {\n  string id = 1;\n}\n",
 		},
 		bad: map[string]string{
-			"proto/connect.proto": protoHead + "\nenum PendingStatus {\n  PENDING_STATUS_UNSPECIFIED = 0;\n}\n" +
-				"\nmessage ReceivedRequest {\n  PendingStatus pending_status = 1;\n  int32 hold_status = 2;\n}\n",
+			"proto/connect.proto": protoHead + enumBlock +
+				"\nmessage ReceivedRequest {\n  string id = 1;\n" +
+				"  PendingStatus pending_status = 2;\n  int32 hold_status = 3;\n}\n",
 		},
 	},
 	{
-		name: "suffix-name", // 이 계약은 접두형인데 접미형으로 만들었다
+		// 이름 버릇은 **스무 개 넘게** 봐야 센다(minNameSamples).
+		name: "suffix-name",
 		head: map[string]string{
-			"proto/connect.proto": protoHead +
-				"\nmessage RequestGetConnect {\n  string id = 1;\n}\n" +
-				"\nmessage ResponseGetConnect {\n  string id = 1;\n}\n" +
-				"\nmessage RequestListConnect {\n  string id = 1;\n}\n",
+			"proto/connect.proto": protoHead + prefixHabit(),
 		},
 		bad: map[string]string{
-			"proto/connect.proto": protoHead +
-				"\nmessage RequestGetConnect {\n  string id = 1;\n}\n" +
-				"\nmessage ResponseGetConnect {\n  string id = 1;\n}\n" +
-				"\nmessage RequestListConnect {\n  string id = 1;\n}\n" +
+			"proto/connect.proto": protoHead + prefixHabit() +
 				"\nmessage UpdatePendingRequest {\n  string id = 1;\n}\n",
 		},
 	},
 }
 
 const protoHead = "syntax = \"proto3\";\n\npackage ceo.connect.ceoweb;\n"
+
+const enumBlock = "\nenum PendingStatus {\n  PENDING_STATUS_UNSPECIFIED = 0;\n  PENDING_STATUS_HELD = 1;\n}\n"
+
+// prefixHabit 은 이 계약이 접두형을 쓴다는 것을 관문이 셀 만큼 만든다.
+func prefixHabit() string {
+	var b strings.Builder
+	for i := 1; i <= 13; i++ {
+		fmt.Fprintf(&b, "\nmessage RequestOp%d {\n  string id = 1;\n}\n", i)
+		fmt.Fprintf(&b, "\nmessage ResponseOp%d {\n  string id = 1;\n}\n", i)
+	}
+	return b.String()
+}
 
 func main() {
 	only := flag.String("case", "", "하나만 돌린다")
@@ -113,6 +121,20 @@ func run(ctx context.Context, m model.LLM, name string,
 	defer os.RemoveAll(repo)
 
 	coder := agent.NewCoderAgent(m)
+	// **운영과 같게 HEAD 를 기준으로 준다.** 안 주면 「이번에 만든 것」 을 지우는
+	// 것도 「원래 있던 이름이 사라졌다」 가 된다 — 모형이 운영 배선을 안 따라
+	// 하면 없는 결함을 만든다. 실제로 이것 때문에 duplicate 가 헛돌았다.
+	coder.SetBaseline(func(path string) (string, bool) {
+		rel, err := filepath.Rel(repo, path)
+		if err != nil {
+			return "", false
+		}
+		out, err := exec.Command("git", "-C", repo, "show", "HEAD:"+rel).Output()
+		if err != nil {
+			return "", false
+		}
+		return string(out), true
+	})
 	check := func() string {
 		diff := worktreeDiff(ctx, repo)
 		if strings.TrimSpace(diff) == "" {
