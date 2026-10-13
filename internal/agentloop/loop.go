@@ -104,6 +104,10 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	if l.DeferAll {
 		overview = "\n\n" + mcpclient.Overview(visible, 14)
 	}
+	// 사람에게 하는 말과 기계에게 하는 말을 가른다. 도구 이름·설명이 영어면
+	// 찾는 낱말도 영어라야 한다.
+	system += "\n\n" + languageRule(toolsLookEnglish(l.Tools))
+
 	if l.Instructions != "" {
 		system += "\n\n[도구 서버가 알려 준 쓰는 법]\n" + l.Instructions
 	}
@@ -313,6 +317,19 @@ func advertise(tools []mcpclient.Tool) string {
 		`<tool_call>{"name":"도구이름","arguments":{...}}</tool_call>` +
 		"\n더 부를 것이 없으면 도구를 쓰지 말고 답만 써라.")
 	return b.String()
+}
+
+// toolsLookEnglish 는 도구 이름이 영어인지 본다 — 찾을 낱말을 어느 말로 쓸지
+// 정하는 데 쓴다.
+func toolsLookEnglish(ts []mcpclient.Tool) bool {
+	for _, t := range ts {
+		for _, r := range t.Name {
+			if r > 127 {
+				return false
+			}
+		}
+	}
+	return len(ts) > 0
 }
 
 // totalCost 는 도구를 다 알리는 데 드는 글자다.

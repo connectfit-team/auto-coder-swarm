@@ -115,6 +115,26 @@ LLM 을 안 쓰므로 측정이 도는 중에도 돌릴 수 있다. 못 받는 �
 aider 에서: 오류를 같은 대화로 되돌리는 것(`base_coder.py:924 run_one`,
 `max_reflections = 3`). **가져왔다.**
 
+## 말 — 번역하지 않는다
+
+원본을 대조했다(2026-10-13):
+
+| | 언어 처리 |
+|---|---|
+| codex | **없다.** `translate` 는 전부 「도구 호출→연산 변환」 같은 딴 뜻이다 |
+| hermes | `translate_cwd_for_wsl_backend` — WSL 경로 변환이지 언어가 아니다 |
+| aider | **번역하지 않는다.** 알아내서 프롬프트에 한 줄 적는다 |
+
+aider 는 `--chat-language` → `locale` → `LANG`/`LANGUAGE`/`LC_ALL`/`LC_MESSAGES`
+차례로 보고 `Reply in Korean.` 을 넣는다(`base_coder.py:1094`). 못 알아내면
+`"the same language they are using"`. **사용자 글은 그대로 보낸다.**
+
+우리도 번역하지 않는다. 다만 **사람에게 하는 말과 기계에게 하는 말을 가른다** —
+도구 이름·설명이 영어면 찾을 낱말도 영어라야 한다. 안 가르면 둘 다 반만 된다
+(실측: `find_tools` 질의가 한국어로 나가 하나도 안 맞았다, #210).
+
+`SWARM_REPLY_LANGUAGE` 로 손으로 정할 수 있다.
+
 ## 하지 마라 — 이미 재 봤다
 
 - **도구를 안 불렀을 때 「더 찾아라」 고 밀지 마라.** CIE 가 40문항으로 쟀다 —
