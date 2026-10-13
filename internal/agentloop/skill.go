@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/mcpclient"
 )
 
 // 지침 본문이 쓸 수 있는 토큰. 창이 16,384 라 통째로는 못 싣는다.
@@ -26,7 +27,10 @@ type Skill struct {
 }
 
 // LoadSkills 는 깔려 있는 지침을 읽는다. 없으면 빈 목록이다.
-func LoadSkills(dir string) []Skill {
+//
+// tools 를 주면 **그 도구를 이름으로 부르는 절만** 골라 싣는다. 안 주면
+// 앞에서부터 줄인다.
+func LoadSkills(dir string, tools ...mcpclient.Tool) []Skill {
 	if dir == "" {
 		return nil
 	}
@@ -43,9 +47,9 @@ func LoadSkills(dir string) []Skill {
 		if err != nil {
 			continue
 		}
-		clipped, cut := agent.ClipToTokens(string(body), guideTokens)
-		if cut {
-			clipped += "\n…(줄였다 — 더 필요하면 read_reference 를 불러라)"
+		clipped := pickSections(string(body), tools, guideTokens)
+		if agent.EstimateTokens(string(body)) > agent.EstimateTokens(clipped) {
+			clipped += "\n\n…(지침을 줄였다 — 더 필요하면 read_reference 를 불러라)"
 		}
 		s := Skill{Name: e.Name(), Body: clipped, Refs: map[string]string{}}
 		refs, _ := os.ReadDir(filepath.Join(dir, e.Name(), "references"))

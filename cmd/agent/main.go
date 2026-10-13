@@ -79,7 +79,7 @@ func main() {
 		return
 	}
 
-	skills := agentloop.LoadSkills(*skillDir)
+	skills := agentloop.LoadSkills(*skillDir, tools...)
 	for _, s := range skills {
 		log.Printf("[SKILL] %s (참고 문서 %d개)", s.Name, len(s.Refs))
 	}
