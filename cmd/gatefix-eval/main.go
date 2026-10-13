@@ -167,7 +167,7 @@ func run(ctx context.Context, m model.LLM, name string,
 			return strings.Contains(out, "지난다"), out
 		},
 		Log: func(kind, msg string) {
-			if kind == "TOOL" || kind == "TOOL_ERR" {
+			if kind == "TOOL" || kind == "TOOL_ERR" || kind == "NOT_DONE" {
 				log.Printf("   %s %s", kind, msg)
 			}
 		},
@@ -175,11 +175,17 @@ func run(ctx context.Context, m model.LLM, name string,
 	system := "너는 계약(.proto)을 고치는 코더다.\n" +
 		"지금 고친 것이 관문에 걸렸다. **걸린 자리만** 고쳐라 — 처음부터 다시 쓰지 마라.\n" +
 		"고친 뒤에는 반드시 check 를 불러라."
-	if _, err := loop.Run(ctx, system, first); err != nil {
+	answer, err := loop.Run(ctx, system, first)
+	if err != nil {
 		return false, "끝내지 못했다: " + err.Error()
 	}
 	if out := check(); strings.Contains(out, "지난다") {
 		return true, "고쳤다"
+	} else {
+		// **틀렸으면 무엇이 남았는지 보여 준다.** 모르면 못 고친다(#233).
+		fmt.Printf("   남은 관문: %s\n", clip(out, 300))
+		fmt.Printf("   마지막 답: %s\n", clip(answer, 300))
+		fmt.Printf("   지금 diff: %s\n", clip(worktreeDiff(ctx, repo), 400))
 	}
 	return false, "아직 걸린다"
 }
@@ -213,6 +219,14 @@ func fixture(head, bad map[string]string) (string, error) {
 		}
 	}
 	return dir, write(bad)
+}
+
+func clip(s string, n int) string {
+	r := []rune(strings.ReplaceAll(strings.TrimSpace(s), "\n", " ⏎ "))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
 }
 
 func worktreeDiff(ctx context.Context, repo string) string {
