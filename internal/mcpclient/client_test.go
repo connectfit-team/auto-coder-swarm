@@ -203,14 +203,18 @@ func TestOverviewIsSmallAndUseful(t *testing.T) {
 		ts = append(ts, Tool{Name: n, Schema: json.RawMessage(`{}`)})
 	}
 	got := Overview(ts, 14)
-	for _, want := range []string{"list_*(3)", "open_*(2)", "compare_*(1)"} {
+	for _, want := range []string{"list(3)", "open(2)", "compare(1)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q 가 없다: %s", want, got)
 		}
 	}
 	// 많은 쪽이 앞에 와야 쓸모 있다.
-	if strings.Index(got, "list_*") > strings.Index(got, "open_*") {
+	if strings.Index(got, "list(") > strings.Index(got, "open(") {
 		t.Errorf("많은 갈래가 뒤에 있다: %s", got)
+	}
+	// 도구 이름처럼 보이면 안 된다 — 모델이 갈래를 그대로 불렀다.
+	if !strings.Contains(got, "도구 이름이 아니다") {
+		t.Errorf("이름이 아니라고 일러 주지 않는다: %s", got)
 	}
 	// 짧아야 한다 — 길면 창을 먹어 쓰는 뜻이 없다.
 	if len(got) > 600 {
