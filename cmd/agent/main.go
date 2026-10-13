@@ -28,10 +28,11 @@ func main() {
 	turns := flag.Int("turns", 8, "최대 턴")
 	modelName := flag.String("model", envOr("LLM_MODEL_NAME", "gemma4:31b"), "모델 이름")
 	listOnly := flag.Bool("list-tools", false, "붙은 도구만 보여 주고 끝낸다")
+	verifyOnly := flag.Bool("verify", false, "서버가 내놓는 것을 다 받고 있는지 전수로 본다 (LLM 안 씀)")
 	deferAll := flag.Bool("defer-tools", true, "도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다 (codex 와 같다)")
 	flag.Parse()
 
-	if *goal == "" && !*listOnly {
+	if *goal == "" && !*listOnly && !*verifyOnly {
 		log.Fatal("-goal 이 없다")
 	}
 
@@ -58,6 +59,13 @@ func main() {
 	for _, c := range clients {
 		log.Printf("[MCP] %s: 도구 %d개 · 절차 %d개 · 쓰는 법 %d자",
 			c.Name(), len(c.Tools()), len(c.Prompts()), len(c.Instructions()))
+	}
+
+	if *verifyOnly {
+		if verify(ctx, clients) != 0 {
+			os.Exit(1)
+		}
+		return
 	}
 
 	if *listOnly {
