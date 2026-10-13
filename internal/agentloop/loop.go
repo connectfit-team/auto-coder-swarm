@@ -34,6 +34,9 @@ type Loop struct {
 
 	// Prompts 는 서버가 알린 **작업 절차**다. 도구 하나가 아니라 일 전체의
 	// 차례라 값이 크다 — REA 는 investigate_feature·trace_crash 같은 것을 6개 준다.
+	// Skills 는 서버가 파일로 깔아 둔 **쓰는 차례**다. MCP 로는 안 온다.
+	Skills []Skill
+
 	Prompts   []mcpclient.Prompt
 	GetPrompt func(ctx context.Context, name string, args map[string]any) (string, error)
 
@@ -91,7 +94,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 빈 값을 줄 때 **쓸 도구가 하나도 안 알려진다.**
 	picked := visible
 	if fitsAll := totalCost(visible); fitsAll > toolChars || l.DeferAll {
-		picked = []mcpclient.Tool{findTools}
+		picked = []mcpclient.Tool{findTools, toolHelp}
 		if !l.DeferAll {
 			picked = append(picked, mcpclient.Pick(visible, []string{goal}, toolChars)...)
 		}
@@ -108,6 +111,10 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 찾는 낱말도 영어라야 한다.
 	system += "\n\n" + languageRule(toolsLookEnglish(l.Tools))
 
+	if g := guideBlock(l.Skills); g != "" {
+		system += g
+		picked = append([]mcpclient.Tool{readReference}, picked...)
+	}
 	if l.Instructions != "" {
 		system += "\n\n[도구 서버가 알려 준 쓰는 법]\n" + l.Instructions
 	}
@@ -215,6 +222,20 @@ var getWorkflow = mcpclient.Tool{
 		`"required":["name"]}`),
 }
 
+// readReference 는 지침의 참고 문서를 필요할 때만 읽는 내장 도구다.
+var readReference = mcpclient.Tool{
+	Name:        "read_reference",
+	Description: "쓰는 차례의 참고 문서를 읽는다. 어떤 도구를 어떤 차례로 쓸지 막히면 불러라.",
+	Schema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+}
+
+// toolHelp 는 도구 하나의 입력을 묻는 내장 도구다.
+var toolHelp = mcpclient.Tool{
+	Name:        "tool_help",
+	Description: "도구 하나가 받는 입력 이름을 묻는다. 인자를 모르면 지어내지 말고 이것을 불러라.",
+	Schema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+}
+
 // workflowBlock 은 쓸 수 있는 절차를 짧게 알린다. 이름과 설명만이라 싸다.
 func workflowBlock(ps []mcpclient.Prompt) string {
 	if len(ps) == 0 {
@@ -266,7 +287,27 @@ func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (
 		}
 		n, _ := args["name"].(string)
 		inner, _ := args["arguments"].(map[string]any)
-		return l.GetPrompt(ctx, n, inner)
+		body, err := l.GetPrompt(ctx, n, inner)
+		if err != nil {
+			return "", err
+		}
+		// **절차가 이름만 일러 주면 모델은 인자를 지어낸다.**
+		//
+		// 실측: 절차를 받아 open_binary·search_procedures 를 알았지만 스키마는
+		// 못 봐서 target_path·query 로 불렀고, 고칠 때마다 턴을 하나씩 버려
+		// 예산이 떨어졌다. 절차에 나온 도구의 입력을 **함께** 준다.
+		return body + mcpclient.InputsMentionedIn(l.Tools, body), nil
+	}
+	if name == readReference.Name {
+		n, _ := args["name"].(string)
+		return l.readReference(n)
+	}
+	if name == toolHelp.Name {
+		n, _ := args["name"].(string)
+		if h := mcpclient.InputHint(l.Tools, n); h != "" {
+			return h, nil
+		}
+		return "", fmt.Errorf("%s 라는 도구는 없다", n)
 	}
 	if name == findTools.Name {
 		q, _ := args["query"].(string)

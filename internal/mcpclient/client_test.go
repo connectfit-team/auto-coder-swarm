@@ -262,3 +262,36 @@ func TestHandshakeKeepsInstructionsAndPrompts(t *testing.T) {
 		t.Errorf("절차 내용이 없다: %q", got)
 	}
 }
+
+// 절차는 도구 **이름만** 일러 준다. 스키마를 못 본 모델은 인자를 지어낸다 —
+// 실측에서 open_binary 를 target_path 로, search_procedures 를 query 로 불렀다.
+func TestInputsMentionedIn(t *testing.T) {
+	ts := []Tool{
+		{Name: "open_binary", Schema: json.RawMessage(`{"properties":{"path":{},"format":{}},"required":["path"]}`)},
+		{Name: "search_procedures", Schema: json.RawMessage(`{"properties":{"pattern":{}},"required":["pattern"]}`)},
+		{Name: "unrelated_tool", Schema: json.RawMessage(`{"properties":{"x":{}}}`)},
+	}
+	got := InputsMentionedIn(ts, "Use open_binary to open it, then search_procedures to find names.")
+
+	for _, want := range []string{"open_binary 의 입력: format, path", "필수: path", "search_procedures"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "unrelated_tool") {
+		t.Errorf("글에 없는 도구까지 실었다:\n%s", got)
+	}
+	if InputsMentionedIn(ts, "아무 도구도 안 나온다") != "" {
+		t.Error("나온 도구가 없는데 뭔가 실었다")
+	}
+}
+
+func TestInputHint(t *testing.T) {
+	ts := []Tool{{Name: "open_binary", Schema: json.RawMessage(`{"properties":{"path":{}},"required":["path"]}`)}}
+	if got := InputHint(ts, "open_binary"); !strings.Contains(got, "필수: path") {
+		t.Errorf("입력을 안 알려 준다: %q", got)
+	}
+	if got := InputHint(ts, "없는도구"); got != "" {
+		t.Errorf("없는 도구에 뭔가 답한다: %q", got)
+	}
+}

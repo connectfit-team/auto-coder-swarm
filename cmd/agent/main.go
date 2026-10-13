@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -29,10 +30,12 @@ func main() {
 	modelName := flag.String("model", envOr("LLM_MODEL_NAME", "gemma4:31b"), "모델 이름")
 	listOnly := flag.Bool("list-tools", false, "붙은 도구만 보여 주고 끝낸다")
 	verifyOnly := flag.Bool("verify", false, "서버가 내놓는 것을 다 받고 있는지 전수로 본다 (LLM 안 씀)")
+	evalPath := flag.String("eval", "", "답을 아는 물음들을 풀게 하고 점수를 낸다")
+	skillDir := flag.String("skills", defaultSkillDir(), "도구 쓰는 차례가 깔린 곳 (SKILL.md)")
 	deferAll := flag.Bool("defer-tools", true, "도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다 (codex 와 같다)")
 	flag.Parse()
 
-	if *goal == "" && !*listOnly && !*verifyOnly {
+	if *goal == "" && !*listOnly && !*verifyOnly && *evalPath == "" {
 		log.Fatal("-goal 이 없다")
 	}
 
@@ -76,6 +79,36 @@ func main() {
 		return
 	}
 
+	skills := agentloop.LoadSkills(*skillDir)
+	for _, s := range skills {
+		log.Printf("[SKILL] %s (참고 문서 %d개)", s.Name, len(s.Refs))
+	}
+
+	newLoop := func(goal string, turns int) *agentloop.Loop {
+		return &agentloop.Loop{
+			LLM:          llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
+			Tools:        tools,
+			MaxTurns:     turns,
+			DeferAll:     *deferAll,
+			Instructions: mcpclient.AllInstructions(clients),
+			Skills:       skills,
+			Prompts:      prompts,
+			GetPrompt: func(ctx context.Context, name string, args map[string]any) (string, error) {
+				c, ok := promptOwner[name]
+				if !ok {
+					return "", fmt.Errorf("%s 라는 절차는 없다", name)
+				}
+				return c.GetPrompt(ctx, name, args)
+			},
+			Call: callTool(tools, owner),
+			Log:  func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
+		}
+	}
+
+	if *evalPath != "" {
+		os.Exit(runEval(ctx, *evalPath, newLoop, *system))
+	}
+
 	loop := &agentloop.Loop{
 		LLM:          llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
 		Tools:        tools,
@@ -90,20 +123,8 @@ func main() {
 			}
 			return c.GetPrompt(ctx, name, args)
 		},
-		Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
-			c, ok := owner[name]
-			if !ok {
-				// **없는 이름을 지어냈을 때 비슷한 것을 일러 준다.**
-				//
-				// 「없다」 고만 하면 모델은 또 지어내거나 포기한다. 실측에서
-				// 목표 문구를 보고 capabilities 를 지어냈는데, 그건 REA 의
-				// CLI 명령이지 MCP 도구가 아니었다.
-				near := mcpclient.FindTools(tools, name, 5)
-				return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s", name, near)
-			}
-			return c.Call(ctx, name, args)
-		},
-		Log: func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
+		Call: callTool(tools, owner),
+		Log:  func(kind, msg string) { log.Printf("[%s] %s", kind, msg) },
 	}
 
 	out, err := loop.Run(ctx, *system, *goal)
@@ -111,6 +132,40 @@ func main() {
 		log.Fatalf("끝내지 못했다: %v", err)
 	}
 	fmt.Println(out)
+}
+
+// callTool 은 도구를 부르고, 틀렸을 때 **고칠 단서를 함께** 돌려준다.
+func callTool(tools []mcpclient.Tool, owner map[string]*mcpclient.Client) agentloop.Dispatch {
+	return func(ctx context.Context, name string, args map[string]any) (string, error) {
+		c, ok := owner[name]
+		if !ok {
+			// 「없다」 고만 하면 모델은 또 지어내거나 포기한다. 실측에서 목표
+			// 문구를 보고 capabilities 를 지어냈는데, 그건 CLI 명령이었다.
+			return "", fmt.Errorf("%s 라는 도구는 없다. 비슷한 것:\n%s",
+				name, mcpclient.FindTools(tools, name, 5))
+		}
+		out, err := c.Call(ctx, name, args)
+		if err != nil {
+			// **인자 이름을 지어냈을 때 맞는 이름을 준다.** 서버는 「Unrecognized
+			// key」 라고만 하고, 그것만으로는 또 지어낸다.
+			if hint := mcpclient.InputHint(tools, name); hint != "" {
+				return out, fmt.Errorf("%w\n%s", err, hint)
+			}
+		}
+		return out, err
+	}
+}
+
+// defaultSkillDir 은 REA 가 `rea setup` 으로 지침을 까는 곳이다.
+func defaultSkillDir() string {
+	if v := strings.TrimSpace(os.Getenv("SWARM_SKILL_DIR")); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".agents", "skills")
 }
 
 func firstLine(s string) string {

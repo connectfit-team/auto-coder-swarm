@@ -63,3 +63,37 @@ func TestParsesInHouseFormat(t *testing.T) {
 		t.Errorf("사내 형식을 못 읽었다: %+v", got)
 	}
 }
+
+// 실측으로 모델이 낸 글이다 — 산문 끝에 맨 JSON 으로 호출을 붙였다.
+// 못 잡으면 루프가 「도구를 그만 불렀다」 고 보고 끝나 버린다.
+func TestParsesBareJSONInsideProse(t *testing.T) {
+	const observed = "It seems there was an issue with the `inspect_binary_layout` tool. " +
+		"Let's try a different approach to list the imported functions. " +
+		"We can use the `binary_overview` tool again and specifically request the import table.\n\n" +
+		`{"name":"binary_overview","arguments":{"parameters":{"import_mode":"complete"}}}`
+
+	got := ParseToolCalls(observed)
+	if len(got) != 1 {
+		t.Fatalf("호출 1개여야 한다: %+v", got)
+	}
+	if got[0].Name != "binary_overview" {
+		t.Errorf("이름: %q", got[0].Name)
+	}
+	// 한 겹 더 싼 인자를 풀어야 한다.
+	if got[0].Args["import_mode"] != "complete" {
+		t.Errorf("인자를 안 풀었다: %+v", got[0].Args)
+	}
+}
+
+// 산문만 있으면 잡지 않는다 — 안 그러면 루프가 안 끝난다.
+func TestBareScanDoesNotFireOnProse(t *testing.T) {
+	for _, text := range []string{
+		"다 했다. {이건 JSON 이 아니다}",
+		`결과는 {"count": 3} 이다.`,
+		"끝.",
+	} {
+		if got := ParseToolCalls(text); len(got) != 0 {
+			t.Errorf("%q → %+v", text, got)
+		}
+	}
+}
