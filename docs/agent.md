@@ -95,19 +95,35 @@ aider 에서: 오류를 같은 대화로 되돌리는 것(`base_coder.py:924 run
   엉뚱한 6개가 나갔다. codex 도 검색 도구가 있으면 **안 고른다.**
 - **스키마를 `<tools>` 로 감싸 알리지 마라.** 이 모델은 가까이 본 태그를 흉내 낸다.
 
-## REA 는 이 기계에서 아직 반쪽이다
+## REA 는 이 기계에서 다 돈다 (2026-10-13)
 
     npx rea-agents@latest doctor
-    healthy: false
-    - hopper: missing_analysis_engine
+    healthy: true   environment_healthy: true
 
-**분석 엔진(Hopper·Ghidra)이 깔려 있지 않다.** 그래서 REA 도구 170개 가운데
-네이티브·디컴파일 쪽은 붙어도 일을 못 한다. 정적 JavaScript 분석은 엔진 없이
-된다(README). 네이티브까지 쓰려면 **Ghidra 를 깔아야 한다**(무료).
+Ghidra 12.1.4 를 깔았다 — `~/ghidra_12.1.4_PUBLIC`. ghidra·platform·architecture·
+installation·version·**headless**·**native_decompiler**·java 전부 healthy.
+Hopper·IDA 는 상용이라 안 깔았고, 그래도 전체는 healthy 다.
+
+우리 에이전트가 쓰게 `~/.acs/mcp.json` 의 `env` 에 `GHIDRA_INSTALL_DIR` 을 넣었다.
+Ghidra 를 옮기거나 올리면 **거기도 같이 고쳐야 한다.**
+
+### 끝까지 돌아간 증거
+
+목표: 「바이너리 /bin/true 를 열어서 그 안에 있는 함수 목록을 확인해 줘」
+
+    [MCP] rea: 도구 170개
+    [TOOLS] 혼자 창을 먹는 도구 36개는 숨긴다
+    [TOOLS] 도구 170개(보이는 것 134개) 가운데 1개를 알린다
+    [TOOL] find_tools → … / [TOOL] open_binary → …
+
+답에 `__fpending`·`dcgettext`·`mbrtoc32`·`__stack_chk_fail` 이 나왔다 —
+coreutils 의 **실제 임포트**다. 지어낸 것이 아니다.
+
+### 함정
 
 도구 이름은 CLI 와 다르다. `capabilities` 는 **CLI 명령이고 MCP 도구가 아니다** —
-모델이 목표 문구를 보고 그 이름을 지어내 불렀고, 우리가 「없다」 고 답했다.
-지금은 비슷한 이름을 함께 일러 준다(#215).
+모델이 목표 문구를 보고 그 이름을 지어내 불렀다. 지금은 비슷한 이름을 함께
+일러 준다(#215).
 
 ## 아직 거친 곳 (다음에 할 일)
 
@@ -115,7 +131,7 @@ aider 에서: 오류를 같은 대화로 되돌리는 것(`base_coder.py:924 run
    이름과 설명만 줘서 모델이 **인자를 몰랐던** 것이다. codex 는 검색 결과에
    입력 속성 이름을 싣는다(`mcp.rs build_mcp_search_text`). 그대로 가져온 뒤
    모델이 맞는 도구를 찾아 불렀다.
-2. **턴을 찾기에 많이 쓴다** (6턴 가운데 3~4턴).
+2. **턴을 찾기에 많이 쓴다.** 갈래를 보여 주고(#216) 나아졌지만 아직 더듬는다.
 3. **압축이 없다** — 길어지면 앞을 버릴 뿐 요약하지 않는다. codex 의 `compact*`,
    hermes 의 `trajectory_compressor` 가 본보기.
 4. **연결 재시도가 없다.**

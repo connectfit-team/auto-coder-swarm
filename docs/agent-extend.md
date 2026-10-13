@@ -29,6 +29,16 @@
 모여 있다(#205). **판정을 두 곳에서 하지 마라** — 도구가 통과라 한 것을 관문이
 막으면 모델은 고칠 길이 없다.
 
+## 분석 엔진을 올리거나 옮긴다
+
+Ghidra 는 `~/ghidra_12.1.4_PUBLIC` 에 있고, 두 곳이 그 경로를 안다:
+
+- `~/.acs/mcp.json` 의 `mcpServers.rea.env.GHIDRA_INSTALL_DIR` — **우리 에이전트**
+- 다른 클라이언트 등록(`~/.claude.json` 등) — `rea setup` 이 넣은 것
+
+올릴 때는 새 판을 풀고 **두 곳을 다 고친 뒤** `rea doctor` 로 확인한다.
+`healthy: true` 가 나와야 한다. Hopper·IDA 는 상용이라 안 깐다.
+
 ## 다른 모델로 바꾼다
 
 `internal/llm/FromEnv` 한 곳에서만 정한다. 바꾸기 전에 **다시 재라**:
