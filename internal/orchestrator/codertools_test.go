@@ -72,3 +72,25 @@ func TestCheckToolUsesTheSameGates(t *testing.T) {
 		}
 	}
 }
+
+// **어느 파일을 고쳤는지 적어 준다.** 안 적으면 모델이 경로를 지어낸다 —
+// 실측에서 `path/to/your/file.proto` 를 불러 판마다 첫 턴을 버렸다.
+func TestGateReportNamesTheTouchedFiles(t *testing.T) {
+	diff := "--- a/proto/connect.proto\n+++ b/proto/connect.proto\n@@\n+  bool held = 2;\n" +
+		"--- a/proto/service.proto\n+++ b/proto/service.proto\n@@\n+message Dup {}\n"
+
+	got := GateReport(diff, []string{"## PROTO_BROKEN\n뭔가 틀렸다"})
+	for _, want := range []string{"proto/connect.proto", "proto/service.proto", "지어내지 말고"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(got, "뭔가 틀렸다") {
+		t.Error("관문 내용을 빠뜨렸다")
+	}
+
+	// 지나면 군더더기를 안 붙인다.
+	if got := GateReport(diff, nil); got != "관문을 지난다." {
+		t.Errorf("지나는데 말이 많다: %q", got)
+	}
+}

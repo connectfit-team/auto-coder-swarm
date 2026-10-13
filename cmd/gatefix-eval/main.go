@@ -189,11 +189,11 @@ func run(ctx context.Context, m model.LLM, name string,
 			return "아직 고친 것이 없다."
 		}
 		bad := orchestrator.CheckProtoChange(repo, diff)
-		if len(bad) == 0 {
-			return "관문을 지난다."
+		var notes []string
+		if len(bad) > 0 {
+			notes = append(notes, orchestrator.AlignmentNote(bad))
 		}
-		return "관문에 걸린다. 아래 자리만 고쳐라 — 처음부터 다시 쓰지 마라.\n\n" +
-			orchestrator.AlignmentNote(bad)
+		return orchestrator.GateReport(diff, notes)
 	}
 	edit := func(ctx context.Context, rel, how string) (string, error) {
 		if _, err := coder.ModifyFile(ctx, filepath.Join(repo, rel), how); err != nil {

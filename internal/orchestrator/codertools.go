@@ -119,15 +119,50 @@ func (t *taskContext) checkNow() string {
 		return "아직 고친 것이 없다. 먼저 고치고 다시 불러라."
 	}
 	bad := t.gateChecks(diff)
-	if len(bad) == 0 {
+	var notes []string
+	for _, g := range bad {
+		notes = append(notes, "## "+g.label+"\n"+g.feedback)
+	}
+	return GateReport(diff, notes)
+}
+
+// GateReport 는 관문 결과를 **모델이 바로 고칠 수 있는 글**로 만든다.
+// 운영과 채점기가 같은 글을 쓴다 — 다르면 채점기에서 좋아진 것이 운영에서
+// 안 좋아진다.
+func GateReport(diff string, notes []string) string {
+	if len(notes) == 0 {
 		return "관문을 지난다."
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "관문에 걸린다 (%d가지). 아래 자리만 고쳐라 — 처음부터 다시 쓰지 마라.\n\n", len(bad))
-	for _, g := range bad {
-		fmt.Fprintf(&b, "## %s\n%s\n\n", g.label, g.feedback)
+	fmt.Fprintf(&b, "관문에 걸린다 (%d가지). 아래 자리만 고쳐라 — 처음부터 다시 쓰지 마라.\n", len(notes))
+	// **어느 파일을 고쳤는지 적어 준다.** 안 적으면 모델이 경로를 지어낸다 —
+	// 실측에서 `path/to/your/file.proto` 를 불러 판마다 첫 턴을 버렸다.
+	if fs := touchedFiles(diff); len(fs) > 0 {
+		fmt.Fprintf(&b, "\n[이번에 고친 파일 — 경로를 지어내지 말고 이 가운데서 골라라]\n%s\n",
+			strings.Join(fs, " · "))
+	}
+	b.WriteString("\n")
+	for _, n := range notes {
+		b.WriteString(n + "\n\n")
 	}
 	out, _ := agent.ClipToTokens(b.String(), coderToolTokens)
+	return out
+}
+
+// touchedFiles 는 diff 가 건드린 파일 경로다.
+func touchedFiles(diff string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+++ b/") {
+			continue
+		}
+		p := strings.TrimPrefix(line, "+++ b/")
+		if p != "/dev/null" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
 	return out
 }
 
