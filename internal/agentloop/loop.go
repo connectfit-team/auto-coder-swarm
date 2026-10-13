@@ -236,6 +236,17 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 			if cut {
 				clipped += "\n…(잘렸다)"
 			}
+			// **도구 설명이 다음 도구를 가리키면 그것을 전해 준다.**
+			//
+			// REA 의 binary_overview 설명은 「Use search_procedures,
+			// list_procedures, or analyze_function …」 이라고 적혀 있다. 그런데
+			// 직접 부른 도구의 설명은 모델이 못 본다 — 미루기(DeferAll)로 돌리면
+			// 스키마를 안 알리기 때문이다.
+			//
+			// 실측: 임포트를 묻는 세 문항이 늘 틀렸는데, 모델은 open_binary 와
+			// binary_overview 만 쓰고 find_tools 는 **한 번도 안 불렀다**(0회).
+			// 서버가 제 글로 알려 주는 다음 걸음을 우리가 가로막고 있었다.
+			clipped += mcpclient.InputsMentionedIn(l.Tools, descriptionOf(l.Tools, c.Name))
 			l.log("TOOL", fmt.Sprintf("%s → %d자", c.Name, len(out)))
 			results = append(results, toolResult(c.Name, clipped))
 		}
@@ -410,6 +421,16 @@ func toolsLookEnglish(ts []mcpclient.Tool) bool {
 		}
 	}
 	return len(ts) > 0
+}
+
+// descriptionOf 는 그 도구의 설명이다 — 거기 다음 걸음이 적혀 있을 수 있다.
+func descriptionOf(ts []mcpclient.Tool, name string) string {
+	for _, t := range ts {
+		if t.Name == name {
+			return t.Description
+		}
+	}
+	return ""
 }
 
 // totalCost 는 도구를 다 알리는 데 드는 글자다.
