@@ -192,9 +192,30 @@ coreutils 의 **실제 임포트**다. 지어낸 것이 아니다.
 
     ./bin/agent -config ~/.acs/mcp.json -eval eval/rea-binary.json
 
-**3/4 (75%) · 평균 20초 · 평균 도구 1.5번**
+**9/12 (75%) · 평균 68초 · 평균 도구 1.4번** (2026-10-13, 12문항)
 
-물음은 `/bin/true` 에서 `nm -D`·`strings`·`file` 로 **독립 확인한 답**이다.
+물음은 `/bin/true`·`/bin/ls`·`/bin/cat` 에서 `nm -D`·`strings`·`file` 로
+**독립 확인한 답**이다.
+
+### 틀린 셋은 **전부 같은 갈래**다 — 임포트 목록
+
+| 갈래 | 점수 |
+|---|---|
+| 지어내지 않는다 (3) | **3/3** |
+| 아키텍처·파일 꼴 (3) | **3/3** |
+| 문자열·구역 (3) | **3/3** |
+| **임포트 목록 (3)** | **0/3** |
+
+까닭을 끝까지 팠다. 맞는 도구는 `list_names` 인데, 그 설명은 「external symbol」
+이라 하고 모델은 목표에 있는 낱말 **`imports`** 로 찾는다:
+
+    find_tools("imports")  → 2개, list_names 없음
+    find_tools("symbol")   → 22개, list_names 있음
+    find_tools("external") → 10개, list_names 있음
+
+REA 의 참고 문서에도 「임포트를 보려면 list_names」 라는 말은 없다.
+**모델이 「imports ≈ external symbols」 를 못 잇는 것**이고, 동의어를 코드에
+박아 넣는 것은 이 한 문항에 맞추는 짓이다. 그래서 **안 고치고 적어 둔다.**
 
 이렇게 왔다 — 전부 **돌려 보고** 고친 것이다:
 
