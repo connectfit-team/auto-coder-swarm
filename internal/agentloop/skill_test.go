@@ -1,10 +1,13 @@
 package agentloop
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/connectfit-team/auto-coder-swarm/internal/mcpclient"
 )
 
 func skillDir(t *testing.T, body string, refs map[string]string) string {
@@ -43,7 +46,7 @@ func TestLoadSkillsReadsBodyAndRefs(t *testing.T) {
 	}
 
 	// 지시문에 실린다. 참고 문서는 **이름만** — 다 실으면 창이 안 남는다.
-	g := guideBlock(ss)
+	g := guideBlock(ss, nil)
 	if !strings.Contains(g, "Use open_binary first") {
 		t.Error("지침이 지시문에 안 들어간다")
 	}
@@ -84,7 +87,34 @@ func TestNoSkillsIsFine(t *testing.T) {
 	if ss := LoadSkills(t.TempDir()); len(ss) != 0 {
 		t.Errorf("없는데 읽었다: %+v", ss)
 	}
-	if guideBlock(nil) != "" {
+	if guideBlock(nil, nil) != "" {
 		t.Error("지침이 없는데 글을 만든다")
+	}
+}
+
+// **지침은 도구 이름만 말한다.** 미루기로 돌리면 스키마를 안 알리므로 모델이
+// 인자를 지어낸다 — 실측에서 한 판이 binary_overview 에 path 를 넘기고
+// inspect_binary_layout 을 두 번 틀려 턴을 다 썼다.
+func TestGuideCarriesInputsOfToolsItNames(t *testing.T) {
+	ss := LoadSkills(skillDir(t,
+		"# REA\nUse open_binary first, then binary_overview.\n", nil))
+	ts := []mcpclient.Tool{
+		{Name: "open_binary", Schema: json.RawMessage(`{"properties":{"path":{},"format":{}},"required":["path"]}`)},
+		{Name: "binary_overview", Schema: json.RawMessage(`{"properties":{"document":{}}}`)},
+		{Name: "unrelated_tool", Schema: json.RawMessage(`{"properties":{"x":{}}}`)},
+	}
+
+	got := guideBlock(ss, ts)
+	for _, want := range []string{"open_binary 의 입력", "필수: path", "binary_overview 의 입력"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "unrelated_tool") {
+		t.Error("지침에 안 나온 도구까지 실었다")
+	}
+	// 도구를 모르면 전처럼 지침만 싣는다.
+	if plain := guideBlock(ss, nil); strings.Contains(plain, "의 입력") {
+		t.Errorf("도구가 없는데 입력을 실었다:\n%s", plain)
 	}
 }

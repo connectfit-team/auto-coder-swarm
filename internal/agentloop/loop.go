@@ -111,7 +111,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 찾는 낱말도 영어라야 한다.
 	system += "\n\n" + languageRule(toolsLookEnglish(l.Tools))
 
-	if g := guideBlock(l.Skills); g != "" {
+	if g := guideBlock(l.Skills, l.Tools); g != "" {
 		system += g
 		picked = append([]mcpclient.Tool{readReference}, picked...)
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/connectfit-team/auto-coder-swarm/internal/agent"
+	"github.com/connectfit-team/auto-coder-swarm/internal/mcpclient"
 )
 
 // 지침 본문이 쓸 수 있는 토큰. 창이 16,384 라 통째로는 못 싣는다.
@@ -62,13 +63,19 @@ func LoadSkills(dir string) []Skill {
 }
 
 // guideBlock 은 지침을 지시문에 실을 글로 만든다.
-func guideBlock(ss []Skill) string {
+//
+// tools 를 주면 **지침이 이름 댄 도구들의 입력**을 함께 싣는다. 지침은 「open_binary
+// 로 열어라」 처럼 이름만 말하는데, 미루기로 돌리면 스키마를 안 알리므로 모델이
+// 인자를 지어낸다 — 실측에서 한 판이 binary_overview 에 path 를 넘기고
+// inspect_binary_layout 을 두 번 틀려 **턴을 다 썼다.**
+func guideBlock(ss []Skill, tools []mcpclient.Tool) string {
 	if len(ss) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	for _, s := range ss {
 		fmt.Fprintf(&b, "\n\n[도구 쓰는 차례 — %s]\n%s\n", s.Name, s.Body)
+		b.WriteString(mcpclient.InputsMentionedIn(tools, s.Body))
 		if len(s.Refs) > 0 {
 			var names []string
 			for n := range s.Refs {
