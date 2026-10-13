@@ -149,7 +149,7 @@ func FindTools(tools []Tool, query string, max int) string {
 	}
 	sort.SliceStable(hits, func(a, b int) bool { return hits[a].n > hits[b].n })
 	if len(hits) == 0 {
-		return "맞는 도구가 없다."
+		return "맞는 도구가 없다.\n" + vocabularyHint(tools)
 	}
 	var b strings.Builder
 	for i, h := range hits {
@@ -161,6 +161,15 @@ func FindTools(tools []Tool, query string, max int) string {
 		if in := inputLine(h.t.Schema); in != "" {
 			b.WriteString("  " + in + "\n")
 		}
+	}
+	// **적게 찾혔으면 카탈로그가 쓰는 낱말을 보여 준다.**
+	//
+	// 실측: 모델이 목표에 있는 낱말 `imports` 로 찾았는데 2개뿐이었고 맞는
+	// 도구(list_names)가 거기 없었다. 그 도구의 설명은 「external symbol」 이라
+	// 한다. 동의어를 코드에 박는 것은 그 한 물음에 맞추는 짓이고, 카탈로그가
+	// **실제로 쓰는 낱말**을 보여 주는 것은 어느 서버에나 통한다.
+	if len(hits) < 3 {
+		b.WriteString(vocabularyHint(tools))
 	}
 	// **찾은 다음에 무엇을 할지 함께 적는다.** 실측에서 모델이 find_tools 만
 	// 네 번 돌며 제자리를 돌았다 — 목록만 주면 다음 걸음을 모른다.
@@ -299,4 +308,55 @@ func InputsMentionedIn(tools []Tool, text string) string {
 	}
 	sort.Strings(lines)
 	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
+}
+
+// vocabularyHint 는 카탈로그가 자주 쓰는 낱말을 보여 준다.
+//
+// 못 찾는 까닭은 대개 **낱말이 다른 것**이다 — 모델은 목표의 말로 찾고,
+// 카탈로그는 제 말로 적혀 있다. 무슨 말을 쓰는지 보여 주면 다시 물을 수 있다.
+func vocabularyHint(tools []Tool) string {
+	n := map[string]int{}
+	for _, t := range tools {
+		seen := map[string]bool{}
+		for _, w := range terms([]string{t.Name + " " + firstLine(t.Description)}) {
+			if len(w) < 4 || seen[w] || commonWord[w] {
+				continue
+			}
+			seen[w] = true
+			n[w]++
+		}
+	}
+	var words []string
+	for w, c := range n {
+		if c >= 3 {
+			words = append(words, w)
+		}
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	sort.Slice(words, func(a, b int) bool {
+		if n[words[a]] != n[words[b]] {
+			return n[words[a]] > n[words[b]]
+		}
+		return words[a] < words[b]
+	})
+	if len(words) > 18 {
+		words = words[:18]
+	}
+	var parts []string
+	for _, w := range words {
+		parts = append(parts, fmt.Sprintf("%s(%d)", w, n[w]))
+	}
+	return "이 카탈로그가 자주 쓰는 낱말이다 — 못 찾았으면 **이 말로 다시 물어라**:\n" +
+		strings.Join(parts, " · ") + "\n"
+}
+
+// 어느 카탈로그에나 있어 갈라 주지 못하는 말.
+var commonWord = map[string]bool{
+	"return": true, "returns": true, "with": true, "from": true, "that": true,
+	"this": true, "when": true, "each": true, "only": true, "every": true,
+	"their": true, "them": true, "they": true, "into": true, "over": true,
+	"explicit": true, "exact": true, "given": true, "using": true, "used": true,
+	"within": true, "without": true, "requested": true, "provided": true,
 }

@@ -295,3 +295,44 @@ func TestInputHint(t *testing.T) {
 		t.Errorf("없는 도구에 뭔가 답한다: %q", got)
 	}
 }
+
+// 못 찾는 까닭은 대개 **낱말이 다른 것**이다 — 모델은 목표의 말로 찾고,
+// 카탈로그는 제 말로 적혀 있다. 실측: imports 로 찾으니 2개뿐이었고 맞는
+// 도구(list_names, 설명은 "external symbol")가 거기 없었다.
+func TestFewHitsShowTheCatalogVocabulary(t *testing.T) {
+	var ts []Tool
+	for i, d := range []string{
+		"List every analyzed memory and external symbol",
+		"Return the external symbol table of a procedure",
+		"Resolve one external symbol by address",
+		"Inspect a managed assembly member",
+		"Compare two managed assemblies",
+		"Decode managed metadata",
+	} {
+		ts = append(ts, Tool{Name: "tool" + string(rune('a'+i)), Description: d,
+			Schema: json.RawMessage(`{}`)})
+	}
+
+	// 하나도 못 찾았을 때
+	none := FindTools(ts, "imports", 20)
+	if !strings.Contains(none, "자주 쓰는 낱말") {
+		t.Errorf("못 찾았는데 쓸 낱말을 안 알려 준다:\n%s", none)
+	}
+	for _, want := range []string{"external", "symbol", "managed"} {
+		if !strings.Contains(none, want) {
+			t.Errorf("%q 가 낱말 목록에 없다:\n%s", want, none)
+		}
+	}
+
+	// 적게 찾았을 때도 알려 준다
+	few := FindTools(ts, "metadata", 20)
+	if !strings.Contains(few, "자주 쓰는 낱말") {
+		t.Errorf("적게 찾았는데 안 알려 준다:\n%s", few)
+	}
+
+	// 넉넉히 찾았으면 군더더기를 안 붙인다
+	many := FindTools(ts, "external symbol", 20)
+	if strings.Contains(many, "자주 쓰는 낱말") {
+		t.Errorf("넉넉히 찾았는데 낱말까지 붙였다:\n%s", many)
+	}
+}
