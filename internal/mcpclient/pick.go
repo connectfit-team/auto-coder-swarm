@@ -149,7 +149,7 @@ func FindTools(tools []Tool, query string, max int) string {
 	}
 	sort.SliceStable(hits, func(a, b int) bool { return hits[a].n > hits[b].n })
 	if len(hits) == 0 {
-		return "맞는 도구가 없다.\n" + vocabularyHint(tools)
+		return "맞는 도구가 없다."
 	}
 	var b strings.Builder
 	for i, h := range hits {
@@ -161,15 +161,6 @@ func FindTools(tools []Tool, query string, max int) string {
 		if in := inputLine(h.t.Schema); in != "" {
 			b.WriteString("  " + in + "\n")
 		}
-	}
-	// **적게 찾혔으면 카탈로그가 쓰는 낱말을 보여 준다.**
-	//
-	// 실측: 모델이 목표에 있는 낱말 `imports` 로 찾았는데 2개뿐이었고 맞는
-	// 도구(list_names)가 거기 없었다. 그 도구의 설명은 「external symbol」 이라
-	// 한다. 동의어를 코드에 박는 것은 그 한 물음에 맞추는 짓이고, 카탈로그가
-	// **실제로 쓰는 낱말**을 보여 주는 것은 어느 서버에나 통한다.
-	if len(hits) < 3 {
-		b.WriteString(vocabularyHint(tools))
 	}
 	// **찾은 다음에 무엇을 할지 함께 적는다.** 실측에서 모델이 find_tools 만
 	// 네 번 돌며 제자리를 돌았다 — 목록만 주면 다음 걸음을 모른다.
@@ -308,67 +299,4 @@ func InputsMentionedIn(tools []Tool, text string) string {
 	}
 	sort.Strings(lines)
 	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
-}
-
-// vocabularyHint 는 **도구 이름에 쓰이는 낱말**을 보여 준다.
-//
-// 못 찾는 까닭은 대개 낱말이 다른 것이다 — 모델은 목표의 말로 찾고, 카탈로그는
-// 제 말로 적혀 있다. 실측: `imports` 로 찾으니 2개뿐이었고 맞는 도구는 없었다.
-//
-// **설명이 아니라 이름을 센다.** 이름이 맞으면 점수가 세 배라 바로 찾히고,
-// 설명에서 가장 흔한 낱말(evidence·address·inspect…)은 가장 안 갈라 준다.
-// 실제로 설명으로 세어 보니 쓸모 있는 낱말이 18개 안에 하나도 안 들었다.
-func vocabularyHint(tools []Tool) string {
-	verb, obj := map[string]int{}, map[string]int{}
-	for _, t := range tools {
-		parts := strings.Split(strings.ToLower(t.Name), "_")
-		if len(parts) == 0 {
-			continue
-		}
-		verb[parts[0]]++
-		for _, p := range parts[1:] {
-			if len(p) > 2 {
-				obj[p]++
-			}
-		}
-	}
-	v := topWords(verb, 10, 2)
-	o := topWords(obj, 14, 3)
-	if v == "" && o == "" {
-		return ""
-	}
-	out := "도구 이름에 쓰이는 낱말이다 — 못 찾았으면 **이 말로 다시 물어라**:\n"
-	if v != "" {
-		out += "  하는 일: " + v + "\n"
-	}
-	if o != "" {
-		out += "  무엇을: " + o + "\n"
-	}
-	return out
-}
-
-func topWords(n map[string]int, max, least int) string {
-	var ws []string
-	for w, c := range n {
-		if c >= least {
-			ws = append(ws, w)
-		}
-	}
-	if len(ws) == 0 {
-		return ""
-	}
-	sort.Slice(ws, func(a, b int) bool {
-		if n[ws[a]] != n[ws[b]] {
-			return n[ws[a]] > n[ws[b]]
-		}
-		return ws[a] < ws[b]
-	})
-	if len(ws) > max {
-		ws = ws[:max]
-	}
-	var parts []string
-	for _, w := range ws {
-		parts = append(parts, fmt.Sprintf("%s(%d)", w, n[w]))
-	}
-	return strings.Join(parts, " · ")
 }
