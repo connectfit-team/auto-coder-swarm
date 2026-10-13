@@ -51,8 +51,14 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		resultTokens = 1200
 	}
 
-	picked := mcpclient.Pick(l.Tools, []string{goal}, toolChars)
-	l.log("TOOLS", fmt.Sprintf("도구 %d개 가운데 %d개를 알린다", len(l.Tools), len(picked)))
+	// **찾는 도구를 늘 쥐여 준다.**
+	//
+	// 카탈로그가 170개면 스키마만으로 창의 57배다. 골라 준 것이 빗나가도
+	// 모델이 스스로 찾을 길이 있어야 한다 — 상용 에이전트가 큰 카탈로그를
+	// 다루는 방식이다. 고를 말이 없을 때(한국어 목표에 영어 카탈로그) Pick 은
+	// 아무것도 안 주므로, 그때는 이것이 유일한 길이다.
+	picked := append([]mcpclient.Tool{findTools}, mcpclient.Pick(l.Tools, []string{goal}, toolChars)...)
+	l.log("TOOLS", fmt.Sprintf("도구 %d개 가운데 %d개를 알린다(find_tools 포함)", len(l.Tools), len(picked)))
 
 	history := []*genai.Content{
 		userTurn(system + "\n\n" + advertise(picked) + "\n\n[목표]\n" + goal),
@@ -87,7 +93,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 			}
 			called[key] = true
 
-			out, err := l.Call(ctx, c.Name, c.Args)
+			out, err := l.dispatch(ctx, c.Name, c.Args)
 			if err != nil {
 				// **오류를 같은 대화로 되돌린다.** aider 의 reflected_message 와
 				// 같은 자리다. 오류를 버리면 다음 턴이 같은 실수를 되풀이한다.
@@ -105,6 +111,21 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 		history = append(history, userTurn(strings.Join(results, "\n")))
 	}
 	return "", fmt.Errorf("%d턴을 다 썼는데 끝나지 않았다", maxTurns)
+}
+
+// findTools 는 루프가 들고 있는 내장 도구다 — MCP 서버에 가지 않는다.
+var findTools = mcpclient.Tool{
+	Name:        "find_tools",
+	Description: "쓸 수 있는 도구를 영어 낱말로 찾는다. 찾은 이름은 그대로 부를 수 있다.",
+	Schema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
+}
+
+func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (string, error) {
+	if name == findTools.Name {
+		q, _ := args["query"].(string)
+		return mcpclient.FindTools(l.Tools, q, 20), nil
+	}
+	return l.Call(ctx, name, args)
 }
 
 func (l *Loop) say(ctx context.Context, history []*genai.Content) (string, error) {
