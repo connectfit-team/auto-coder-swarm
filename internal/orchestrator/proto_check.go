@@ -412,7 +412,8 @@ var reFieldTyped = regexp.MustCompile(`^\s*(?:repeated\s+|optional\s+)?([\w.]+)\
 //
 // 이름의 마지막 토막(…_status)이 같은데 타입이 다르면 짚는다.
 func sameNameDifferentType(diff string) []guard.Violation {
-	types := map[string]map[string]bool{} // 이름 꼬리 → 타입들
+	types := map[string]map[string]bool{}      // 이름 꼬리 → 타입들
+	fields := map[string]map[string][]string{} // 이름 꼬리 → 타입 → 그 타입으로 쓴 필드들
 	for _, line := range strings.Split(diff, "\n") {
 		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
 			continue
@@ -434,8 +435,10 @@ func sameNameDifferentType(diff string) []guard.Violation {
 		}
 		if types[tail] == nil {
 			types[tail] = map[string]bool{}
+			fields[tail] = map[string][]string{}
 		}
 		types[tail][typ] = true
+		fields[tail][typ] = append(fields[tail][typ], typ+" "+name)
 	}
 	var out []guard.Violation
 	for tail, ts := range types {
@@ -464,13 +467,30 @@ func sameNameDifferentType(diff string) []guard.Violation {
 		//
 		// 만든 타입 쪽으로 모은다. 값이 굳는 편이 낫고, enum 은 관문도 막지
 		// 않는다(#167).
+		// **고칠 자리를 적어 준다.** 「모아라」 만으로는 어느 필드인지 모른다.
+		var wrong []string
+		keep := map[string]bool{}
+		for _, m := range madeUp {
+			keep[m] = true
+		}
+		for typ, fs := range fields[tail] {
+			if keep[typ] {
+				continue
+			}
+			wrong = append(wrong, fs...)
+		}
+		sort.Strings(wrong)
+		ev := []string{
+			"같은 것을 한쪽은 만든 타입으로, 한쪽은 글자로 다루면 쓰는 쪽이 손으로 맞춰야 한다",
+			fmt.Sprintf("**%s 쪽으로 모아라** — 그 필드들을 모두 그 타입으로 바꾼다. 값이 굳는 편이 낫다.",
+				strings.Join(madeUp, " · ")),
+		}
+		if len(wrong) > 0 {
+			ev = append(ev, "고칠 자리: "+strings.Join(wrong, " · "))
+		}
 		out = append(out, guard.Violation{
-			Why: fmt.Sprintf("…_%s 를 서로 다른 타입으로 다룬다 (%s)", tail, strings.Join(list, " · ")),
-			Evidence: []string{
-				"같은 것을 한쪽은 만든 타입으로, 한쪽은 글자로 다루면 쓰는 쪽이 손으로 맞춰야 한다",
-				fmt.Sprintf("**%s 쪽으로 모아라** — 그 필드들을 모두 그 타입으로 바꾼다. 값이 굳는 편이 낫다.",
-					strings.Join(madeUp, " · ")),
-			},
+			Why:      fmt.Sprintf("…_%s 를 서로 다른 타입으로 다룬다 (%s)", tail, strings.Join(list, " · ")),
+			Evidence: ev,
 		})
 	}
 	return out

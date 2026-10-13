@@ -74,3 +74,30 @@ func TestGenuinelyDifferentTypesStillCaught(t *testing.T) {
 		t.Fatalf("어느 쪽으로 모으라는지 안 밝힌다:\n%s", ev)
 	}
 }
+
+// 「모아라」 만으로는 **어느 필드인지** 모른다. 고칠 자리를 적어 준다.
+func TestSameTypeNamesTheFieldsToFix(t *testing.T) {
+	diff := "--- a/x.proto\n+++ b/x.proto\n@@\n" +
+		"+  ConnectPendingStatus pending_status = 3;\n" +
+		"+  int32 invite_status = 4;\n" +
+		"+  string hold_status = 5;\n"
+
+	bad := sameNameDifferentType(diff)
+	if len(bad) == 0 {
+		t.Fatal("섞어 쓴 것을 못 잡았다")
+	}
+	note := AlignmentNote(bad)
+	if !strings.Contains(note, "고칠 자리:") {
+		t.Fatalf("고칠 자리를 안 적는다:\n%s", note)
+	}
+	for _, want := range []string{"int32 invite_status", "string hold_status"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("%q 를 안 짚는다:\n%s", want, note)
+		}
+	}
+	// 남길 쪽은 고칠 자리에 없어야 한다.
+	if strings.Contains(note, "고칠 자리:") &&
+		strings.Contains(note[strings.Index(note, "고칠 자리:"):], "ConnectPendingStatus pending_status") {
+		t.Errorf("남길 쪽까지 고치라고 한다:\n%s", note)
+	}
+}
