@@ -163,20 +163,26 @@ func changedExisting(diff string) []guard.Violation {
 			continue
 		}
 		body := line[1:]
+		// **원래 줄을 그대로 준다.** 「필드 note = 2」 만으로는 무엇으로
+		// 되살릴지 모른다 — 타입이 빠져 있다.
 		if m := reProtoField.FindStringSubmatch(body); m != nil {
-			removed = append(removed, fmt.Sprintf("필드 %s = %s", m[1], m[2]))
+			removed = append(removed, fmt.Sprintf("필드 %s = %s  원래 줄: `%s`",
+				m[1], m[2], strings.TrimSpace(body)))
 			continue
 		}
 		if m := reProtoRPC.FindStringSubmatch(body); m != nil {
-			removed = append(removed, "rpc "+m[1])
+			removed = append(removed, fmt.Sprintf("rpc %s  원래 줄: `%s`",
+				m[1], strings.TrimSpace(body)))
 		}
 	}
 	if len(removed) == 0 {
 		return nil
 	}
 	return []guard.Violation{{
-		Why:      "있던 필드·RPC 를 고치거나 지웠다 — 계약은 더하기만 한다",
-		Evidence: append(clipList(removed), "쓰는 쪽이 조용히 깨진다. 새 번호로 더해라"),
+		Why: "있던 필드·RPC 를 고치거나 지웠다 — 계약은 더하기만 한다",
+		Evidence: append(clipList(removed),
+			"**원래 줄을 그대로 되살려라.** 더할 것이 있으면 그 아래에 **새 번호로** 따로 더한다.",
+			"쓰는 쪽이 조용히 깨진다"),
 	}}
 }
 
@@ -280,11 +286,36 @@ func newServiceBesideOne(repoPath string, changed []string, diff string) []guard
 			continue
 		}
 		for name := range added {
+			ev := []string{rel}
+			// **어느 rpc 를 어디로 옮기라는 말까지 한다.** 「있는 service 안에
+			// 더해라」 만으로는 무엇을 옮길지 모른다.
+			if rpcs := addedRPCs(diff); len(rpcs) > 0 {
+				ev = append(ev, fmt.Sprintf("**이 rpc 를 service %s 안으로 옮겨라**: %s",
+					existing[0], strings.Join(rpcs, " · ")))
+			}
+			ev = append(ev, fmt.Sprintf("그리고 service %s 블록을 통째로 지워라. 새 service 는 쓰는 쪽이 부르지 않는다", name))
 			out = append(out, guard.Violation{
 				Why: fmt.Sprintf("service %s 를 새로 만들었다 — 이 파일에는 이미 service %s 가 있다",
 					name, strings.Join(existing, " · ")),
-				Evidence: []string{rel, "있는 service 안에 rpc 를 더해라. 새 service 는 쓰는 쪽이 부르지 않는다"},
+				Evidence: ev,
 			})
+		}
+	}
+	return out
+}
+
+// addedRPCs 는 이번에 더한 rpc 줄이다 — 옮길 것을 그대로 보여 준다.
+func addedRPCs(diff string) []string {
+	var out []string
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if m := reProtoRPC.FindStringSubmatch(line[1:]); m != nil {
+			out = append(out, "`"+strings.TrimSpace(line[1:])+"`")
+		}
+		if len(out) >= 6 {
+			break
 		}
 	}
 	return out
