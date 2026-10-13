@@ -28,6 +28,7 @@ type result struct {
 	q       Question
 	ok      bool
 	why     string
+	answer  string
 	seconds float64
 	tools   int
 }
@@ -71,7 +72,7 @@ func runEval(ctx context.Context, path string, mk func(goal string, turns int) *
 		answer, err := loop.Run(ctx, system, q.Goal)
 		took := time.Since(start).Seconds()
 
-		r := result{q: q, seconds: took, tools: used}
+		r := result{q: q, seconds: took, tools: used, answer: answer}
 		switch {
 		case err != nil:
 			r.why = "끝내지 못했다: " + err.Error()
@@ -137,10 +138,12 @@ func report(rs []result) int {
 	fmt.Printf("\n==== 점수 ====\n%d/%d (%d%%) · 평균 %.0f초 · 평균 도구 %.1f번\n",
 		ok, n, 100*ok/max1(n), totalSec/float64(max1(n)), float64(totalTools)/float64(max1(n)))
 	if ok < n {
+		// **틀렸으면 답을 보여 준다.** 무엇이라 답했는지 모르면 못 고친다.
 		fmt.Println("\n틀린 것")
 		for _, r := range rs {
 			if !r.ok {
-				fmt.Printf("  %-28s %s\n", r.q.Name, r.why)
+				fmt.Printf("\n  %s — %s\n", r.q.Name, r.why)
+				fmt.Printf("  답: %s\n", indent(clip(r.answer, 700)))
 			}
 		}
 	}
@@ -148,6 +151,18 @@ func report(rs []result) int {
 		return 1
 	}
 	return 0
+}
+
+func clip(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
+}
+
+func indent(s string) string {
+	return strings.ReplaceAll(s, "\n", "\n      ")
 }
 
 func max1(n int) int {
