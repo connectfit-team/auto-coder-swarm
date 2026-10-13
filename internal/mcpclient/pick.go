@@ -6,6 +6,29 @@ import (
 	"strings"
 )
 
+// 도구 하나가 쓸 수 있는 글자. 넘으면 숨긴다.
+//
+// codex 가 같은 자리에 쓰는 값은 도구 하나 8,000바이트·전부 64,000바이트인데,
+// 그건 200k 창을 전제한 것이다. 우리 창은 16,384 라 그 비례로 줄인다.
+// REA 의 compare_web_captures 는 혼자 75,501자 — 창의 두 배다. 이런 것은
+// 고르기 전에 **숨긴다**(codex 의 ToolExposure::Hidden).
+const (
+	MaxToolChars  = 2500
+	MaxTotalChars = 5000
+)
+
+// Visible 은 혼자서 창을 먹는 도구를 걸러 낸다.
+func Visible(tools []Tool) (ok []Tool, hidden []string) {
+	for _, t := range tools {
+		if cost(t) > MaxToolChars {
+			hidden = append(hidden, t.Name)
+			continue
+		}
+		ok = append(ok, t)
+	}
+	return ok, hidden
+}
+
 // Pick 은 창에 들어갈 만큼만 고른다.
 //
 // REA 한 서버만 해도 도구 170개의 스키마가 약 931,000 토큰이다 — 우리 창

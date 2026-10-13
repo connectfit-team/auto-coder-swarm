@@ -32,6 +32,10 @@ type Loop struct {
 	ToolChars    int // 도구를 알리는 데 쓸 글자. 0 이면 창의 1/4
 	ResultTokens int // 도구 결과 하나가 쓸 수 있는 토큰. 0 이면 1200
 
+	// DeferAll 은 도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다.
+	// codex 가 검색 도구를 켰을 때 하는 것과 같다.
+	DeferAll bool
+
 	Log func(kind, msg string)
 }
 
@@ -57,8 +61,24 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// 모델이 스스로 찾을 길이 있어야 한다 — 상용 에이전트가 큰 카탈로그를
 	// 다루는 방식이다. 고를 말이 없을 때(한국어 목표에 영어 카탈로그) Pick 은
 	// 아무것도 안 주므로, 그때는 이것이 유일한 길이다.
-	picked := append([]mcpclient.Tool{findTools}, mcpclient.Pick(l.Tools, []string{goal}, toolChars)...)
-	l.log("TOOLS", fmt.Sprintf("도구 %d개 가운데 %d개를 알린다(find_tools 포함)", len(l.Tools), len(picked)))
+	// **추측하지 않는다 — 찾게 한다.**
+	//
+	// codex 는 검색 도구가 켜져 있으면 MCP 도구를 **전부** Deferred 로 돌린다
+	// (`mcp_tool_exposure.rs`: `if search_tool_enabled { ToolExposure::Deferred }`).
+	// 스키마를 프롬프트에 넣지 않고 모델이 찾아 쓰게 한다.
+	//
+	// 우리도 그래야 한다. 실측에서 Pick 이 한국어 목표로 엉뚱한 6개를 골라
+	// 턴을 버렸다. 골라 주는 것은 **맞을 때만** 이득이고, 틀리면 손해다.
+	visible, hidden := mcpclient.Visible(l.Tools)
+	if len(hidden) > 0 {
+		l.log("TOOLS", fmt.Sprintf("혼자 창을 먹는 도구 %d개는 숨긴다", len(hidden)))
+	}
+	picked := []mcpclient.Tool{findTools}
+	if !l.DeferAll {
+		picked = append(picked, mcpclient.Pick(visible, []string{goal}, toolChars)...)
+	}
+	l.log("TOOLS", fmt.Sprintf("도구 %d개(보이는 것 %d개) 가운데 %d개를 알린다",
+		len(l.Tools), len(visible), len(picked)))
 
 	history := []*genai.Content{
 		userTurn(system + "\n\n" + advertise(picked) + "\n\n[목표]\n" + goal),
@@ -68,6 +88,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 
 	for turn := 1; turn <= maxTurns; turn++ {
 		history = trim(history, agent.InputTokenBudget())
+
+		// **남은 예산을 알린다.** codex 는 rollout_budget 으로 같은 일을 한다 —
+		// 모델이 얼마 남았는지 모르면 끝까지 탐색만 하다 끝난다.
+		if left := maxTurns - turn; left <= 2 {
+			history = append(history, userTurn(fmt.Sprintf(
+				"[남은 턴 %d] 더 찾지 말고 지금까지 본 것으로 답해라.", left+1)))
+		}
 
 		text, err := l.say(ctx, history)
 		if err != nil {
@@ -220,9 +247,12 @@ func trim(history []*genai.Content, budget int) []*genai.Content {
 	if fits(history) {
 		return history
 	}
+	// **짝을 지켜 자른다.** 모델 턴과 그 결과는 한 묶음이라, 하나만 떼면
+	// 부른 적 없는 결과나 결과 없는 호출이 남는다. codex 도 사용자 턴 경계로
+	// 자른다(thread_rollout_truncation.rs).
 	head, tail := history[:1], history[1:]
-	for len(tail) > 1 {
-		tail = tail[1:]
+	for len(tail) > 2 {
+		tail = tail[2:]
 		if fits(append(append([]*genai.Content{}, head...), tail...)) {
 			break
 		}

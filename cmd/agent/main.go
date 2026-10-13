@@ -28,6 +28,7 @@ func main() {
 	turns := flag.Int("turns", 8, "최대 턴")
 	modelName := flag.String("model", envOr("LLM_MODEL_NAME", "gemma4:31b"), "모델 이름")
 	listOnly := flag.Bool("list-tools", false, "붙은 도구만 보여 주고 끝낸다")
+	deferAll := flag.Bool("defer-tools", true, "도구 스키마를 미리 알리지 않고 find_tools 로만 찾게 한다 (codex 와 같다)")
 	flag.Parse()
 
 	if *goal == "" && !*listOnly {
@@ -69,6 +70,7 @@ func main() {
 		LLM:      llm.FromEnv(*modelName, os.Getenv("RABBITMQ_URL")),
 		Tools:    tools,
 		MaxTurns: *turns,
+		DeferAll: *deferAll,
 		Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
 			c, ok := owner[name]
 			if !ok {
