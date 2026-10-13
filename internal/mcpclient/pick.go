@@ -205,3 +205,47 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// Overview 는 도구 이름의 갈래만 짧게 보여 준다.
+//
+// 미루기(Deferred)로 돌리면 모델은 카탈로그의 **낱말을 모른다.** 실측에서
+// 6턴 가운데 3턴을 find_tools 로 더듬는 데 썼고, 첫 질의는 96자만 건졌다.
+//
+// 스키마는 931,000 토큰이라 못 보여 주지만, **앞머리만 세어 보여 주는 것은
+// 몇백 자면 된다.** REA 자신도 「Route the target first」 표를 지침에 담아
+// 같은 일을 한다.
+func Overview(tools []Tool, maxGroups int) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	if maxGroups <= 0 {
+		maxGroups = 14
+	}
+	n := map[string]int{}
+	for _, t := range tools {
+		head := t.Name
+		if i := strings.IndexByte(head, '_'); i > 0 {
+			head = head[:i]
+		}
+		n[head]++
+	}
+	var heads []string
+	for h := range n {
+		heads = append(heads, h)
+	}
+	sort.Slice(heads, func(a, b int) bool {
+		if n[heads[a]] != n[heads[b]] {
+			return n[heads[a]] > n[heads[b]]
+		}
+		return heads[a] < heads[b]
+	})
+
+	var parts []string
+	for i, h := range heads {
+		if i >= maxGroups {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s_*(%d)", h, n[h]))
+	}
+	return "[도구 갈래 — 이 낱말로 find_tools 에 물어라]\n" + strings.Join(parts, " · ")
+}

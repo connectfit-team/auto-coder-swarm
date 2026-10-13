@@ -191,3 +191,32 @@ func TestFindToolsCarriesInputNames(t *testing.T) {
 		t.Errorf("스키마를 통째로 실었다:\n%s", got)
 	}
 }
+
+// 미루기로 돌리면 모델은 카탈로그의 낱말을 모른다 — 갈래만 짧게 준다.
+func TestOverviewIsSmallAndUseful(t *testing.T) {
+	var ts []Tool
+	for _, n := range []string{
+		"open_binary", "open_jeb_project",
+		"list_names", "list_procedures", "list_strings",
+		"compare_web_captures",
+	} {
+		ts = append(ts, Tool{Name: n, Schema: json.RawMessage(`{}`)})
+	}
+	got := Overview(ts, 14)
+	for _, want := range []string{"list_*(3)", "open_*(2)", "compare_*(1)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다: %s", want, got)
+		}
+	}
+	// 많은 쪽이 앞에 와야 쓸모 있다.
+	if strings.Index(got, "list_*") > strings.Index(got, "open_*") {
+		t.Errorf("많은 갈래가 뒤에 있다: %s", got)
+	}
+	// 짧아야 한다 — 길면 창을 먹어 쓰는 뜻이 없다.
+	if len(got) > 600 {
+		t.Errorf("너무 길다: %d자", len(got))
+	}
+	if Overview(nil, 14) != "" {
+		t.Error("도구가 없으면 빈 글이어야 한다")
+	}
+}

@@ -80,8 +80,13 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	l.log("TOOLS", fmt.Sprintf("도구 %d개(보이는 것 %d개) 가운데 %d개를 알린다",
 		len(l.Tools), len(visible), len(picked)))
 
+	// 미루기로 돌리면 모델은 카탈로그의 낱말을 모른다 — 갈래만 짧게 보여 준다.
+	overview := ""
+	if l.DeferAll {
+		overview = "\n\n" + mcpclient.Overview(visible, 14)
+	}
 	history := []*genai.Content{
-		userTurn(system + "\n\n" + advertise(picked) + "\n\n[목표]\n" + goal),
+		userTurn(system + "\n\n" + advertise(picked) + overview + "\n\n[목표]\n" + goal),
 	}
 	called := map[string]bool{}
 	seenOut := map[string]string{} // 결과 -> 그 결과를 낸 도구
