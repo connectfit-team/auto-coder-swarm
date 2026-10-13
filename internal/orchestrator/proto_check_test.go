@@ -144,8 +144,11 @@ func TestProtoCheckIgnoresNonProtoDiffs(t *testing.T) {
 
 // 관문이 달려 있어야 한다.
 func TestProtoGateIsWired(t *testing.T) {
-	src := readSource(t, "handover.go")
-	if !strings.Contains(src, "CheckProtoChange(t.repoPath, diff)") {
-		t.Error("계약 관문이 handOver 에 없다")
+	if !strings.Contains(readSource(t, "gates.go"), "CheckProtoChange(t.repoPath, diff)") {
+		t.Error("계약 관문이 gateChecks 에 없다")
+	}
+	// gateChecks 가 handOver 에 달려 있어야 관문이 실제로 돈다.
+	if !strings.Contains(readSource(t, "handover.go"), "t.gateChecks(diff)") {
+		t.Error("gateChecks 가 handOver 에 안 달렸다")
 	}
 }
