@@ -52,6 +52,9 @@ type Loop struct {
 	Summarize func(ctx context.Context, text string) (string, error)
 
 	Log func(kind, msg string)
+
+	// goal 은 이번 판의 목표문이다. find_tools 가 질의와 함께 본다.
+	goal string
 }
 
 // Run 은 목표 하나를 좇는다. 모델이 도구를 그만 부르면 그때의 글이 답이다.
@@ -92,6 +95,7 @@ func (l *Loop) Run(ctx context.Context, system, goal string) (string, error) {
 	// **다 들어가면 다 알린다.** 고르는 것은 카탈로그가 클 때나 뜻이 있다.
 	// 지역 도구 네 개짜리에 find_tools 만 쥐여 주면, 목표가 한국어라 Pick 이
 	// 빈 값을 줄 때 **쓸 도구가 하나도 안 알려진다.**
+	l.goal = goal
 	picked := visible
 	if fitsAll := totalCost(visible); fitsAll > toolChars || l.DeferAll {
 		picked = []mcpclient.Tool{findTools, toolHelp}
@@ -311,7 +315,7 @@ func (l *Loop) dispatch(ctx context.Context, name string, args map[string]any) (
 	}
 	if name == findTools.Name {
 		q, _ := args["query"].(string)
-		return mcpclient.FindTools(l.Tools, q, 20), nil
+		return mcpclient.FindToolsInContext(l.Tools, q, l.goal, 20), nil
 	}
 	return l.Call(ctx, name, args)
 }

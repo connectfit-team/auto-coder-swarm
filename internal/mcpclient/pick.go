@@ -130,6 +130,22 @@ func score(t Tool, terms []string) int {
 // 찾아보고 쓸 것을 고르게 한다 — 상용 에이전트가 큰 카탈로그를 다루는 방식이고,
 // REA 자신도 「Route the target first」 표로 같은 일을 한다.
 func FindTools(tools []Tool, query string, max int) string {
+	return FindToolsInContext(tools, query, "", max)
+}
+
+// FindToolsInContext 는 **모델의 질의에 더해 목표문도 본다.**
+//
+// 모델은 목표에 있는 낱말로 찾는데, 카탈로그는 제 말로 적혀 있다. 실측에서
+// `imports` 로 찾으니 2개뿐이었고 맞는 도구(list_names, 설명은 「external
+// symbol」)가 거기 없었다 — 12문항 가운데 셋이 늘 그것 때문에 틀렸다.
+//
+// 동의어를 코드에 박는 것은 그 한 물음에 맞추는 짓이다. 목표문은 **이미 우리가
+// 들고 있는 것**이고, 거기엔 질의에 안 쓴 낱말이 있다 — 「list the functions it
+// imports」 의 `list` 가 list_names 를 가리킨다.
+//
+// 질의가 먼저다. 목표문은 **거들 뿐**이라 점수를 낮게 준다 — 안 그러면 또렷한
+// 질의가 목표문에 묻힌다.
+func FindToolsInContext(tools []Tool, query, goal string, max int) string {
 	if max <= 0 {
 		max = 20
 	}
@@ -137,15 +153,23 @@ func FindTools(tools []Tool, query string, max int) string {
 	if len(t) == 0 {
 		return "찾을 말이 없다. 영어 낱말로 다시 물어라 (예: decompile, capabilities, android)."
 	}
+	ctx := without(terms([]string{goal}), t)
 	type hit struct {
 		t Tool
 		n int
 	}
 	var hits []hit
 	for _, x := range tools {
-		if n := score(x, t); n > 0 {
-			hits = append(hits, hit{x, n})
+		q := score(x, t)
+		c := contextScore(x, ctx)
+		if q == 0 && c == 0 {
+			continue
 		}
+		// **질의가 먼저다.** 목표문으로만 걸린 것은 뒤에 세운다 — 덮지 않되,
+		// 질의와 글자가 하나도 안 겹치는 도구가 아예 안 보이는 일은 막는다.
+		// list_names 는 「imports」 와 겹치는 글자가 없다. 설명이 「external
+		// symbol」 이라서다.
+		hits = append(hits, hit{x, q*4 + c})
 	}
 	sort.SliceStable(hits, func(a, b int) bool { return hits[a].n > hits[b].n })
 	if len(hits) == 0 {
@@ -299,4 +323,31 @@ func InputsMentionedIn(tools []Tool, text string) string {
 	}
 	sort.Strings(lines)
 	return "\n\n[위에 나온 도구가 받는 입력 — 지어내지 마라]\n" + strings.Join(lines, "\n")
+}
+
+// contextScore 는 목표문 낱말이 **이름에 들어 있을 때만** 조금 더한다.
+// 설명까지 세면 흔한 낱말이 다 걸려 차례가 뒤집힌다.
+func contextScore(t Tool, ctx []string) int {
+	name := strings.ToLower(t.Name)
+	n := 0
+	for _, w := range ctx {
+		if strings.Contains(name, w) {
+			n++
+		}
+	}
+	return n
+}
+
+func without(all, drop []string) []string {
+	skip := map[string]bool{}
+	for _, d := range drop {
+		skip[d] = true
+	}
+	var out []string
+	for _, w := range all {
+		if !skip[w] {
+			out = append(out, w)
+		}
+	}
+	return out
 }

@@ -295,3 +295,46 @@ func TestInputHint(t *testing.T) {
 		t.Errorf("없는 도구에 뭔가 답한다: %q", got)
 	}
 }
+
+// **질의만 보면 못 찾는다.** 모델은 목표에 있는 낱말(imports)로 찾는데 카탈로그는
+// 제 말(external symbol)로 적혀 있다. 목표문은 이미 우리가 들고 있고, 거기엔
+// 질의에 안 쓴 낱말이 있다 — 「list the functions it imports」 의 list.
+func TestFindToolsUsesTheGoalAsContext(t *testing.T) {
+	ts := []Tool{
+		{Name: "list_names", Description: "List every analyzed memory and external symbol",
+			Schema: json.RawMessage(`{}`)},
+		{Name: "inspect_macho", Description: "Inspect a Mach-O binary and its imports",
+			Schema: json.RawMessage(`{}`)},
+	}
+
+	// 질의만 보면 list_names 는 **아예 안 나온다** — 겹치는 글자가 없다.
+	alone := FindTools(ts, "imports", 20)
+	if strings.Contains(alone, "list_names") {
+		t.Fatalf("시험 전제가 틀렸다 — 질의만으로도 나온다:\n%s", alone)
+	}
+
+	// 목표문에 list 가 있으면 list_names 가 올라온다.
+	withGoal := FindToolsInContext(ts, "imports",
+		"Open the binary and list the functions it imports", 20)
+	if !strings.Contains(withGoal, "list_names") {
+		t.Errorf("목표문에 list 가 있는데도 안 나온다:\n%s", withGoal)
+	}
+	// 질의로 걸린 것이 **먼저**다 — 목표문이 덮지 않는다.
+	if strings.Index(withGoal, "inspect_macho") > strings.Index(withGoal, "list_names") {
+		t.Errorf("목표문으로만 걸린 것이 앞에 왔다:\n%s", withGoal)
+	}
+}
+
+// 목표문이 질의를 **덮지는 않는다.** 목표문으로만 걸린 것은 뒤에 세운다 —
+// 목표가 「list the segments」 면 list_segments 가 나오는 것은 맞다. 다만
+// 모델이 **찾겠다고 말한 것**이 먼저여야 한다.
+func TestGoalDoesNotOverrideTheQuery(t *testing.T) {
+	ts := []Tool{
+		{Name: "list_segments", Description: "segments", Schema: json.RawMessage(`{}`)},
+		{Name: "decompile", Description: "decompile one procedure", Schema: json.RawMessage(`{}`)},
+	}
+	got := FindToolsInContext(ts, "decompile", "list the segments", 20)
+	if strings.Index(got, "decompile") > strings.Index(got, "list_segments") {
+		t.Errorf("질의로 걸린 것이 뒤로 밀렸다:\n%s", got)
+	}
+}
