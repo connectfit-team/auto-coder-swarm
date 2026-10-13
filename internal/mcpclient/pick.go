@@ -1,6 +1,7 @@
 package mcpclient
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -157,11 +158,42 @@ func FindTools(tools []Tool, query string, max int) string {
 			break
 		}
 		fmt.Fprintf(&b, "- %s: %s\n", h.t.Name, firstLine(h.t.Description))
+		if in := inputLine(h.t.Schema); in != "" {
+			b.WriteString("  " + in + "\n")
+		}
 	}
 	// **찾은 다음에 무엇을 할지 함께 적는다.** 실측에서 모델이 find_tools 만
 	// 네 번 돌며 제자리를 돌았다 — 목록만 주면 다음 걸음을 모른다.
 	b.WriteString("\n이 가운데 하나를 **바로 불러라.** find_tools 를 다시 부르지 마라.")
 	return b.String()
+}
+
+// inputLine 은 입력 속성 **이름만** 적는다.
+//
+// codex 가 같은 일을 한다(`mcp.rs:520 build_mcp_search_text`) — 검색 결과에서
+// 전체 스키마는 떼어 내고(`input_schema = None`) 속성 이름을 정렬해 싣는다.
+//
+// 이름만 알려 주면 모델은 인자를 몰라 못 부른다. 실측에서 찾아만 놓고 인자가
+// 없는 도구를 부르거나, 목록을 그대로 답으로 냈다.
+func inputLine(schema json.RawMessage) string {
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if len(schema) == 0 || json.Unmarshal(schema, &s) != nil || len(s.Properties) == 0 {
+		return ""
+	}
+	var names []string
+	for k := range s.Properties {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := "입력: " + strings.Join(names, ", ")
+	if len(s.Required) > 0 {
+		sort.Strings(s.Required)
+		out += " (필수: " + strings.Join(s.Required, ", ") + ")"
+	}
+	return out
 }
 
 func firstLine(s string) string {

@@ -169,3 +169,25 @@ func TestVisibleHidesOversizedTools(t *testing.T) {
 		t.Errorf("숨긴 것: %v", hidden)
 	}
 }
+
+// 찾은 도구를 **부를 수 있어야** 한다 — 이름만 주면 인자를 몰라 못 부른다.
+// codex 도 검색 결과에 입력 속성 이름을 싣는다(mcp.rs build_mcp_search_text).
+func TestFindToolsCarriesInputNames(t *testing.T) {
+	ts := []Tool{{
+		Name:        "decompile",
+		Description: "Read one part of an app as code",
+		Schema: json.RawMessage(`{"type":"object",
+			"properties":{"procedure":{"type":"string"},"address":{"type":"string"}},
+			"required":["procedure"]}`),
+	}}
+	got := FindTools(ts, "decompile", 20)
+	for _, want := range []string{"입력: address, procedure", "필수: procedure"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q 가 없다:\n%s", want, got)
+		}
+	}
+	// 전체 스키마까지 실으면 창을 먹는다 — codex 도 떼어 낸다.
+	if strings.Contains(got, `"type":"object"`) {
+		t.Errorf("스키마를 통째로 실었다:\n%s", got)
+	}
+}
