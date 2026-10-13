@@ -51,8 +51,12 @@ func TestStateTypeIsValidatedBeforeHandoff(t *testing.T) {
 	// `InviteCandidate`(gig_ceo_web 의 타입)가 통과했는데, 그 이름은 계약
 	// 저장소의 proto 메시지로 쓰인다 — 거기엔 없다. 자식이 찾지 못해 새로
 	// 만들었다(실측 W-20458 → W-34815).
-	if !strings.Contains(body, "declaringFileAtHead(ownerPath") {
-		t.Fatalf("임자 저장소에 있는 메시지인지 확인하지 않는다:\n%s", body)
+	// message 만 보면 안 된다 — 상태 타입은 보통 enum 이다(#207).
+	if !strings.Contains(body, "declaredAtHead(ownerPath") {
+		t.Fatalf("임자 저장소에 선언된 이름인지 확인하지 않는다:\n%s", body)
+	}
+	if strings.Contains(body, "declaringFileAtHead(ownerPath") {
+		t.Fatal("message 만 보고 있다 — enum 인 상태 타입을 없다고 버린다")
 	}
 	if !strings.Contains(body, "askTypeAmongOwnerMessages") {
 		t.Fatalf("틀렸을 때 그 저장소 메시지 가운데서 다시 고르게 하지 않는다:\n%s", body)
