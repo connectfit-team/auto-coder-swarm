@@ -336,3 +336,33 @@ func TestSmallToolsetIsAdvertisedWhole(t *testing.T) {
 		}
 	}
 }
+
+// **도구 설명이 다음 도구를 가리키면 전해 준다.** REA 의 binary_overview 설명은
+// 「Use search_procedures, list_procedures, …」 인데, 직접 부른 도구의 설명은
+// 모델이 못 본다 — 실측에서 임포트 문항 셋이 늘 틀렸고 find_tools 는 0회였다.
+func TestToolResultCarriesTheNextStep(t *testing.T) {
+	ts := []mcpclient.Tool{
+		{Name: "binary_overview", Schema: json.RawMessage(`{"type":"object"}`),
+			Description: "Return metadata. Use list_procedures or search_procedures for names."},
+		{Name: "list_procedures", Schema: json.RawMessage(`{"properties":{"document":{}}}`),
+			Description: "List procedures"},
+		{Name: "unrelated", Schema: json.RawMessage(`{"properties":{"x":{}}}`), Description: "no"},
+	}
+	llm := &fakeLLM{says: []string{
+		`<tools>{"name":"binary_overview","arguments":{}}</tools>`, "끝.",
+	}}
+	l := &Loop{LLM: llm, Tools: ts,
+		Call: func(context.Context, string, map[string]any) (string, error) {
+			return "세그먼트 목록…", nil
+		}}
+	if _, err := l.Run(context.Background(), "s", "g"); err != nil {
+		t.Fatal(err)
+	}
+	second := flatten(llm.saw[1])
+	if !strings.Contains(second, "list_procedures 의 입력") {
+		t.Errorf("설명이 가리킨 다음 도구를 안 전했다:\n%s", second)
+	}
+	if strings.Contains(second, "unrelated 의 입력") {
+		t.Error("설명에 없는 도구까지 실었다")
+	}
+}
