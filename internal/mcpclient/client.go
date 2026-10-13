@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -138,7 +139,9 @@ func (c *Client) Call(ctx context.Context, tool string, args map[string]any) (st
 		}
 	}
 	if res.IsError {
-		return text, fmt.Errorf("%s/%s 가 오류를 돌려줬다", c.name, tool)
+		// **까닭을 함께 돌려준다.** 「오류를 돌려줬다」 만으로는 고칠 수 없다 —
+		// 모델에게도, 로그를 보는 사람에게도.
+		return text, fmt.Errorf("%s/%s: %s", c.name, tool, oneLine(text, 400))
 	}
 	return text, nil
 }
@@ -196,4 +199,16 @@ func (c *Client) write(v any) error {
 	}
 	_, err = c.in.Write(append(b, '\n'))
 	return err
+}
+
+// oneLine 은 오류를 로그 한 줄에 들어가게 줄인다.
+func oneLine(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	if s == "" {
+		return "(까닭을 안 돌려줬다)"
+	}
+	return s
 }

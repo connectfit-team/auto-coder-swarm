@@ -220,3 +220,15 @@ func TestOverviewIsSmallAndUseful(t *testing.T) {
 		t.Error("도구가 없으면 빈 글이어야 한다")
 	}
 }
+
+// 오류에는 까닭이 있어야 한다 — 「오류를 돌려줬다」 만으로는 못 고친다.
+func TestCallErrorCarriesTheReason(t *testing.T) {
+	c := fakeServer(t)
+	_, err := c.Call(context.Background(), "boom", nil)
+	if err == nil {
+		t.Fatal("오류를 안 냈다")
+	}
+	if !strings.Contains(err.Error(), "터졌다") {
+		t.Errorf("까닭이 없다: %v", err)
+	}
+}
