@@ -43,6 +43,7 @@ vLLM 은 `--tool-call-parser hermes` 로 떠 있어 모델이 `<tool_call>` 을 
 | `-defer-tools` (기본 켬) | 스키마를 미리 안 알리고 `find_tools` 로만 찾게 한다 |
 | `-turns` | 턴 예산 |
 | `-list-tools` | 붙은 도구만 보여 주고 끝낸다 (LLM 안 씀) |
+| `-verify` | 서버가 내놓는 것을 다 받는지 전수로 본다 (LLM 안 씀) |
 
 ## REA 가 내놓는 것을 다 받나 (2026-10-13 재 봤다)
 
@@ -55,6 +56,18 @@ vLLM 은 `--tool-call-parser hermes` 로 떠 있어 모델이 `<tool_call>` 을 
 | `prompts` 6개 (작업 절차) | **받는다**(#220) — 이름만 알리고 `get_workflow` 로 본문을 받는다 |
 | `resources` | REA 가 **안 내놓는다**(Method not found) |
 | `tools.listChanged` 알림 | **안 받는다** — 한 판 도는 동안 도구가 바뀌지 않는다 |
+
+**말로 답하지 말고 돌려서 답한다:**
+
+    ./bin/agent -config ~/.acs/mcp.json -verify
+
+LLM 을 안 쓰므로 측정이 도는 중에도 돌릴 수 있다. 못 받는 것이 있으면 1 로 끝난다.
+
+    ✓ 이름으로 부를 수 있다: 170/170
+    ✓ 안 알리는 36개도 find_tools 로 찾힌다 (알리는 것 134개)
+    ✓ 스키마가 있다: 170/170
+    ✓ 작업 절차를 받아 온다: 6/6
+    ✓ 쓰는 법을 받았다
 
 `prompts` 는 도구 하나가 아니라 **일 전체의 차례**다:
 `investigate_feature` · `compare_application_versions` · `verify_reconstruction` ·

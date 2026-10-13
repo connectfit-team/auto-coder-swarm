@@ -229,18 +229,18 @@ func TestLoopWarnsWhenBudgetRunsLow(t *testing.T) {
 // 서버가 알려 준 쓰는 법과 작업 절차를 버리지 않는다.
 func TestLoopUsesServerInstructionsAndWorkflows(t *testing.T) {
 	llm := &fakeLLM{says: []string{
-		`<tools>{"name":"get_workflow","arguments":{"name":"trace_crash"}}</tools>`,
+		`<tools>{"name":"get_workflow","arguments":{"name":"trace_crash","arguments":{"symptom":"죽는다"}}}</tools>`,
 		"절차대로 했다.",
 	}}
 	var asked string
+	var gotArgs map[string]any
 	l := &Loop{
 		LLM: llm, Tools: tools(), DeferAll: true,
 		Instructions: "REA 는 지역 산출물을 뜯는 도구다.",
-		Prompts: []mcpclient.Prompt{
-			{Name: "trace_crash", Description: "크래시를 증거와 잇는다"},
-		},
-		GetPrompt: func(_ context.Context, n string, _ map[string]any) (string, error) {
+		Prompts:      []mcpclient.Prompt{must()},
+		GetPrompt: func(_ context.Context, n string, a map[string]any) (string, error) {
 			asked = n
+			gotArgs = a
 			return "1. 심볼을 찾아라\n2. 호출을 따라가라", nil
 		},
 		Call: func(context.Context, string, map[string]any) (string, error) {
@@ -264,6 +264,26 @@ func TestLoopUsesServerInstructionsAndWorkflows(t *testing.T) {
 	if !strings.Contains(second, "심볼을 찾아라") {
 		t.Error("받아 온 절차가 대화에 안 들어갔다")
 	}
+	// **인자를 넘겨야 받아 올 수 있다.** 실제 서버의 절차 6개가 전부 필수
+	// 인자 때문에 떨어졌다.
+	if gotArgs["symptom"] != "죽는다" {
+		t.Errorf("절차 인자를 안 넘겼다: %+v", gotArgs)
+	}
+	if !strings.Contains(first, "필수 symptom") {
+		t.Errorf("필수 인자를 안 알렸다:\n%s", first)
+	}
+}
+
+// 필수 인자가 있는 절차.
+func must() mcpclient.Prompt {
+	var p mcpclient.Prompt
+	p.Name = "trace_crash"
+	p.Description = "크래시를 증거와 잇는다"
+	p.Arguments = append(p.Arguments, struct {
+		Name     string `json:"name"`
+		Required bool   `json:"required"`
+	}{Name: "symptom", Required: true})
+	return p
 }
 
 // 같은 오류가 또 나면 그 길은 막힌 것이다 — 세 번 두드리게 두지 않는다.
