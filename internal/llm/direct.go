@@ -50,26 +50,52 @@ func (m *DirectModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			return
 		}
 
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			m.base+"/v1/chat/completions", bytes.NewReader(body))
-		if err != nil {
-			yield(nil, err)
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
+		// **끊긴 연결은 다시 건다.** 이 기계는 하루 세 번 재부팅하고
+		// (05:00·13:00·21:00) vLLM 이 뜨는 동안 호출이 떨어진다. 그때마다
+		// 그 시도가 통째로 날아갔다. codex 도 같은 자리에서 다시 건다
+		// (responses_retry.rs: 5초에서 두 배씩, 60초에서 멈춘다).
+		var raw []byte
+		var status int
+		var callErr error
+		for attempt := 1; ; attempt++ {
+			httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+				m.base+"/v1/chat/completions", bytes.NewReader(body))
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
 
-		resp, err := m.hc.Do(httpReq)
-		if err != nil {
-			yield(nil, fmt.Errorf("vLLM 호출 실패: %w", err))
-			return
-		}
-		defer resp.Body.Close()
+			resp, err := m.hc.Do(httpReq)
+			if err == nil {
+				raw, _ = io.ReadAll(resp.Body)
+				status = resp.StatusCode
+				resp.Body.Close()
+				callErr = nil
+			} else {
+				raw, status, callErr = nil, 0, err
+			}
 
-		raw, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK {
-			// 본문을 잘라 함께 남긴다 — 400 은 대개 max_tokens·창 길이 문제다.
-			yield(nil, fmt.Errorf("vLLM %d: %s", resp.StatusCode, clipRunes(string(raw), 300)))
-			return
+			if callErr == nil && status == http.StatusOK {
+				break
+			}
+			if attempt > maxRetries() || !worthRetrying(status, callErr) {
+				if callErr != nil {
+					yield(nil, fmt.Errorf("vLLM 호출 실패: %w", callErr))
+					return
+				}
+				// 본문을 잘라 함께 남긴다 — 400 은 대개 max_tokens·창 길이 문제다.
+				yield(nil, fmt.Errorf("vLLM %d: %s", status, clipRunes(string(raw), 300)))
+				return
+			}
+			what := fmt.Sprintf("vLLM %d", status)
+			if callErr != nil {
+				what = "vLLM 에 닿지 못했다"
+			}
+			if !waitBefore(ctx, attempt, what) {
+				yield(nil, ctx.Err())
+				return
+			}
 		}
 
 		var out struct {
