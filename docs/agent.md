@@ -225,9 +225,10 @@ coreutils 의 **실제 임포트**다. 지어낸 것이 아니다.
    이름과 설명만 줘서 모델이 **인자를 몰랐던** 것이다. codex 는 검색 결과에
    입력 속성 이름을 싣는다(`mcp.rs build_mcp_search_text`). 그대로 가져온 뒤
    모델이 맞는 도구를 찾아 불렀다.
-2. **도구를 고르는 품질.** 임포트를 물었을 때 `list_names` 대신
-   `binary_overview`·`inspect_binary_layout` 을 골랐다. `read_reference` 를 줬지만
-   안 쓴다.
+2. **`임포트 — /bin/true` 하나가 남았다.** 그 판은 인자 틀리기로 턴을 다 쓴다
+   (`binary_overview` 에 `path` 를 넘기는 식). 지침이 이름 댄 도구의 입력을
+   미리 주면 고쳐지지만, **창을 먹어 다른 문항 셋이 무너진다**(22/24 → 18/24,
+   두 번 재 봤다). 지금은 안 고치고 적어 둔다.
 3. **압축이 없다** — 길어지면 앞을 버릴 뿐 요약하지 않는다. codex 의 `compact*`,
    hermes 의 `trajectory_compressor` 가 본보기.
 4. **연결 재시도가 없다.**

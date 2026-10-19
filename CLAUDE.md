@@ -36,7 +36,17 @@
 - `internal/orchestrator/flow_*.go` — 결함 흐름(한 저장소)
 - `internal/orchestrator/{dart,node,go_build}_check.go` — 문법·타입 검사
 - `tools/tsparse/` — TS·Svelte 파서. `scripts/install-checkers.sh` 가 `~/tools` 에 깐다
+- `internal/agentloop/`·`internal/mcpclient/` — 도구를 쥔 에이전트(MCP 서버에 붙는다)
 - 자세한 흐름은 [README.md](./README.md), 설정은 [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+## 정확도를 올리려면 — 먼저 읽는다
+
+**재고 나서 고친다.** 이미 재 보고 나빴던 것들이 적혀 있다 — 안 읽으면 같은 것을
+또 시도하게 된다.
+
+- [docs/accuracy.md](./docs/accuracy.md) — **재는 법, 하지 말 것, 지금 값, 어디를 고치나**
+- [docs/agent.md](./docs/agent.md) — 에이전트가 왜 이렇게 생겼나(창 16,384 가 거의 전부를 정한다)
+- [docs/agent-extend.md](./docs/agent-extend.md) — 무엇을 어디에 더하나
 
 ## 도구
 
